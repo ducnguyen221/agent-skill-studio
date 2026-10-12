@@ -1,0 +1,138 @@
+"""Offline tests for Studio manifest, CLI, package and install.
+
+Run: python3 -m unittest discover -s tests -v
+"""
+import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+CODE = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
+SPEC = importlib.util.spec_from_file_location("studio_impl", CODE)
+studio = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(studio)
+
+
+class StudioTests(unittest.TestCase):
+    def run_cli(self, *args):
+        return subprocess.run([sys.executable, str(ROOT / "studio.py"), *map(str, args)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def test_canonical_skills_have_no_static_errors(self):
+        for path in studio.skill_dirs(ROOT):
+            findings = studio.validate_skill(path, eval_root=ROOT / "evals", require_evals=True)
+            self.assertEqual([], [x for x in findings if x["level"] == "ERROR"], path.as_posix())
+
+    def test_every_evals_manifest_is_structurally_valid(self):
+        for path in (ROOT / "evals").iterdir():
+            if path.is_dir():
+                self.assertFalse([x for x in studio.check_evals(path) if x["level"] == "ERROR"])
+
+    def test_frontmatter_name_and_unsupported_fields_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            skill = Path(t) / "correct-name"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text('---\nname: Wrong_Name\ndescription: "A test skill. Use when testing name compliance."\ntriggers: all\n---\n\n# Test\n', encoding="utf-8")
+            codes = {f["code"] for f in studio.validate_skill(skill) if f["level"] == "ERROR"}
+            self.assertIn("FM2", codes)
+            self.assertIn("FM4", codes)
+
+    def test_relative_link_escape_is_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            skill = Path(t) / "sample-safe"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text('---\nname: sample-safe\ndescription: "Validates names. Use when testing a link."\n---\n\nRead [unsafe](../secret.txt).\n', encoding="utf-8")
+            codes = {f["code"] for f in studio.validate_skill(skill) if f["level"] == "ERROR"}
+            self.assertIn("ST6", codes)
+
+    def test_new_refuses_overwrite_and_creates_external_empty_evals(self):
+        with tempfile.TemporaryDirectory() as t:
+            base = Path(t)
+            out = base / "skills"
+            evals = base / "evals"
+            args = ["new", "test-deep-skill", "--output", str(out), "--eval-root", str(evals), "--description", "Checks data carefully. Use when testing safe skill creation."]
+            p = self.run_cli(*args)
+            self.assertEqual(0, p.returncode, p.stderr)
+            self.assertTrue((out / "test-deep-skill" / "SKILL.md").exists())
+            self.assertFalse((out / "test-deep-skill" / "evals").exists())
+            self.assertEqual([], json.loads((evals / "test-deep-skill" / "cases.json").read_text())["cases"])
+            self.assertEqual(1, self.run_cli(*args).returncode, "second creation should refuse overwrite")
+            self.assertEqual(1, self.run_cli("package", out / "test-deep-skill", "--out", base / "dist").returncode, "draft cannot publish")
+
+    def test_package_is_runtime_only(self):
+        with tempfile.TemporaryDirectory() as t:
+            package_dir = Path(t)
+            run = self.run_cli("package", "skills/data-quality-audit", "--out", package_dir)
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            zip_path = package_dir / "data-quality-audit.zip"
+            self.assertTrue(zip_path.is_file())
+            with zipfile.ZipFile(zip_path) as zf:
+                names = zf.namelist()
+                self.assertIn("data-quality-audit/SKILL.md", names)
+                self.assertFalse(any("evals/" in x or "__pycache__" in x for x in names))
+
+    def test_package_rejects_secret_file(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = Path(t) / "demo-skill"
+            folder.mkdir()
+            (folder / "SKILL.md").write_text('---\nname: demo-skill\ndescription: "Checks inputs. Use when testing security."\n---\n\n# Demo\n', encoding="utf-8")
+            (folder / ".env").write_text("PASSWORD=secret", encoding="utf-8")
+            files, findings = studio.ensure_distributable(folder)
+            self.assertTrue(any(x["code"] == "SEC" and x["level"] == "ERROR" for x in findings))
+
+    def test_install_copy_and_no_implicit_overwrite(self):
+        with tempfile.TemporaryDirectory() as t:
+            workspace = Path(t)
+            first = self.run_cli("install", "skills/data-quality-audit", "--agent", "codex", "--workspace", workspace)
+            self.assertEqual(0, first.returncode, first.stdout + first.stderr)
+            self.assertTrue((workspace / ".agents" / "skills" / "data-quality-audit" / "SKILL.md").is_file())
+            self.assertEqual(1, self.run_cli("install", "skills/data-quality-audit", "--agent", "antigravity", "--workspace", workspace).returncode)
+            claude = self.run_cli("install", "skills/data-quality-audit", "--agent", "claude", "--workspace", workspace)
+            self.assertEqual(0, claude.returncode, claude.stdout + claude.stderr)
+            self.assertTrue((workspace / ".claude" / "skills" / "data-quality-audit" / "SKILL.md").exists())
+
+    def test_install_refuses_self_overwrite_even_with_force(self):
+        with tempfile.TemporaryDirectory() as t:
+            workspace = Path(t)
+            src = workspace / ".agents" / "skills" / "data-quality-audit"
+            src.parent.mkdir(parents=True)
+            import shutil
+            shutil.copytree(ROOT / "skills" / "data-quality-audit", src)
+            attempt = self.run_cli("install", src, "--agent", "codex", "--workspace", workspace, "--force")
+            self.assertEqual(1, attempt.returncode)
+            self.assertTrue((src / "SKILL.md").exists())
+
+    def test_standalone_factory_runs_from_packaged_skill(self):
+        with tempfile.TemporaryDirectory() as t:
+            temp = Path(t)
+            packed = self.run_cli("package", "skills/skill-creator-studio", "--out", temp)
+            self.assertEqual(0, packed.returncode, packed.stdout + packed.stderr)
+            with zipfile.ZipFile(temp / "skill-creator-studio.zip") as zf:
+                zf.extractall(temp / "installed")
+            factory = temp / "installed" / "skill-creator-studio" / "scripts" / "studio.py"
+            run = subprocess.run([sys.executable, str(factory), "new", "external-skill", "--output", str(temp / "skills"), "--eval-root", str(temp / "evals"), "--description", "Checks external data. Use when testing portability outside Studio."], text=True, capture_output=True)
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            self.assertTrue((temp / "skills" / "external-skill" / "SKILL.md").is_file())
+            self.assertTrue((temp / "evals" / "external-skill" / "cases.json").is_file())
+
+    def test_template_mirror_matches(self):
+        run = self.run_cli("sync-template", "--check")
+        self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+
+    def test_registry_matches_skill_folders(self):
+        obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
+        catalog_names = {x["name"] for x in obj["skills"]}
+        actual_names = {x.name for x in studio.skill_dirs(ROOT)}
+        self.assertEqual(actual_names, catalog_names)
+        for x in obj["skills"]:
+            self.assertTrue((ROOT / x["path"] / "SKILL.md").is_file())
+            self.assertTrue((ROOT / x["evals"] / "cases.json").is_file())
+            self.assertFalse(x["model_evaluated"], "avoid fabricated model-test claims in initial delivery")
+
+
+if __name__ == "__main__":
+    unittest.main()

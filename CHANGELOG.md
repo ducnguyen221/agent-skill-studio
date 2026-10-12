@@ -1,0 +1,11 @@
+# Changelog
+
+## 0.1.0 — 2026-10-12
+
+- Khởi tạo Agent Skill Studio, portable Skill factory và template.
+- Quy chuẩn 13 rule được đối chiếu với video, PDF RoboNuggets và official docs.
+- Thêm các adapter Claude Code, Codex, Google Antigravity.
+- Thêm static validator, audit, scaffold, package, install và kiểm tra eval manifest.
+- Evals nằm ngoài runtime Skill; tạo ví dụ kiểm tra data quality và bộ test offline.
+
+**Trạng thái:** prototype usable; static checks + unit tests không thay thế model evaluation thực tế.

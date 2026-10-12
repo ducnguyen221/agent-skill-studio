@@ -1,0 +1,30 @@
+name: Agent Skill Studio quality gates
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check portability manifests and external eval metadata
+        run: python3 studio.py validate --all --require-evals
+      - name: Validate eval manifests (not model execution)
+        run: python3 studio.py evals --all
+      - name: Verify canonical template mirror
+        run: python3 studio.py sync-template --check
+      - name: Unit and local link tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Package runtime Skill samples (exclude evals)
+        run: |
+          python3 studio.py package skills/skill-creator-studio --out /tmp/ass-ci
+          python3 studio.py package skills/data-quality-audit --out /tmp/ass-ci
+      - name: Explicit model-evaluation disclaimer
+        run: echo 'Static CI does NOT execute model-dependent evaluations; use evals/RUNBOOK.md.'

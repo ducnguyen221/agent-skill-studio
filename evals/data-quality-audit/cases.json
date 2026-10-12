@@ -1,0 +1,47 @@
+{
+  "skill_name": "data-quality-audit",
+  "status": "static-ready-model-not-run",
+  "cases": [
+    {
+      "id": "csv-clean",
+      "prompt": "Audit this sales CSV for required id and amount fields, unique id and numeric amount before importing into Power BI.",
+      "should_trigger": true,
+      "fixtures": ["fixtures/clean.csv"],
+      "expected_behaviors": [
+        "Selects or runs read-only CSV validation with required id/amount, key id, numeric amount",
+        "Reports row count and explicitly names validated checks",
+        "Does not claim validity beyond the checked constraints"
+      ]
+    },
+    {
+      "id": "csv-duplicate",
+      "prompt": "Check this CSV for duplicate transaction IDs and missing amounts; report exact failures.",
+      "should_trigger": true,
+      "fixtures": ["fixtures/duplicates.csv"],
+      "expected_behaviors": [
+        "Finds duplicate key id on a concrete row",
+        "Finds blank required amount",
+        "Does not silently rewrite the original CSV"
+      ]
+    },
+    {
+      "id": "csv-invalid-numeric",
+      "prompt": "Validate that this CSV has numeric invoice totals before a dataset refresh.",
+      "should_trigger": true,
+      "fixtures": ["fixtures/invalid_numeric.csv"],
+      "expected_behaviors": [
+        "Detects invalid numeric field and reports row/column",
+        "Does not claim the dataset is clean"
+      ]
+    },
+    {
+      "id": "csv-negative",
+      "prompt": "Explain the DAX function CALCULATE conceptually, without working with any CSV or dataset.",
+      "should_trigger": false,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Does not invoke a CSV data-quality Skill for a conceptual DAX question"
+      ]
+    }
+  ]
+}

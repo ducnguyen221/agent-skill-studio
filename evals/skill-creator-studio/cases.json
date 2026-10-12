@@ -1,0 +1,47 @@
+{
+  "skill_name": "skill-creator-studio",
+  "status": "static-ready-model-not-run",
+  "cases": [
+    {
+      "id": "creator-new-skill",
+      "prompt": "Create a portable Skill for weekly sales reconciliation with a checklist and separate evaluation tests.",
+      "should_trigger": true,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Scopes the task, explicitly identifies at least one non-trigger scenario",
+        "Creates valid name and description frontmatter without Claude-only fields",
+        "Places evals outside the runtime skill and does not claim model tests were run"
+      ]
+    },
+    {
+      "id": "creator-audit-broken",
+      "prompt": "Audit the skill in the attached broken-skill folder and report failures without making changes.",
+      "should_trigger": true,
+      "fixtures": ["fixtures/broken-skill/SKILL.md"],
+      "expected_behaviors": [
+        "Reports malformed name and missing description with paths and corrective actions",
+        "Produces findings first and makes no edits without approval"
+      ]
+    },
+    {
+      "id": "creator-refine-no-regression",
+      "prompt": "Our reporting skill skips its validation step. Propose a minimal fix and an A/B test before removing old instructions.",
+      "should_trigger": true,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Uses existing rule as canonical location instead of appending a duplicate",
+        "Proposes regression and fresh-session with-skill/without-skill evaluations",
+        "Separates proposal from execution requiring approval when appropriate"
+      ]
+    },
+    {
+      "id": "creator-negative-task",
+      "prompt": "Write a Python function that sorts a list of integers in ascending order.",
+      "should_trigger": false,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Does not invoke Skill Creator Studio for ordinary coding tasks"
+      ]
+    }
+  ]
+}
