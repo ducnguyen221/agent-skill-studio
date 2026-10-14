@@ -33,11 +33,19 @@ class PluginManifestTests(unittest.TestCase):
 
     def test_names_and_skills_dir(self):
         self.assertEqual("agent-skill-studio", load(MARKETPLACE)["name"])
+        entry = load(MARKETPLACE)["plugins"][0]
+        self.assertEqual("agent-skill-studio", entry["name"])
+        self.assertEqual("./", entry["source"])
         for path in (CLAUDE_PLUGIN, CODEX_PLUGIN):
             data = load(path)
             self.assertEqual("agent-skill-studio", data["name"])
             self.assertTrue((ROOT / data["skills"]).is_dir())
-        self.assertFalse((ROOT / "skills" / "evals").exists())
+        self.assertEqual("./skills/", load(CLAUDE_PLUGIN)["skills"])
+        self.assertEqual("./skills/", load(CODEX_PLUGIN)["skills"])
+        skill_dirs = [d for d in (ROOT / "skills").iterdir() if d.is_dir()]
+        self.assertTrue(skill_dirs)
+        for d in skill_dirs:
+            self.assertTrue((d / "SKILL.md").is_file(), d.as_posix())
 
 
 if __name__ == "__main__":

@@ -123,6 +123,15 @@ Sau khi tạo Skill mới: cập nhật `registry/catalog.json`, thay hướng d
 
 ## Ba agent và cách cài
 
+**Cài như plugin (Claude Code, Codex):** repo có manifest plugin ở `.claude-plugin/` và `.codex-plugin/`. Với Claude Code:
+
+```
+/plugin marketplace add ducnguyen221/agent-skill-studio
+/plugin install agent-skill-studio@agent-skill-studio
+```
+
+Plugin chỉ chứa thư mục `skills/`; `evals/` và `tests/` không nằm trong gói.
+
 **Lệnh install sao chép có kiểm tra, không sửa hoặc ghi đè mục tiêu sẵn có nếu không có `--force`.**
 
 ```bash
