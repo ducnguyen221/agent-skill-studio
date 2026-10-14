@@ -19,6 +19,7 @@
 6. [Quality gates](#quality-gates)
 7. [Đọc tài liệu theo nhiệm vụ](#đọc-tài-liệu-theo-nhiệm-vụ)
 8. [Nguồn và giới hạn](#nguồn-và-giới-hạn)
+9. [ACD Ecosystem Integration](#-acd-ecosystem-integration)
 
 ## Repo này giải quyết vấn đề gì?
 
@@ -174,3 +175,7 @@ Hướng dẫn agent sử dụng Skill factory: [skills/skill-creator-studio/SKI
 Tham khảo trực tiếp: [Agent Skills Specification](https://agentskills.io/specification), [Claude Skills](https://code.claude.com/docs/en/skills), [Anthropic Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices), [OpenAI Build Skills](https://learn.chatgpt.com/docs/build-skills), [Google Antigravity Skills](https://www.antigravity.google/docs/skills), [robonuggets/skill-creator-plus](https://github.com/robonuggets/skill-creator-plus), video [VQyYzLJ6xos](https://www.youtube.com/watch?v=VQyYzLJ6xos) và PDF người dùng cung cấp *The 10 SKILL Rules* (trang 3–10). Xem [source traceability](standards/SOURCE_TRACEABILITY.md) trước khi diễn đạt bất kỳ đề xuất nội bộ nào như một chuẩn chính thức.
 
 Giấy phép: **MIT** ([LICENSE](LICENSE), quyết định 12/10/2026, xem [LICENSE_POLICY.md](LICENSE_POLICY.md)). Repo này **không sao chép mã nguồn của RoboNuggets**; các scripts ở đây được tự triển khai theo tiêu chí kiểm tra công khai. Nội dung public có thể thay đổi sau 12/10/2026; kiểm tra lại trước khi nâng bản lớn. Không có xác nhận đã chạy Claude/Codex/Antigravity thật trong bản phân phối offline này.
+
+## 🤝 ACD Ecosystem Integration
+
+Repo là Studio nhóm 2 — xưởng nền (Skill Factory) trong hệ thống nhiều repo ACD, nhận `production-brief.md` có khối Skill Spec và trả báo cáo AUDIT, diff cùng kết quả validate/eval cho repo sở hữu skill. Khai báo đủ 5 dòng (Role, Upstream, Downstream, Bundles, Handoff) tại [ECOSYSTEM.md](ECOSYSTEM.md).
