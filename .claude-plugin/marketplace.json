@@ -1,0 +1,22 @@
+{
+  "name": "agent-skill-studio",
+  "description": "Group 2 studio, the foundation workshop (Skill Factory): create, audit and refine portable Agent Skills.",
+  "owner": {
+    "name": "Duc Nguyen",
+    "url": "https://ducnguyen.vn"
+  },
+  "plugins": [
+    {
+      "name": "agent-skill-studio",
+      "description": "Group 2 studio, the foundation workshop (Skill Factory): create, audit and refine portable Agent Skills.",
+      "version": "0.1.0",
+      "source": "./",
+      "license": "MIT",
+      "author": {
+        "name": "Duc Nguyen",
+        "email": "ducnguyen.ams@gmail.com",
+        "url": "https://ducnguyen.vn"
+      }
+    }
+  ]
+}

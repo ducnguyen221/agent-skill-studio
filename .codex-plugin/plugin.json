@@ -1,0 +1,31 @@
+{
+  "name": "agent-skill-studio",
+  "version": "0.1.0",
+  "description": "Agent Skill Studio is a portable skill factory: standards, static validator, and create, audit and refine workflows for Agent Skills across Claude Code, Codex and Antigravity. Group 2 studio: the foundation workshop (Skill Factory). Evals stay outside the runtime package.",
+  "author": {
+    "name": "Duc Nguyen",
+    "email": "ducnguyen.ams@gmail.com",
+    "url": "https://ducnguyen.vn"
+  },
+  "homepage": "https://github.com/ducnguyen221/agent-skill-studio",
+  "repository": "https://github.com/ducnguyen221/agent-skill-studio",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "agent-skills",
+    "skill-factory",
+    "validator",
+    "portable"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Skill Studio",
+    "shortDescription": "Create, audit and refine portable Agent Skills",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ]
+  }
+}
