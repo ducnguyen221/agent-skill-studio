@@ -1,0 +1,51 @@
+{
+  "case_id": "csv-invalid-numeric",
+  "pair_id": "data-quality-audit/csv-invalid-numeric/codex",
+  "timestamp": "2026-10-17T16:56:34.000Z",
+  "runtime": "codex",
+  "model": "gpt-6-luna",
+  "with_skill": true,
+  "kind": "edge",
+  "triggered": true,
+  "status_note": "Count corrected 18/10 after Opus review RF1: the first counter missed commands batched as `const cmds = [...]` in Codex JS; this run reads .agents/skills/data-quality-audit/SKILL.md (transcript line 8), so triggered false -> true and hits 0 -> 1. Scripts unchanged. Fixed in evals/tools/activation.py (test-first).",
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 8,
+        "tool": "exec",
+        "via": "read-SKILL.md",
+        "match": "Get-Content -Raw -LiteralPath '.agents\\skills\\data-quality-audit\\SKILL.md'"
+      }
+    ],
+    "scripts": [
+      {
+        "line": 13,
+        "tool": "exec",
+        "match": "python '.agents\\skills\\data-quality-audit\\scripts\\validate_csv.py' --help"
+      },
+      {
+        "line": 15,
+        "tool": "exec",
+        "match": "python '.agents\\skills\\data-quality-audit\\scripts\\validate_csv.py' --file 'fixtures\\invalid_numeric.csv' --required amount --numeric amount"
+      }
+    ],
+    "transcript_sha256_full": "a9a3f37d3dfda2653a9958897aebce134040ee214c4bfee137c45f04eb5b8fe6",
+    "transcript_sha256_filtered": "dd7546500a5873c04d4f23c1d5f0c4032d8d14014f3ee3b1e3d156067ab5df12",
+    "line_numbers_refer_to": "filtered transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T16-56-34Z_codex_csv-invalid-numeric_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-17-skill-studio-eval/evidence/transcripts/2026-10-17T16-56-34Z_codex_csv-invalid-numeric_with.jsonl (OpcOS repo; filtered copy: tool calls, tool results cut to 500 chars, skill catalogue as names only, no system prompt, paths and e-mail redacted; full copy stays outside git, identified by sha256 above)",
+  "cwd": "~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T16-56-34Z_csv-invalid-numeric_with",
+  "skill_sha256_loaded": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "skill_sha256_repo": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "pinned_model": "gpt-6-luna",
+  "actual_model": "gpt-6-luna",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports; Codex: ~/.codex/AGENTS.md)",
+  "ledger_id": "4a1d16fd-3f02-4df5-9034-8859dbd98d64",
+  "wall_seconds": 58.4,
+  "timeout_s": 300,
+  "output_excerpt": "**Refresh blocker:** `fixtures/invalid_numeric.csv` failed validation. The audit checked 3 rows and found row 3 has `hello` in `amount`, which is not numeric.\n\nI treated `amount` as the invoice total. Correct that source value and rerun validation before refreshing. The CSV was not modified.",
+  "status": "ran",
+  "batch": "SPR-18-TK3-20261017",
+  "stderr_tail": "[bridge] cảnh báo: biến thuộc namespace codex nhưng CHƯA có trong danh sách trắng nên KHÔNG tới callee: CODEX_BRIDGE — nếu thật sự cần, thêm vào CODEX_TOOL_ENV.allow trong bridges/lib/env.mjs\n"
+}

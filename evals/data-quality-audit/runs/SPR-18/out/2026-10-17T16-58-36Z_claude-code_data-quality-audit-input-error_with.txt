@@ -1,0 +1,10 @@
+Không có hàng nào của file này có `customer_id`, vì file không có cột đó. Tôi chưa chạy được script kiểm định: lệnh chạy script bị chặn chờ duyệt mà phiên này không tương tác. Kết luận dưới đây dựa trên việc đọc trực tiếp file, không phải kết quả script.
+
+- **File duy nhất tìm thấy:** `fixtures\missing_column.csv`. Nếu file bạn định nạp là file khác thì cho tôi đường dẫn.
+- **Nội dung:** header là `id,amount` và có 3 dòng dữ liệu (`1,10` / `2,20` / `3,30`).
+- **Kiểm tra có `customer_id`:** không đạt. Cả 3 dòng đều thiếu giá trị này.
+- **Kiểm tra duy nhất:** không thể kiểm vì không có cột để so. Cột `id` là 1, 2, 3 và không trùng, nhưng chưa rõ nó có phải mã khách hàng không.
+
+**ASSUMPTION:** `id` có thể là mã khách hàng đổi tên, hoặc file bị xuất thiếu cột. Tôi không tự đổi tên cột hay sửa file; bạn xác nhận `id` là gì trước khi nạp.
+
+Tôi chưa xác nhận file sạch. Để có kết quả script, hãy duyệt lệnh `validate_csv.py` với `--required customer_id --keys customer_id`, hoặc chạy tay lệnh đó rồi gửi lại output cho tôi.

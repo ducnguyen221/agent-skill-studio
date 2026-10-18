@@ -1,0 +1,35 @@
+{
+  "skill": "data-quality-audit",
+  "date": "2026-10-18",
+  "per_runtime": {
+    "claude-code": {
+      "positive_triggered": 4,
+      "negative_triggered": 0,
+      "better": 0,
+      "equal": 5,
+      "worse": 0,
+      "pairs": 5
+    },
+    "codex": {
+      "positive_triggered": 3,
+      "negative_triggered": 2,
+      "better": 0,
+      "equal": 5,
+      "worse": 0,
+      "pairs": 5
+    }
+  },
+  "ambiguous_sensitivity": {
+    "row": "data-quality-audit/csv-duplicate/codex O4, ben X = base",
+    "main_choice": "AMBIGUOUS tinh la PASS (bao thu: khong tao ra 'hon')",
+    "if_pass": {"codex": {"better": 0, "equal": 5, "worse": 0}},
+    "if_fail": {"codex": {"better": 1, "equal": 4, "worse": 0}}
+  },
+  "notes": [
+    "A1/A2 (kich hoat) khong vao better/equal/worse theo FR4.2 va chi dan cua dieu phoi; cot kich hoat lay tu activation.py summarize.",
+    "SPEC ASSUMPTION nguong A/B co cau 'A1 la cong cua ban B: B khong kich hoat thi cap ghi kem'. Cau nay mau thuan voi FR4.2; ab json nay theo FR4.2. Neu ap cong A1: claude-code worse=1 (csv-duplicate), codex worse=2 (csv-duplicate, input-error); xem ab-2026-10-18.md.",
+    "Sua dem 18/10 sau review Opus RF1: bo dem Codex bo sot lenh dang `const cmds = [...]`; codex csv-invalid-numeric_with doc SKILL.md nen codex positive_triggered 2 -> 3 (bang better/equal/worse khong doi); trong cach doc cong A1, codex worse 3 -> 2.",
+    "Moi cap bang nhau tren O1-O4 (0 FAIL o ca hai ben): thuoc do khong phan biet with va base tren cac tac vu nay. Khong phai ket luan ve chat luong skill.",
+    "n=5 moi runtime, khong thong ke."
+  ]
+}

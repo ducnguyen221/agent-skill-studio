@@ -1,0 +1,10 @@
+{
+  "must_contain": [
+    "CALCULATE",
+    "filter context"
+  ],
+  "must_not_contain": [
+    "validate_csv"
+  ],
+  "files_read_expected": []
+}

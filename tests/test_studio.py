@@ -29,7 +29,7 @@ class StudioTests(unittest.TestCase):
 
     def test_every_evals_manifest_is_structurally_valid(self):
         for path in (ROOT / "evals").iterdir():
-            if path.is_dir():
+            if path.is_dir() and any((path / m).exists() for m in ("cases.json", "rubric.md", "fixtures", "baselines", "expected")):
                 self.assertFalse([x for x in studio.check_evals(path) if x["level"] == "ERROR"])
 
     def test_frontmatter_name_and_unsupported_fields_rejected(self):
@@ -63,6 +63,12 @@ class StudioTests(unittest.TestCase):
             self.assertEqual(3, len(cases))
             self.assertEqual({True, False}, {c["should_trigger"] for c in cases})
             self.assertTrue(all(c["prompt"].startswith("STUDIO-DRAFT: ") for c in cases))
+            name = "test-deep-skill"
+            self.assertEqual([(name + "-typical", "typical", True), (name + "-edge", "edge", True), (name + "-negative", "near-miss", False)],
+                             [(c["id"], c["kind"], c["should_trigger"]) for c in cases])
+            self.assertTrue(all(c["fixtures"] == [] for c in cases))
+            self.assertTrue(all(c["expected_behaviors"] and all(b.startswith("STUDIO-DRAFT: ") for b in c["expected_behaviors"]) for c in cases))
+            self.assertNotIn(">=3 eval cases", p.stdout)
             self.assertFalse([f for f in studio.check_evals(evals / "test-deep-skill") if f["level"] == "ERROR"])
             self.assertEqual(1, self.run_cli(*args).returncode, "second creation should refuse overwrite")
             self.assertEqual(1, self.run_cli("package", out / "test-deep-skill", "--out", base / "dist").returncode, "draft cannot publish")
@@ -75,6 +81,23 @@ class StudioTests(unittest.TestCase):
                 {"id": "a", "prompt": "p", "should_trigger": True, "expected_behaviors": []}]}), encoding="utf-8")
             msgs = [f["message"] for f in studio.check_evals(ef) if f["code"] == "EV4"]
             self.assertTrue(any("expected_behaviors" in m for m in msgs), msgs)
+
+    def run_evals_all(self, er):
+        return subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "studio.py"), "evals", "--all", "--eval-root", str(er)],
+                              cwd=ROOT, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def test_evals_all_skips_folder_with_no_eval_files_but_not_a_broken_eval(self):
+        with tempfile.TemporaryDirectory() as t:
+            er = Path(t)
+            (er / "misc-helpers").mkdir()
+            (er / "misc-helpers" / "helper.py").write_text("x = 1\n", encoding="utf-8")
+            p = self.run_evals_all(er)
+            self.assertEqual(0, p.returncode, p.stdout + p.stderr)
+            (er / "half-done").mkdir()
+            (er / "half-done" / "rubric.md").write_text("# r\n", encoding="utf-8")
+            p = self.run_evals_all(er)
+            self.assertEqual(1, p.returncode, "a folder with eval files but no cases.json is still an error")
+            self.assertIn("EV1", p.stdout)
 
     def test_packaged_factory_matches_root_studio(self):
         self.assertEqual((ROOT / "studio.py").read_bytes(), (ROOT / "skills/skill-creator-studio/scripts/studio.py").read_bytes())

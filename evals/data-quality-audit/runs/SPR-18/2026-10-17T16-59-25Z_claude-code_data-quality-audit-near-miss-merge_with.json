@@ -1,0 +1,32 @@
+{
+  "case_id": "data-quality-audit-near-miss-merge",
+  "pair_id": "data-quality-audit/data-quality-audit-near-miss-merge/claude-code",
+  "timestamp": "2026-10-17T16:59:25.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "near-miss",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "c197945e32d7bbb49d4dddea462296f247b2d6eb68d7c287d5c07b7815980b03",
+    "transcript_sha256_filtered": "593633afafbc5baa07b60f39a9e03a3d9751bc1809388edb410c062068208b69",
+    "line_numbers_refer_to": "filtered transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T16-59-25Z_claude-code_data-quality-audit-near-miss-merge_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-17-skill-studio-eval/evidence/transcripts/2026-10-17T16-59-25Z_claude-code_data-quality-audit-near-miss-merge_with.jsonl (OpcOS repo; filtered copy: tool calls, tool results cut to 500 chars, skill catalogue as names only, no system prompt, paths and e-mail redacted; full copy stays outside git, identified by sha256 above)",
+  "cwd": "~/OpcOS/workspaces/spr18-eval/claude-code/2026-10-17T16-59-25Z_data-quality-audit-near-miss-merge_with",
+  "skill_sha256_loaded": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "skill_sha256_repo": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports; Codex: ~/.codex/AGENTS.md)",
+  "ledger_id": "dced7801-f85a-4c41-a608-895b08c6db74",
+  "wall_seconds": 19.4,
+  "timeout_s": 300,
+  "output_excerpt": "Đã gộp (left join trên `customer_id`), cả 3 đơn đều khớp khách hàng:\n\n| order_id | customer_id | amount | name |\n|---|---|---|---|\n| 1 | c1 | 10 | Alice |\n| 2 | c2 | 20 | Bob |\n| 3 | c1 | 30 | Alice |\n\nTôi gộp bằng tay vì dữ liệu chỉ có 3 dòng, và không tạo hay ghi file nào. Bạn cần xuất ra CSV thì nói tôi biết.",
+  "status": "ran",
+  "batch": "SPR-18-TK3-20261017",
+  "cost_usd": 0.23940499999999998
+}

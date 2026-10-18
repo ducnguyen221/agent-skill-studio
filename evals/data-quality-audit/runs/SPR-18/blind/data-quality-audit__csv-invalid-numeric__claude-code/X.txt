@@ -1,0 +1,13 @@
+**Không đạt: CSV không an toàn để refresh dataset.** Cột `amount` có 1 giá trị không phải số.
+
+File kiểm tra: `fixtures/invalid_numeric.csv`. Đó là file CSV duy nhất trong thư mục làm việc. Tôi giả định đây là file bạn muốn kiểm. Tôi không thấy cột nào tên "invoice total", nên coi `amount` là cột tổng tiền hóa đơn.
+
+| Dòng | id | amount | Kết quả |
+|---|---|---|---|
+| 2 | 1 | `150.0` | Hợp lệ |
+| 3 | 2 | `hello` | **Không phải số** |
+| 4 | 3 | `90` | Hợp lệ |
+
+Tôi đọc file bằng mắt, không chạy script. File chỉ có 3 dòng dữ liệu nên đủ để kết luận. Tôi cũng không sửa file.
+
+**Việc cần làm:** sửa hoặc loại dòng 3 (id 2) ở nguồn rồi kiểm lại. Tôi không đoán giá trị đúng thay bạn.

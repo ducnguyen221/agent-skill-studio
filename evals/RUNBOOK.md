@@ -55,3 +55,44 @@ evals/<skill-name>/
 ## Bảo mật
 
 Không upload dữ liệu production, tokens, email cá nhân hoặc thông tin khách hàng vào fixtures công khai. Với dữ liệu thật, lưu ở kho riêng có permission và trỏ test qua fake fixture/anonymized data.
+
+## Lô SPR-18 — phiên mới có/không skill, đếm kích hoạt từ transcript
+
+Bộ câu, oracle (`expected/`), thước (`rubric.md`) và `runs/SPR-18/manifest.json` đã đóng băng; sửa một file đóng băng thì `activation.py verify` báo.
+Mỗi skill có 8 case: 5 positive (`typical` 2, `edge` 2, `input-error` 1) và 3 `near-miss`. Chỉ đo kích hoạt bằng `evals/tools/activation.py`
+(đếm lời gọi tool Skill hoặc lần đọc `…/<skill>/SKILL.md` của agent; không quét system prompt, nên tên skill trong danh mục không tính).
+
+Kiểm trước mỗi lô:
+
+```text
+python -X utf8 evals/tools/activation.py verify --eval-dir evals/<skill> --main-skill-dir <OpcOS>/plugins/agent-skill-studio/skills/<skill> --cache-skill-dir <~/.claude>/plugins/cache/agent-skill-studio/agent-skill-studio/0.1.0/skills/<skill> --manifest evals/<skill>/runs/SPR-18/manifest.json
+python -X utf8 evals/tools/activation.py hash <thư mục skill>          # băm cây skill, đã chuẩn hoá CRLF
+python -X utf8 evals/tools/activation.py count <transcript.jsonl> --skill <skill> --runtime claude-code|codex
+python -X utf8 evals/tools/activation.py summarize evals/<skill>/runs/SPR-18
+```
+
+Đo thật (17/10/2026) — `runs/SPR-18/harness-status.json` và `runs/SPR-18/smoke/*`:
+
+| Harness | Kết luận | Cách chạy |
+|---|---|---|
+| Claude Code | **go** | `claude -p --model claude-sonnet-5-5 --output-format json --permission-mode acceptEdits --allowedTools "Skill,Read,Glob,Grep,Write,Edit,Bash(python:*),Bash(python3:*),Bash(py:*),Bash(ls:*),Bash(cat:*)" --disallowedTools "WebFetch,WebSearch"` đọc prompt từ stdin, cwd là thư mục chạy sạch dưới `~/OpcOS/workspaces/spr18-eval/claude-code/<run-id>/`. Có skill: plugin bật sẵn. Không skill: thêm `--settings '{"enabledPlugins":{"agent-skill-studio@agent-skill-studio":false}}'` (tắt theo tiến trình, không đổi cài đặt máy; phép thử vắng skill sạch: transcript không còn nhắc tên skill nào). `claude -p` chạy lồng được. Transcript: `~/.claude/projects/<cwd-slug>/<session_id>.jsonl`. Plugin nạp từ thư mục nguồn marketplace, không phải cache — checkout nguồn phải đứng yên trên `main`. |
+| Codex | **go** (baseline cần cửa sổ tắt plugin, xem cuối dòng) | `ask-codex ask --origin human --access workspace --cwd <run-dir> --model gpt-6-luna`, prompt qua stdin; skill đưa vào bằng `studio.py install <skill> --agent codex --workspace <run-dir>`. Baseline: Codex bật plugin `agent-skill-studio` toàn máy nên phiên không-skill vẫn thấy cả hai skill (smoke 17/10 hỏng); chưa có đường tắt theo tiến trình qua cầu. Cách đã dùng 18/10: khi không có phiên Codex tương tác, tắt plugin bằng `codex-config.ps1 -Set 'plugins."agent-skill-studio@agent-skill-studio".enabled=false'` trong đúng một cửa sổ lô, chạy smoke vắng skill (`smoke/codex_base_clean.json`) rồi 5 phiên, bật lại `=true` trong `finally`, so băm file config trước/sau. Cần Đức duyệt mỗi lần. Transcript: `~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*-<id>.jsonl`, tìm theo `cwd` ở dòng đầu. |
+| Antigravity | **no-go** (`no-go:no-transcript;global-skill-root-not-isolated`) | `ask-agy` headless không sinh transcript, và liệt kê cả skill chưa cài vào workspace (lấy từ `~/.gemini/antigravity/skills`) nên không tách được có/không skill. |
+
+Lưu ý khi chạy: dưới `--allowedTools` ở trên, lệnh Bash ghép (`cd … && ls … && python …`) bị từ chối; model tự chạy lại từng lệnh. Codex ghi cảnh báo
+"Exceeded skills context budget": danh mục skill chỉ còn tên. Câu trả lời của cả hai harness theo tiếng Việt vì luật toàn cục của máy nạp vào phiên (ghi vào `preamble`).
+
+### Schema log một phiên (`runs/SPR-18/<ISO>_<runtime>_<case-id>_<with|base>.json`)
+
+Giữ các khoá mẫu cũ và thêm: `pair_id` (`<skill>/<case-id>/<runtime>`), `with_skill`, `kind`, `triggered`, `activation_evidence` (`hits`, `scripts`,
+`transcript_sha256`), `transcript_path`, `cwd`, `skill_sha256_loaded`, `skill_sha256_repo`, `pinned_model`, `actual_model`, `preamble`, `ledger_id`,
+`status` ∈ `ran` | `not_run` | `contaminated` | `invalid-version` | `invalid-model`. Transcript đầy đủ không nằm trong repo này mà ở hồ sơ sprint
+của OpcOS; log chỉ giữ `hits` và băm.
+
+## Antigravity — đo trong IDE (bàn giao cho sprint riêng RQ-117)
+
+Cầu `ask-agy` (headless `--print`) không đo được kích hoạt: một lượt đo 17/10/2026 cho thấy (1) không có transcript (thư mục `brain/` không mọc thêm),
+(2) danh mục skill lấy từ thư mục skill toàn máy chứ không từ workspace thử, nên không có baseline sạch. Muốn đo phải chạy phiên trong IDE.
+Dùng lại nguyên bộ câu `evals/<skill>/cases.json`, oracle `expected/`, thước `rubric.md` (xem manifest), skill vào `.agents/skills` của workspace thử bằng
+`studio.py install … --agent antigravity --workspace <run-dir>`, và với baseline phải tạm đưa skill toàn máy ra khỏi `~/.gemini/antigravity/skills`
+(việc đổi máy, cần Đức duyệt riêng). Chấm kích hoạt bằng lịch sử tool call của IDE; không coi tên skill trong danh mục là kích hoạt.

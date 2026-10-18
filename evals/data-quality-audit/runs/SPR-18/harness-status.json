@@ -1,0 +1,35 @@
+{
+  "claude-code": "go",
+  "codex": "go;baseline-via-plugin-off-window (first smoke 17/10 contaminated: global-codex-plugin-enabled; rerun 18/10 with the plugin switched off through codex-config.ps1 for one batch window: clean)",
+  "antigravity": "no-go:no-transcript;global-skill-root-not-isolated",
+  "evidence": {
+    "claude-code": [
+      "smoke/claude-code_with.json",
+      "smoke/claude-code_base.json"
+    ],
+    "codex": [
+      "smoke/codex_with.json",
+      "smoke/codex_base.json",
+      "smoke/codex_base_clean.json"
+    ],
+    "antigravity": [
+      "smoke/antigravity_with.json"
+    ]
+  },
+  "claude_flags": {
+    "command": "claude -p --model claude-sonnet-5-5 --output-format json (prompt on stdin)",
+    "permission_mode": "acceptEdits",
+    "allowedTools": "Skill,Read,Glob,Grep,Write,Edit,Bash(python:*),Bash(python3:*),Bash(py:*),Bash(ls:*),Bash(cat:*)",
+    "disallowedTools": "WebFetch,WebSearch",
+    "baseline_settings": "{\"enabledPlugins\":{\"agent-skill-studio@agent-skill-studio\":false}}",
+    "note": "compound Bash (cd .. && ls .. && python ..) is denied under this allowlist; prompts must make the model run one python command per call (it retried successfully in the smoke)"
+  },
+  "codex_flags": {
+    "command": "ask-codex.sh ask --origin human --access workspace --cwd <run-dir> --model gpt-6-luna (prompt on stdin)"
+  },
+  "timeouts_s": "smoke ran with a 120 s cap for claude -p and ask-codex (150 s for ask-agy); PLAN said 90 s but every smoke finished in 44 s or less. Wall seconds: claude with 25.4 / base 16.0; codex with 44.2 / base 16.7; antigravity 19.0. Batch cap stays 300 s.",
+  "parent_guidance_check": "grep -il 'data-quality-audit|skill-creator-studio' over ~/OpcOS/{AGENTS,CLAUDE,GEMINI}.md, ~/.claude/CLAUDE.md, core.md, dist-adapters/*.md, agent-agile-team/AGENTS.md, system/AGENTS.md, brain/AGENTS.md, ~/.codex/AGENTS.md, ~/.gemini/GEMINI.md => empty (rc=1)",
+  "claude_skill_load_path": "plugin skill is loaded from the marketplace SOURCE dir ~/OpcOS/plugins/agent-skill-studio (Base directory in the Skill tool result), not from the plugin cache; both have the same tree hash today",
+  "codex_catalog_note": "Codex stderr: 'Exceeded skills context budget. All skill descriptions were removed' => skills are advertised by name only in this session",
+  "codex_skill_copy_matches_worktree": true
+}

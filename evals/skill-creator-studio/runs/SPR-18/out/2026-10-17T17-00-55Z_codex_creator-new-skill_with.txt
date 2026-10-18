@@ -1,0 +1,7 @@
+Đã tạo Skill di động cho đối soát doanh thu tuần và bộ eval tách riêng.
+
+- Skill, quy trình và hướng dẫn xử lý dữ liệu: [SKILL.md](/~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T17-00-55Z_creator-new-skill_with/weekly-sales-reconciliation/SKILL.md)
+- Checklist đối soát: [RECONCILIATION_CHECKLIST.md](/~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T17-00-55Z_creator-new-skill_with/weekly-sales-reconciliation/references/RECONCILIATION_CHECKLIST.md)
+- Bộ eval gồm 4 tình huống, fixture giả lập và rubric: [evals/weekly-sales-reconciliation](/~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T17-00-55Z_creator-new-skill_with/evals/weekly-sales-reconciliation)
+
+Kiểm tra tĩnh cho Skill và eval đều đạt: **0 lỗi, 0 cảnh báo**. Chưa chạy đánh giá model trong phiên mới; baseline được ghi rõ là `not_run`. Tôi cũng đã dọn các thư mục và tệp mẫu rỗng do bước tạo khung sinh ra.

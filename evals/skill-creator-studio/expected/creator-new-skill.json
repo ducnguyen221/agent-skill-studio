@@ -1,0 +1,14 @@
+{
+  "must_contain": [
+    "SKILL.md",
+    "name",
+    "description",
+    "evals"
+  ],
+  "must_not_contain": [
+    "model tests (were|have been) run|tested on (claude|codex)"
+  ],
+  "files_read_expected": [
+    "skills/skill-creator-studio/SKILL.md"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "must_contain": [
+    "\"order_id\"|\\[\\s*\\{",
+    "c1"
+  ],
+  "must_not_contain": [
+    "validate_csv",
+    "duplicate-key",
+    "data quality"
+  ],
+  "files_read_expected": []
+}

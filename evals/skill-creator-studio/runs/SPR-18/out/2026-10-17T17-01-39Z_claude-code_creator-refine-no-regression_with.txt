@@ -1,0 +1,20 @@
+Tôi chưa sửa gì, vì chưa xác định được skill nào bị lỗi. Thư mục làm việc (`…creator-refine-no-regression_with`) hoàn toàn trống, kể cả file ẩn, nên không có `SKILL.md` báo cáo nào ở đây để đọc.
+
+**Tôi cần từ bạn:** đường dẫn hoặc tên skill báo cáo bị bỏ qua bước validation. Skill gần nhất tôi thấy là `weekly-sales-reconciliation` trong workspace `…creator-new-skill_with`, nhưng tôi không đoán là skill đó.
+
+**Đề xuất chung, chưa áp vào file nào:**
+
+1. **Sửa tối thiểu (thêm, không xóa).**
+   - Thêm một bước validation có số thứ tự rõ ngay trước bước xuất báo cáo, kèm điều kiện chặn: "Chưa chạy xong bước N thì không được viết kết quả cuối".
+   - Bắt skill in bằng chứng đã chạy (lệnh và kết quả) vào đầu ra.
+   - Giữ nguyên toàn bộ chỉ dẫn cũ. Chỉ thêm khoảng 5–8 dòng.
+
+2. **A/B test.**
+   - **A:** skill hiện tại, giữ nguyên làm baseline. **B:** skill đã thêm bước validation.
+   - Chạy cùng một bộ tình huống cho cả hai, mỗi bên ít nhất 5 lần. Bộ gồm ca bình thường, ca dữ liệu sai và ca thiếu đầu vào, giống cách workspace `spr18-eval` đang chạy.
+   - Chỉ số chính: tỉ lệ lần chạy có bằng chứng validation trong đầu ra. Chỉ số kiểm soát: không tụt ở các ca vốn đang đúng (no-regression), và không tăng đáng kể số bước hoặc token.
+   - Ngưỡng đề xuất: B đạt ít nhất 90% có validation, A là baseline đo thực tế, không ca nào đang đúng ở A mà sai ở B.
+
+3. **Xóa chỉ dẫn cũ chỉ sau khi B thắng.** Khi đó mới thử bản C (đã bỏ chỉ dẫn cũ) và chạy lại cùng bộ test. Nếu C không tụt so với B thì mới xóa.
+
+Khi có đường dẫn skill, tôi sẽ đọc nó, chỉ ra chính xác chỗ bước validation bị bỏ qua và soạn diff cụ thể cùng bộ ca test. Trước khi sửa file nào, tôi sẽ xin bạn gật.
