@@ -76,7 +76,8 @@
     "transcript_sha256_full": "452767167a2c754297732b578c8e4983e9f42e465e22679bf50f9b169758de92",
     "transcript_sha256_filtered": "a67eae593383af8f6f155c53bb68ade1865a1c1781b2a1a16f8c69ce521b28f8",
     "line_numbers_refer_to": "filtered transcript",
-    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T17-00-55Z_codex_creator-new-skill_with.full.jsonl"
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T17-00-55Z_codex_creator-new-skill_with.full.jsonl",
+    "scripts_note": "18/10 TK7 (Opus RF2): scripts recounted 13 -> 11; the counter now reads only `cmd:` values and mapped command arrays, so the two mentions inside apply_patch text (lines 31 and 35) are no longer counted; triggered and hits unchanged"
   },
   "transcript_path": "system/docs/plans/2026-10-17-skill-studio-eval/evidence/transcripts/2026-10-17T17-00-55Z_codex_creator-new-skill_with.jsonl (OpcOS repo; filtered copy: tool calls, tool results cut to 500 chars, skill catalogue as names only, no system prompt, paths and e-mail redacted; full copy stays outside git, identified by sha256 above)",
   "cwd": "~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T17-00-55Z_creator-new-skill_with",

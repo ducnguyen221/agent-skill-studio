@@ -64,6 +64,34 @@ class ActivationCountTests(unittest.TestCase):
             p.write_text(json.dumps(row) + "\n", encoding="utf-8")
             self.assertFalse(activation.count(p, SKILL, "codex")["triggered"])
 
+    def _codex_js(self, js):
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t) / "x.jsonl"
+            row = {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec", "input": js}}
+            p.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            return activation.count(p, SKILL, "codex")
+
+    def test_codex_patch_and_description_strings_are_not_commands(self):
+        """Opus RF2: only `cmd:` values and strings of an array that is mapped into exec_command are commands."""
+        patch = ('const patch = "*** Begin Patch\\n*** Update File: notes.md\\n+Run python .agents/skills/data-quality-audit/scripts/validate_csv.py --file a.csv\\n'
+                 '+Get-Content data-quality-audit/SKILL.md\\n*** End Patch"; text(await tools.apply_patch(patch));')
+        r = self._codex_js(patch)
+        self.assertFalse(r["triggered"])
+        self.assertEqual([], r["scripts"])
+        r = self._codex_js('const note = "Read more in .agents/skills/data-quality-audit/SKILL.md"; text(note);')
+        self.assertFalse(r["triggered"])
+        # an array nobody maps into exec_command is not a command batch
+        r = self._codex_js('const notes = ["Get-Content .agents/skills/data-quality-audit/SKILL.md"]; text(notes.join(","));')
+        self.assertFalse(r["triggered"])
+
+    def test_codex_cmd_key_and_mapped_array_still_count(self):
+        r = self._codex_js('const r = await tools.exec_command({cmd:"Get-Content .agents/skills/data-quality-audit/SKILL.md", "workdir":"w"});')
+        self.assertTrue(r["triggered"])
+        r = self._codex_js('const cmds = ["Get-Content .agents/skills/data-quality-audit/SKILL.md"]; await Promise.all(cmds.map(cmd=>tools.exec_command({cmd})));')
+        self.assertTrue(r["triggered"])
+        r = self._codex_js('const r = await tools.exec_command({cmd:"python .agents/skills/data-quality-audit/scripts/validate_csv.py --file a.csv"});')
+        self.assertEqual(1, len(r["scripts"]))
+
     def test_unknown_runtime_rejected(self):
         with self.assertRaises(ValueError):
             activation.count(FIX / "codex_positive.jsonl", SKILL, "gemini-cli")

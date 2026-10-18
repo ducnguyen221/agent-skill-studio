@@ -26,8 +26,11 @@ READ_VERBS = ("cat", "type", "Get-Content", "gc", "sed", "head", "tail", "less",
 READ_RE = re.compile(r"(?<![\w.-])(?:%s)(?![\w-])" % "|".join(re.escape(v) for v in READ_VERBS), re.I)
 SEGMENT_SPLIT = re.compile(r"\s*(;|&&|\|\||\||\n)\s*")
 DENIED_RE = re.compile(r"requires? approval|permission to use|haven't granted|was denied|not allowed", re.I)
-# every double-quoted string literal in Codex JS: covers {cmd: "..."} and const cmds = ["...", ...]; cmds.map(cmd => ...)
-CMD_IN_JS = re.compile(r'"(?:[^"\\]|\\.)*"')
+# Codex JS: a double-quoted literal is a command only as `cmd: "..."` or as an element of `NAME = [...]` that is then run with
+# NAME.map / NAME.forEach / `of NAME`; patch bodies and prose strings are not commands.
+JS_STRING = re.compile(r'"(?:[^"\\]|\\.)*"')
+CMD_KEY_BEFORE = re.compile(r'\bcmd["\']?\s*:\s*$')
+ARRAY_ASSIGN = re.compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*\[')
 SCRIPTS = {"data-quality-audit": ("validate_csv.py",), "skill-creator-studio": ("studio.py",)}
 
 
@@ -77,14 +80,36 @@ def _claude_results(obj):
             yield block.get("tool_use_id"), str(c or "")
 
 
+def _js_command_spans(js):
+    """(start, end) spans of array bodies `NAME = [ ... ]` where NAME is later mapped/iterated (a command batch)."""
+    spans = []
+    for m in ARRAY_ASSIGN.finditer(js):
+        name = re.escape(m.group(1))
+        if not re.search(r"\b%s\s*\.\s*(?:map|forEach)\b|\bof\s+%s\b" % (name, name), js[m.end():]):
+            continue
+        i, depth = m.end(), 1
+        while i < len(js) and depth:
+            s = JS_STRING.match(js, i)
+            if s:
+                i = s.end()
+                continue
+            depth += {"[": 1, "]": -1}.get(js[i], 0)
+            i += 1
+        spans.append((m.end(), i))
+    return spans
+
+
 def _codex_commands(args):
-    """Command strings of one Codex tool call: JSON arguments (command list / cmd) or JS source (every string literal: {cmd: "..."} or a cmds = ["..."] batch)."""
+    """Command strings of one Codex tool call: JSON arguments (command list / cmd) or JS source (`cmd: "..."` values and strings of a mapped `NAME = [...]` batch)."""
     if isinstance(args, dict):
         cmd = args.get("command", args.get("cmd", ""))
         return [" ".join(map(str, cmd)) if isinstance(cmd, list) else str(cmd)]
     if isinstance(args, str):
         found = []
-        for m in CMD_IN_JS.finditer(args):
+        spans = _js_command_spans(args)
+        for m in JS_STRING.finditer(args):
+            if not (CMD_KEY_BEFORE.search(args[:m.start()]) or any(a <= m.start() < b for a, b in spans)):
+                continue
             try:
                 found.append(json.loads(m.group(0)))
             except ValueError:
