@@ -2,6 +2,8 @@
   "claude-code": "go",
   "codex": "go;baseline-via-plugin-off-window (first smoke 17/10 contaminated: global-codex-plugin-enabled; rerun 18/10 with the plugin switched off through codex-config.ps1 for one batch window: clean)",
   "antigravity": "no-go:no-transcript;global-skill-root-not-isolated",
+  "spec_label": "not_run:headless-no-skill-catalog",
+  "label_note": "Hai nhan Antigravity (gia tri 'antigravity' o tren, do luc do; va spec_label) chi cung mot su viec: Antigravity khong chay duoc headless co catalog skill. RQ-117 dung nhan trong file nay; SPEC/REPORT dung spec_label.",
   "evidence": {
     "claude-code": [
       "smoke/claude-code_with.json",
