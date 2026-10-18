@@ -39,7 +39,7 @@ Nhiều file Markdown không đồng nghĩa một Skill tốt. Khó nhất là t
 ```text
 Agent Skill Studio/
 ├── README.md                    # Tổng quan, cài đặt, lộ trình
-├── LICENSE                      # MIT (chủ sở hữu: ducnguyen221)
+├── LICENSE                      # MIT (chủ sở hữu: Nguyễn Quang Đức)
 ├── LICENSE_POLICY.md            # Quyết định giấy phép và quy tắc truy vết nguồn
 ├── AGENTS.md                    # Chỉ dẫn repo chung cho Codex/Antigravity
 ├── CLAUDE.md                    # Claude Code: import AGENTS.md và thêm adapter
@@ -188,3 +188,9 @@ Giấy phép: **MIT** ([LICENSE](LICENSE), quyết định 12/10/2026, xem [LICE
 ## 🤝 ACD Ecosystem Integration
 
 Repo là Studio nhóm 2 — xưởng nền (Skill Factory) trong hệ thống nhiều repo ACD, nhận `production-brief.md` có khối Skill Spec và trả báo cáo AUDIT, diff cùng kết quả validate/eval cho repo sở hữu skill. Khai báo đủ 5 dòng (Role, Upstream, Downstream, Bundles, Handoff) tại [ECOSYSTEM.md](ECOSYSTEM.md).
+
+## Author
+
+**Nguyễn Quang Đức** (Tobi) — founder and CEO of KPIM and co-founder of COMPA Class; Data/AI practitioner and instructor in Vietnam.
+
+Website: https://ducnguyen.vn · GitHub: [@ducnguyen221](https://github.com/ducnguyen221) · Contact: ducnguyen.ams@gmail.com
