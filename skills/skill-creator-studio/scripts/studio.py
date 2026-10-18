@@ -175,7 +175,7 @@ def check_evals(folder: Path) -> list[dict]:
         if not isinstance(case.get("should_trigger"), bool):
             results.append(emit("ERROR", "EV4", f, 0, "case %d should_trigger must be boolean" % (i + 1)))
         if not isinstance(case.get("expected_behaviors"), list) or not case["expected_behaviors"] or not all(isinstance(x, str) and x.strip() for x in case["expected_behaviors"]):
-            results.append(emit("ERROR", "EV4", f, 0, "case %d requires at least one nonempty expected_behavior" % (i + 1)))
+            results.append(emit("ERROR", "EV4", f, 0, "case %d requires at least one nonempty expected_behaviors entry" % (i + 1)))
         fixtures = case.get("fixtures", [])
         if not isinstance(fixtures, list):
             results.append(emit("ERROR", "EV4", f, 0, "case %d fixtures must be a list" % (i + 1)))
@@ -331,7 +331,14 @@ def cmd_new(args) -> int:
     ef.mkdir(parents=True, exist_ok=True)
     (ef / "fixtures").mkdir(exist_ok=True)
     (ef / "baselines").mkdir(exist_ok=True)
-    (ef / "cases.json").write_text(json.dumps({"skill_name": name, "status": "draft", "cases": []}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    sample = [
+        {"id": "%s-typical" % name, "kind": "typical", "should_trigger": True},
+        {"id": "%s-edge" % name, "kind": "edge", "should_trigger": True},
+        {"id": "%s-negative" % name, "kind": "near-miss", "should_trigger": False},
+    ]
+    cases = [{**c, "prompt": "STUDIO-DRAFT: replace with a realistic %s prompt" % c["kind"],
+              "expected_behaviors": ["STUDIO-DRAFT: replace with observable behavior"], "fixtures": []} for c in sample]
+    (ef / "cases.json").write_text(json.dumps({"skill_name": name, "status": "draft", "cases": cases}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (ef / "rubric.md").write_text("# %s — evaluation rubric (draft)\n\nDefine actual success criteria, trigger expectations, and failure cases before release.\n" % name, encoding="utf-8")
     (ef / "baselines" / "BASELINE.md").write_text("# Baseline: NOT RUN\n\nRecord fresh-session model/runtime, prompt, outputs, score and evidence after real execution.\n", encoding="utf-8")
     print("Created draft Skill: %s\nExternal evals: %s\nNext: replace STUDIO-DRAFT, write real references and >=3 eval cases, then validate." % (target, ef))

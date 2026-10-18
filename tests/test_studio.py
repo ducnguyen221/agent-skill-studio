@@ -59,9 +59,25 @@ class StudioTests(unittest.TestCase):
             self.assertEqual(0, p.returncode, p.stderr)
             self.assertTrue((out / "test-deep-skill" / "SKILL.md").exists())
             self.assertFalse((out / "test-deep-skill" / "evals").exists())
-            self.assertEqual([], json.loads((evals / "test-deep-skill" / "cases.json").read_text())["cases"])
+            cases = json.loads((evals / "test-deep-skill" / "cases.json").read_text())["cases"]
+            self.assertEqual(3, len(cases))
+            self.assertEqual({True, False}, {c["should_trigger"] for c in cases})
+            self.assertTrue(all(c["prompt"].startswith("STUDIO-DRAFT: ") for c in cases))
+            self.assertFalse([f for f in studio.check_evals(evals / "test-deep-skill") if f["level"] == "ERROR"])
             self.assertEqual(1, self.run_cli(*args).returncode, "second creation should refuse overwrite")
             self.assertEqual(1, self.run_cli("package", out / "test-deep-skill", "--out", base / "dist").returncode, "draft cannot publish")
+
+    def test_ev4_message_names_plural_key(self):
+        with tempfile.TemporaryDirectory() as t:
+            ef = Path(t) / "x"
+            ef.mkdir()
+            (ef / "cases.json").write_text(json.dumps({"skill_name": "x", "cases": [
+                {"id": "a", "prompt": "p", "should_trigger": True, "expected_behaviors": []}]}), encoding="utf-8")
+            msgs = [f["message"] for f in studio.check_evals(ef) if f["code"] == "EV4"]
+            self.assertTrue(any("expected_behaviors" in m for m in msgs), msgs)
+
+    def test_packaged_factory_matches_root_studio(self):
+        self.assertEqual((ROOT / "studio.py").read_bytes(), (ROOT / "skills/skill-creator-studio/scripts/studio.py").read_bytes())
 
     def test_package_is_runtime_only(self):
         with tempfile.TemporaryDirectory() as t:
