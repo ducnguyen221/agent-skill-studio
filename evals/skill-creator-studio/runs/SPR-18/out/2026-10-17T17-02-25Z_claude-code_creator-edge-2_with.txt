@@ -1,0 +1,16 @@
+Tôi chưa làm được vì chưa tìm thấy skill của bạn. Workspace hiện tại không có `SKILL.md` nào. Trong `~/.claude` và `~/OpcOS/system`, các skill có hai field này đều là skill của plugin bên thứ ba (microsoft-docs, math-proof, claude-code-setup…), nên tôi không đoán đó là skill của bạn.
+
+**Bạn cho tôi đường dẫn tới thư mục skill (hoặc tên skill) nhé.**
+
+Khi có file, tôi sẽ xử lý hai field như sau:
+
+| Field | Claude Code | Bản portable |
+|---|---|---|
+| `disable-model-invocation: true` (chỉ người dùng gọi tay bằng `/tên`) | giữ nguyên | **Giữ trong frontmatter** vì Claude Code vẫn cần nó. Với Codex, thêm `agents/openai.yaml` có `policy.allow_implicit_invocation: false`. Nếu skill nguy hiểm khi tự chạy, thêm một dòng trong thân bài: "chỉ chạy khi người dùng gọi đích danh". |
+| `context: fork` (chạy trong subagent riêng) | giữ nguyên | **Bỏ khỏi bản portable và chuyển thành văn bản trong thân bài.** Ghi rằng nếu harness có subagent thì giao việc cho subagent và chỉ nhận lại bản tóm tắt, còn không thì chạy tại chỗ. |
+
+Có hai điểm tôi chưa chắc, và sẽ kiểm tra trước khi ghi vào kết quả:
+- **Antigravity:** tôi không biết nó có field tương đương `disable-model-invocation` hay không. Nếu không có, chỉ còn rào bằng lời trong thân bài, và đó là rào mềm.
+- **Codex `agents/openai.yaml`:** tên key chính xác tôi sẽ đối chiếu với bản Codex cài trên máy này (hoặc `codex doctor`) trước khi dùng.
+
+Bản portable sẽ để ở thư mục mới cạnh skill gốc, không sửa file gốc. Cuối cùng tôi sẽ ghi rõ chỗ nào là rào cứng và chỗ nào chỉ là rào mềm trên từng harness.

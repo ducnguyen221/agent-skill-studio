@@ -1,0 +1,12 @@
+{
+  "must_contain": [
+    "alpha-notes",
+    "beta-notes"
+  ],
+  "must_not_contain": [
+    "finding",
+    "malformed",
+    "violat"
+  ],
+  "files_read_expected": []
+}

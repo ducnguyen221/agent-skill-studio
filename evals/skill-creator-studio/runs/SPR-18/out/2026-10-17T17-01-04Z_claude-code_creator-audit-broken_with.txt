@@ -1,0 +1,26 @@
+**Kết quả: Không đạt.** Skill `broken-skill` có 3 lỗi tĩnh (validator `studio.py audit`: 3 errors, 0 warnings) cộng thêm các lỗi tôi thấy khi đọc tay. Tôi không sửa file nào.
+
+Skill: `fixtures/broken-skill/SKILL.md` (9 dòng) | Runtime: Claude Code | Date: 2026-10-18
+
+| Path:line | Rule | Severity | Evidence | Proposed fix | Risk |
+|---|---|---|---|---|---|
+| SKILL.md:2 | SK-00 / FM2 | Cao | `name: BROKEN_BadName` có chữ hoa và dấu gạch dưới. Tên phải là kebab-case thường, 1–64 ký tự, và trùng tên folder. Folder tên `broken-skill`. | Đổi thành `broken-skill`. | Thấp |
+| SKILL.md:1-4 | SK-00 / DS1 / SK-05 | Cao | Frontmatter không có `description`. Agent chọn skill dựa trên trường này, nên skill không thể được kích hoạt đúng. | Thêm mô tả theo mẫu "<làm gì>. Use when <khi nào>.", ngôi thứ ba, tối đa 1024 ký tự. | Thấp |
+| SKILL.md:3 | SK-00 / FM4 | Trung bình | Có khoá `version: 7` ở cấp cao nhất, không thuộc phần frontmatter portable. | Chuyển vào `metadata:` hoặc bỏ đi. | Thấp |
+| SKILL.md:6-8 | SK-06 / SK-07 | Thấp | Thân bài không có bước làm, không có "Done when", không có đường quay lại khi hỏng, không có kiểm tra nào. | Chỉ cần nếu skill này được dùng thật. Nó tự nhận là fixture, nên có thể bỏ qua. | Thấp |
+| (cả thư mục) | SK-11 | Thấp | Không có `evals/`: thiếu 3 case, thiếu negative trigger và baseline không dùng skill. | Chỉ cần nếu skill này được dùng thật. Nên ghi mô hình là `not_run`. | Thấp |
+
+**Đạt:**
+- SK-01: thân bài rất ngắn, nên không có vấn đề về độ dài hay link chết.
+- SK-02: không có reference nào cần mục lục.
+- SK-09: không có script hay asset.
+- SK-13: không yêu cầu lộ suy luận nội bộ.
+
+**Không áp dụng:**
+- SK-03, SK-08, SK-10, SK-12: không có workflow hay rủi ro để đánh giá.
+- SK-04: chưa chạy mô hình nào.
+- Test kích hoạt tích cực và tiêu cực: chưa chạy, và không thể chạy khi chưa có `description`.
+
+**Ưu tiên sửa:** (1) đổi `name`, (2) thêm `description`, (3) chuyển `version` vào `metadata`. Ba việc này làm validator hết lỗi.
+
+**Cần bạn duyệt:** bạn muốn tôi áp dụng sửa mục nào trong 1–3? Mục 4–5 chỉ cần làm nếu fixture này sẽ dùng như một skill thật.

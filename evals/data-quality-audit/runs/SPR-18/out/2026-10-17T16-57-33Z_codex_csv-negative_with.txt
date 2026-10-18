@@ -1,0 +1,10 @@
+`CALCULATE` evaluates an expression under a modified filter context. It can add filters, replace existing filters on the same columns, or remove filters—so a measure can answer a question such as “sales for one year” even when the current report context selects a different year.
+
+For example:
+
+```DAX
+Sales for 2025 =
+CALCULATE ( [Total Sales], 'Date'[Year] = 2025 )
+```
+
+This evaluates `[Total Sales]` with the year filter set to 2025. `CALCULATE` changes how the expression is evaluated; it does not change the underlying data.

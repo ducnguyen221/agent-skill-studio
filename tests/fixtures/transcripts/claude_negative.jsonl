@@ -1,0 +1,4 @@
+{"type": "attachment", "attachment": {"type": "skill_listing", "content": "The following skills are available: - agent-skill-studio:data-quality-audit: Audits CSV data quality. - agent-skill-studio:skill-creator-studio: Creates skills."}}
+{"type": "system", "content": "The following skills are available: - agent-skill-studio:data-quality-audit: Audits CSV data quality. - agent-skill-studio:skill-creator-studio: Creates skills."}
+{"type": "user", "message": {"role": "user", "content": "Explain the DAX function CALCULATE. (skill list says data-quality-audit exists)"}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "CALCULATE evaluates an expression in a modified filter context. data-quality-audit is not needed here."}]}}

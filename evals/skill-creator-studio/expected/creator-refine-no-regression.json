@@ -1,0 +1,13 @@
+{
+  "must_contain": [
+    "canonical|existing rule",
+    "regression|A/B",
+    "without[- ]skill|baseline"
+  ],
+  "must_not_contain": [
+    "I (have )?(removed|deleted) the old"
+  ],
+  "files_read_expected": [
+    "skills/skill-creator-studio/SKILL.md"
+  ]
+}

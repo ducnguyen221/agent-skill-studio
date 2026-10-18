@@ -1,0 +1,4 @@
+{"type": "session_meta", "payload": {"instructions": "skills: data-quality-audit (.agents/skills/data-quality-audit/SKILL.md)"}}
+{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Check fixtures/duplicates.csv"}]}}
+{"type": "response_item", "payload": {"type": "function_call", "name": "shell", "arguments": "{\"command\":[\"bash\",\"-lc\",\"cat .agents/skills/data-quality-audit/SKILL.md\"]}"}}
+{"type": "response_item", "payload": {"type": "function_call", "name": "shell", "arguments": "{\"command\":[\"python3\",\".agents/skills/data-quality-audit/scripts/validate_csv.py\",\"--file\",\"fixtures/duplicates.csv\"]}"}}

@@ -1,0 +1,14 @@
+Một khóa bị lặp: `(order_id=1, line_no=1)` xuất hiện ở dòng 2 và dòng 4 của `fixtures/order_lines.csv`.
+
+| Dòng CSV | order_id | line_no | amount |
+|---|---|---|---|
+| 2 | 1 | 1 | 10 |
+| 4 | 1 | 1 | 30 |
+
+Script `validate_csv.py` kiểm 3 dòng dữ liệu và trả `status: fail`, exit code 1. Đây là lỗi duy nhất. Không có thiếu trường bắt buộc, và cột `amount` đều là số hợp lệ.
+
+Hai dòng này trùng khóa nhưng `amount` khác nhau (10 và 30), nên tôi không tự biết dòng nào đúng. Có thể là `line_no` bị nhập sai (dòng 4 đáng lẽ là `line_no=3`), hoặc là dòng bị nhập đôi. Tôi chưa sửa gì và không đụng đến file gốc.
+
+**Giả định (ASSUMPTION):** tôi coi `order_id` + `line_no` là khóa của một dòng, đúng như bạn nêu. Tôi dùng `order_id`, `line_no` làm cột bắt buộc và `amount` làm cột số, vì bạn không nói gì thêm. Bạn cần cho tôi biết nếu các giả định này chưa đúng.
+
+Bạn muốn xử lý dòng 4 thế nào, đổi `line_no`, gộp, hay xóa? Tôi chỉ sửa khi bạn chọn. Nếu sửa, tôi sẽ ghi ra một bản mới rồi chạy lại kiểm tra.

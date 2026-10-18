@@ -1,0 +1,39 @@
+{
+  "case_id": "creator-input-error",
+  "pair_id": "skill-creator-studio/creator-input-error/codex",
+  "timestamp": "2026-10-17T17:08:58.000Z",
+  "runtime": "codex",
+  "model": "gpt-6-luna",
+  "with_skill": true,
+  "kind": "input-error",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 13,
+        "tool": "exec",
+        "via": "read-SKILL.md",
+        "match": "Get-Content .\\.agents\\skills\\skill-creator-studio\\SKILL.md"
+      }
+    ],
+    "scripts": [],
+    "transcript_sha256_full": "61acea5f6137147578eac9daebd498329f9b82549066351b8ac097eb0f90e24a",
+    "transcript_sha256_filtered": "9c3c6626d3484e0d294d870b2d5201392eb77786d022a0d9e4fd7859c5bfa5d1",
+    "line_numbers_refer_to": "filtered transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T17-08-58Z_codex_creator-input-error_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-17-skill-studio-eval/evidence/transcripts/2026-10-17T17-08-58Z_codex_creator-input-error_with.jsonl (OpcOS repo; filtered copy: tool calls, tool results cut to 500 chars, skill catalogue as names only, no system prompt, paths and e-mail redacted; full copy stays outside git, identified by sha256 above)",
+  "cwd": "~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T17-08-58Z_creator-input-error_with",
+  "skill_sha256_loaded": "c6441846fe718670b45ee86bd0680887215c1cb21d6c12b5c61a03625e731567",
+  "skill_sha256_repo": "c6441846fe718670b45ee86bd0680887215c1cb21d6c12b5c61a03625e731567",
+  "pinned_model": "gpt-6-luna",
+  "actual_model": "gpt-6-luna",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports; Codex: ~/.codex/AGENTS.md)",
+  "ledger_id": "bcb1f4eb-79c4-4c3a-ab8b-7e0e7a51e0f6",
+  "wall_seconds": 42.2,
+  "timeout_s": 300,
+  "output_excerpt": "**Audit result: blocked — target folder not found.**\n\n`./missing-skill` does not exist in the workspace, so I couldn’t inspect its `SKILL.md`, linked references, scripts, or assets, or run the static audit. The available `skill-creator-studio` checklist requires those files as evidence.\n\nNo files were modified. `git status` was unavailable because this workspace is not a Git repository.",
+  "status": "ran",
+  "batch": "SPR-18-TK3-20261017",
+  "stderr_tail": "[bridge] cảnh báo: biến thuộc namespace codex nhưng CHƯA có trong danh sách trắng nên KHÔNG tới callee: CODEX_BRIDGE — nếu thật sự cần, thêm vào CODEX_TOOL_ENV.allow trong bridges/lib/env.mjs\n"
+}

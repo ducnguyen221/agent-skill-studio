@@ -1,0 +1,45 @@
+{
+  "case_id": "data-quality-audit-edge-2",
+  "pair_id": "data-quality-audit/data-quality-audit-edge-2/codex",
+  "timestamp": "2026-10-17T16:58:02.000Z",
+  "runtime": "codex",
+  "model": "gpt-6-luna",
+  "with_skill": true,
+  "kind": "edge",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 9,
+        "tool": "exec",
+        "via": "read-SKILL.md",
+        "match": "Get-Content -LiteralPath .agents\\skills\\data-quality-audit\\SKILL.md"
+      }
+    ],
+    "scripts": [
+      {
+        "line": 11,
+        "tool": "exec",
+        "match": "python .agents\\skills\\data-quality-audit\\scripts\\validate_csv.py --file fixtures\\order_lines.csv --required order_id,line_no --keys order_id,line_no"
+      }
+    ],
+    "transcript_sha256_full": "b6f0303eeab6cc5e649f256e24f9041e06773ec2d3e42bf9059d81039a7da336",
+    "transcript_sha256_filtered": "f5a95dd0e0df14a6b9283f4b09842d2f743fdc950bc51a6340e90fbb9a80a55b",
+    "line_numbers_refer_to": "filtered transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T16-58-02Z_codex_data-quality-audit-edge-2_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-17-skill-studio-eval/evidence/transcripts/2026-10-17T16-58-02Z_codex_data-quality-audit-edge-2_with.jsonl (OpcOS repo; filtered copy: tool calls, tool results cut to 500 chars, skill catalogue as names only, no system prompt, paths and e-mail redacted; full copy stays outside git, identified by sha256 above)",
+  "cwd": "~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T16-58-02Z_data-quality-audit-edge-2_with",
+  "skill_sha256_loaded": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "skill_sha256_repo": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "pinned_model": "gpt-6-luna",
+  "actual_model": "gpt-6-luna",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports; Codex: ~/.codex/AGENTS.md)",
+  "ledger_id": "9f1f9877-2b4d-47a7-9b9d-153c49ddf02b",
+  "wall_seconds": 35.9,
+  "timeout_s": 300,
+  "output_excerpt": "`fixtures/order_lines.csv` has one repeated key: `(order_id=1, line_no=1)`.\n\n- CSV row 4 repeats CSV row 2 (counting the header as row 1).\n- The audit checked 3 data rows and reported `duplicate-key` for columns `order_id` and `line_no`.\n- The source file was left unchanged.",
+  "status": "ran",
+  "batch": "SPR-18-TK3-20261017",
+  "stderr_tail": "[bridge] cảnh báo: biến thuộc namespace codex nhưng CHƯA có trong danh sách trắng nên KHÔNG tới callee: CODEX_BRIDGE — nếu thật sự cần, thêm vào CODEX_TOOL_ENV.allow trong bridges/lib/env.mjs\n"
+}

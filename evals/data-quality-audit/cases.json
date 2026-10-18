@@ -1,12 +1,15 @@
 {
   "skill_name": "data-quality-audit",
-  "status": "static-ready-model-not-run",
+  "status": "frozen-SPR-18",
   "cases": [
     {
       "id": "csv-clean",
+      "kind": "typical",
       "prompt": "Audit this sales CSV for required id and amount fields, unique id and numeric amount before importing into Power BI.",
       "should_trigger": true,
-      "fixtures": ["fixtures/clean.csv"],
+      "fixtures": [
+        "fixtures/clean.csv"
+      ],
       "expected_behaviors": [
         "Selects or runs read-only CSV validation with required id/amount, key id, numeric amount",
         "Reports row count and explicitly names validated checks",
@@ -15,9 +18,12 @@
     },
     {
       "id": "csv-duplicate",
+      "kind": "typical",
       "prompt": "Check this CSV for duplicate transaction IDs and missing amounts; report exact failures.",
       "should_trigger": true,
-      "fixtures": ["fixtures/duplicates.csv"],
+      "fixtures": [
+        "fixtures/duplicates.csv"
+      ],
       "expected_behaviors": [
         "Finds duplicate key id on a concrete row",
         "Finds blank required amount",
@@ -26,9 +32,12 @@
     },
     {
       "id": "csv-invalid-numeric",
+      "kind": "edge",
       "prompt": "Validate that this CSV has numeric invoice totals before a dataset refresh.",
       "should_trigger": true,
-      "fixtures": ["fixtures/invalid_numeric.csv"],
+      "fixtures": [
+        "fixtures/invalid_numeric.csv"
+      ],
       "expected_behaviors": [
         "Detects invalid numeric field and reports row/column",
         "Does not claim the dataset is clean"
@@ -36,11 +45,64 @@
     },
     {
       "id": "csv-negative",
+      "kind": "near-miss",
       "prompt": "Explain the DAX function CALCULATE conceptually, without working with any CSV or dataset.",
       "should_trigger": false,
       "fixtures": [],
       "expected_behaviors": [
         "Does not invoke a CSV data-quality Skill for a conceptual DAX question"
+      ]
+    },
+    {
+      "id": "data-quality-audit-edge-2",
+      "kind": "edge",
+      "prompt": "Each row in this order-lines CSV should be unique by order_id and line_no together. Check it and tell me which rows repeat.",
+      "should_trigger": true,
+      "fixtures": [
+        "fixtures/order_lines.csv"
+      ],
+      "expected_behaviors": [
+        "Treats order_id plus line_no as a composite key",
+        "Reports the repeated key at file row 4 (same key as row 2)",
+        "Does not modify the CSV"
+      ]
+    },
+    {
+      "id": "data-quality-audit-input-error",
+      "kind": "input-error",
+      "prompt": "Check that every row in this CSV has a customer_id and that id is unique before I load it.",
+      "should_trigger": true,
+      "fixtures": [
+        "fixtures/missing_column.csv"
+      ],
+      "expected_behaviors": [
+        "Reports that column customer_id does not exist in the CSV header",
+        "Does not claim the file passed the customer_id check"
+      ]
+    },
+    {
+      "id": "data-quality-audit-near-miss-convert",
+      "kind": "near-miss",
+      "prompt": "Convert this orders CSV to JSON and show me the result.",
+      "should_trigger": false,
+      "fixtures": [
+        "fixtures/orders.csv"
+      ],
+      "expected_behaviors": [
+        "Converts the CSV to JSON without running a data-quality audit"
+      ]
+    },
+    {
+      "id": "data-quality-audit-near-miss-merge",
+      "kind": "near-miss",
+      "prompt": "Merge orders.csv with customers.csv on customer_id and show the combined rows.",
+      "should_trigger": false,
+      "fixtures": [
+        "fixtures/orders.csv",
+        "fixtures/customers.csv"
+      ],
+      "expected_behaviors": [
+        "Joins the two CSVs on customer_id without running a data-quality audit"
       ]
     }
   ]

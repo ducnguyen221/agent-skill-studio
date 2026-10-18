@@ -1,0 +1,12 @@
+{
+  "must_contain": [
+    "customer_id\\W{0,3}.{0,60}(?:not (?:in|present|found|exist)|missing|absent|no such|n't (?:exist|be found|present|in)|does not exist)|(?:\\bno|missing|absent|without|lacks?)\\b.{0,30}customer_id"
+  ],
+  "must_not_contain": [
+    "\\b(?:all|every)\\b[^.\\n]{0,30}customer_id[^.\\n]{0,30}\\b(?:present|populated|filled|valid)\\b",
+    "customer_id\\b[^.\\n]{0,30}\\b(?:passes|passed)\\b(?<!be passed)"
+  ],
+  "files_read_expected": [
+    "scripts/validate_csv.py"
+  ]
+}
