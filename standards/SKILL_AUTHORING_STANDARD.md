@@ -1,165 +1,54 @@
-# Skill Authoring Standard — 13 quy tắc + nền tảng manifest
+# Skill Authoring Standard — SK-00…SK-15
 
-**Version:** 0.1.0 · **As-of:** 2026-10-12 · **Apply:** Claude Code, Codex, Google Antigravity. Đây là quy tắc **Studio** dựa trên tài liệu chính thức và bộ giải thích RoboNuggets; xem `SOURCE_TRACEABILITY.md` để phân biệt nguồn.
+**Version:** 0.1.0 · **As-of:** 2026-10-22 · Mức MUST/SHOULD do Studio đặt; nguồn: [SOURCE_TRACEABILITY.md](SOURCE_TRACEABILITY.md).
 
-## Contents
-- Hợp đồng portable SK-00
-- Bảng 13 quy tắc
-- Chỉ dẫn chi tiết SK-01 đến SK-13
-- Thiết kế frontmatter và `description`
-- Quy tắc với references/scripts/assets
-- Definition of Done và ngoại lệ
+### SK-00 — Manifest portable [MUST] · kiểm: `FM1`–`FM5`, `DS1`
+`SKILL.md` mở bằng frontmatter ở dòng 1 với `name` và `description`. `name` ≤64 ký tự, `a-z0-9-`, không mở/đóng/đôi `-`, khớp tên thư mục, không chứa "anthropic"/"claude"; cả hai không có thẻ XML. `description` ≤1 024 ký tự, nêu làm gì + khi nào dùng. Khoá thêm chỉ `license`, `compatibility` (≤500), `metadata` (map chuỗi), `allowed-tools`; khoá riêng Claude Code chỉ qua `--target claude-code`; không `version:` hay `triggers:` top-level.
 
-## Hợp đồng portable SK-00
+### SK-01 — Progressive disclosure [SHOULD] · kiểm: `ST1`, `ST2`
+Thân `SKILL.md` là bộ định tuyến, <500 dòng, <5 000 token. Chi tiết ở `references/`, link một cấp từ `SKILL.md` kèm khi nào đọc; guardrail quan trọng không đẩy vào file có thể không được đọc.
 
-**SK-00 [MUST — Official spec]** `SKILL.md` bắt đầu ngay dòng 1 bằng YAML frontmatter bao bởi `---`. Phải có `name` và `description`. `name` dài tối đa 64 ký tự, chỉ lowercase `a-z`, số và dấu nối, không mở/đóng bằng `-`, không liên tiếp `--`, khớp tên thư mục. `description` không rỗng, không quá 1024 ký tự, nói rõ *làm gì* và *khi nào dùng*. Optional spec fields: `license`, `compatibility`, `metadata` (map string), `allowed-tools` (experimental). Vendor-specific fields không được trộn vào bản phát hành portable.
+### SK-02 — Content lists và cắt gọn [SHOULD] · kiểm: review
+Mục lục theo `SK-15`. Trước khi giữ một đoạn, hỏi: bỏ đoạn này agent có làm sai không? Có lặp điều ở file khác không (link thay chép)? Điều kiện có lồng quá hai tầng không? Cắt chọn lọc, không nén thành mảnh câu.
 
-**Ví dụ chuẩn:**
+### SK-03 — Mức tự do theo rủi ro [MUST khi thiết kế] · kiểm: review
+Mức tự do theo rủi ro: cao thì văn xuôi, vừa thì mẫu ưu tiên, thấp (thanh toán, xoá, deploy, migration) thì script/schema/approval. Mỗi bước hỏi "agent làm khác thì tổn thất gì?": không gì thì tăng tự do, mất tiền/dữ liệu thì giảm tự do. Trộn mức trong cùng skill.
 
-```yaml
----
-name: data-quality-audit
-description: "Validates CSV datasets for duplicates, missing values, and schema issues. Use when checking data quality before analytics or reporting."
-metadata:
-  version: "1.0.0"
----
-```
+### SK-04 — Thử trên model đích [SHOULD; MUST nếu production] · kiểm: review
+Scaffold cho model cũ có thể thừa với model mới, nhưng không xoá rule theo trực giác: chạy ≥3 tình huống thật, bật/tắt skill, trên model đích (ghim `--model`), so A/B ở phiên mới, chỉ xoá khi không kém. Chưa chạy thì ghi `not_run`, đừng viết "model tự hiểu".
 
-**Không nên:** `name: Data_Audit`, description chỉ "A useful skill", `version:` hoặc `triggers:` ở top-level của portable manifest, `hooks:` Claude Code ở file chung.
+### SK-05 — Ngắn và dễ kích hoạt [SHOULD] · kiểm: `DS2`–`DS5`, `FM8`
+`description` tiếng Anh, ngôi thứ ba, nêu việc + `Use when …` bằng từ người dùng hay nói (thêm cụm Việt ≤40 ký tự được). Claude Code cắt `description` + `when_to_use` ở 1 536 ký tự: để cụm kích hoạt trong ~500 ký tự đầu. Tên dạng gerund, tránh `helper`/`utils`; một thuật ngữ một khái niệm; tránh thông tin hết hạn.
 
-## Bảng 13 quy tắc
+### SK-06 — Workflow kiểm được [MUST nếu nhiều bước] · kiểm: review
+Việc dài hay bị bỏ bước: nêu từng bước, `Done when`, đường quay lại khi kiểm lỗi; việc phức tạp dùng plan-validate-execute (lập kế hoạch, kiểm bằng script, rồi chạy). Việc nhỏ không cần checklist.
 
-| ID | Quy tắc | Mức Studio | Auto-validator có thể làm? | Khi nào áp dụng |
-|---|---|---|---|---|
-| SK-01 | Progressive disclosure | SHOULD | Một phần: body, links | Tất cả Skill |
-| SK-02 | Content lists | SHOULD | Có: Markdown reference >100 dòng | Reference dài |
-| SK-03 | Degrees of freedom theo rủi ro | MUST | Không, review ngữ nghĩa | Khi thiết kế từng bước |
-| SK-04 | Kiểm thử trên model sử dụng | SHOULD; MUST nếu mission-critical | Không, cần runtime | Khi release/refine |
-| SK-05 | Viết ngắn & description 3rd person | SHOULD | Heuristic | Tất cả Skill |
-| SK-06 | Workflow, checklist, go-back | CONDITIONAL MUST | Heuristic | Task đa bước/phức tạp |
-| SK-07 | Feedback loop, errors actionable | CONDITIONAL MUST | Heuristic | Chất lượng quan trọng |
-| SK-08 | Template, examples, conditional branches | SHOULD | Review | Format/style có ràng buộc |
-| SK-09 | Shareability & dependencies | MUST nếu có dependency | Partly | Script/package/network/tool |
-| SK-10 | Enforce must-hold bằng controls | CONDITIONAL MUST | Manual/security test | Side effect/rủi ro cao |
-| SK-11 | Evals trước khi mở rộng | SHOULD; MUST nếu mission-critical | Check schema/test count | Skill được vận hành dài hạn |
-| SK-12 | Quy tắc quan trọng lên đầu | SHOULD | Review | Long-running tasks |
-| SK-13 | Không yêu cầu lộ suy luận nội bộ | MUST | Heuristic+manual | Mọi Skill |
+### SK-07 — Vòng phản hồi [MUST nếu quan trọng] · kiểm: review
+Không nhận "xong" chỉ vì agent nói xong: validate, chẩn đoán, sửa, validate lại; giới hạn số lần, báo blocker thay vì lặp vô hạn. Lỗi nêu tên trường, giá trị sai và giá trị hợp lệ.
 
-*Source: RoboNuggets PDF trang 4–10 (10 rules +3 bonus), Anthropic official Best Practices, Claude Code Skills, Claude prompting guides; mapping 46 checks xem tài liệu khác. Mức MUST/SHOULD là **Studio governance**, không trích nguyên nhãn của Anthropic.*
+### SK-08 — Template, ví dụ, nhánh [SHOULD] · kiểm: review
+Ghi mẫu là **Strict** (schema/API/CSV) hay **Flexible** (memo/báo cáo). Output theo style: 1–3 cặp input/output thật. Hai nhánh khác nhau: câu rẽ nhánh đầu và reference riêng. Một mặc định, một lối thoát, không thực đơn. Mục `## Gotchas` trong `SKILL.md`: sự thật trái giả định hợp lý; agent sai một lần thì thêm một dòng.
 
-## Chỉ dẫn chi tiết
+### SK-09 — Chạy được ở máy khác [MUST nếu có dependency] · kiểm: `ST6`, `SC3`, `SEC`
+Ghi tool, phiên bản, cách cài, fallback; đường dẫn tương đối, dùng `/`, không cứng `C:\Users\...`, không secret; nói rõ script để *chạy* hay *đọc*. Môi trường: API không mạng, không cài gói; claude.ai mạng tuỳ cài đặt; Claude Code đầy đủ. Tool MCP gọi `Server:tool`. Hằng số trong script phải có lý do. `${CLAUDE_SKILL_DIR}` không portable.
 
-### SK-01 — Progressive Disclosure [SHOULD]
+### SK-10 — Cổng thật cho điều bắt buộc [MUST nếu rủi ro] · kiểm: review
+Lời nhắc có thể bị bỏ qua hoặc bị compact. Rủi ro mất dữ liệu, tốn tiền, gửi ra ngoài thì cần permission/hook/tool gate thật, test cả ca `allow` và `block`. Claude Code dùng hook `PreToolUse`; Codex/Antigravity tra adapter runtime, không chép hook giữa các agent.
 
-**Why:** giữ discovery/routing ngắn, tránh context bị chiếm bởi tài liệu ít liên quan. `SKILL.md` nên <500 dòng body; phần tài liệu sâu chuyển sang reference. File reference quan trọng nên được liên kết thẳng từ `SKILL.md` dù được lưu trong subfolder nhiều cấp.
+### SK-11 — Eval trước [SHOULD; MUST nếu production] · kiểm: `EV1`–`EV6`
+Trước khi mở rộng: ≥3 prompt thực, một negative trigger, baseline không-skill. `evals/<name>/cases.json` ngoài `skills/`, kiểm bằng `studio.py evals` (xuất: `--export`); chạy model thật theo [RUNBOOK](../evals/RUNBOOK.md). Chưa chạy: [`not_run`](EVALUATION_STANDARD.md).
 
-**Check:** đếm dòng sau frontmatter, phát hiện link hỏng hoặc reference chỉ reachable qua reference khác, audit những file luôn phải đọc mỗi run (có thể gộp phần cốt lõi vào entrypoint).
+### SK-12 — Quy tắc quan trọng lên đầu [SHOULD] · kiểm: review
+Sau compaction Claude Code chỉ giữ 5 000 token đầu mỗi skill, tổng 25 000. Quy tắc xuyên workflow, guardrail và Definition of Done đặt ngay sau frontmatter; chi tiết, ví dụ dài ra `references/`. Điều bắt buộc đúng vẫn cần cổng thật (`SK-10`).
 
-**Fix:** tách theo nhiệm vụ thật (`references/dax.md`, `references/security.md`); với mỗi file thêm dòng "Read when...". Không được chuyển các guardrail quan trọng vào reference bị đọc tùy ý.
+### SK-13 — Không bắt chép suy luận [MUST] · kiểm: `NM2`
+Bắt agent xuất chain-of-thought nội bộ có thể bị từ chối (loại `reasoning_extraction`). Xin "kết luận, giả định, bằng chứng, giải thích ngắn" thay thế; mô tả hành động đã làm vẫn được.
 
-### SK-02 — Content Lists [SHOULD]
+### SK-14 — Chữ ép buộc phải có lý do [SHOULD] · kiểm: `CT10` (WARN)
+`MUST`/`NEVER`/`ALWAYS`/`CRITICAL` đứng trơ làm model gần đây phản ứng quá đà: kèm lý do ("vì…") hoặc viết "Use … when …". Chữ trơ chỉ ở khối low-freedom (`SK-03`).
 
-**Why:** agent có thể chỉ xem một phần tài liệu dài, Contents đầu file giúp nhìn phạm vi.
-
-**Check:** reference `.md` >100 dòng cần `## Contents` hoặc `## Mục lục` ở phần đầu.
-
-**Fix:** thêm 3–10 mục điều hướng đúng thứ tự; không áp dụng cho file Python, CSV, hình ảnh hoặc XLSX.
-
-### SK-03 — Degrees of Freedom [MUST trong thiết kế]
-
-| Freedom | Khi dùng | Lệnh mẫu |
-|---|---|---|
-| High | Brainstorming, viết nháp sáng tạo | "Choose an appropriate outline; preserve facts" |
-| Medium | Báo cáo chuẩn, mapping nguồn, DAX coding conventions | "Follow the preferred 5-section template; adapt examples" |
-| Low | Payment/deletion/deployment/migration | "Run `scripts/check_plan.py` then execute approved command" |
-
-**Why:** nếu làm khác sẽ gây thiệt hại, dùng scripts/schema/permissions thay vì prose rộng. Dùng mixed freedom trong cùng Skill; không phải mọi bước đều cứng.
-
-**Check:** với mỗi bước hỏi "nếu agent làm khác sẽ gây tổn thất gì?". Nếu không ảnh hưởng, tăng freedom. Nếu mất tiền/xóa dữ liệu, giảm freedom và yêu cầu approval.
-
-### SK-04 — Test on actual models [SHOULD; production-critical MUST]
-
-**Why:** Skill là hướng dẫn bổ sung vào năng lực model. Prompt nhiều bước từng cần với model cũ có thể dư với model mới. Không xóa rule theo trực giác.
-
-**Check:** run ít nhất 3 tình huống thực, on/off Skill, trên model và runtime mục tiêu. Ghi quality score, token/latency nếu có quan sát đáng tin, các lần đọc thiếu files, và failure.
-
-**Fix:** giữ bản cũ và bản rút gọn; thử A/B ở fresh session, chỉ xóa instruction nếu không làm kém kết quả. Không tự khẳng định “Claude 5.5 tự hiểu” mà chưa chạy eval.
-
-### SK-05 — Concise and discoverable [SHOULD]
-
-**Why:** mọi description đã nạp đều tốn context. Description là cơ chế lựa chọn, không phải giới thiệu thương hiệu.
-
-**Check:** description ngôi thứ ba ("Validates ..."), nói rõ công việc và điều kiện "Use when ..."; kiểm tra skill overlap. Xóa giải thích khái niệm phổ thông không thay đổi hành vi.
-
-**Fix:** nêu 2–3 trigger thực và negative scope nếu cần. Một thuật ngữ cho mỗi khái niệm. Không đưa prompt marketing vào manifest.
-
-### SK-06 — Checkable workflow [CONDITIONAL MUST]
-
-**Why:** tác vụ dài hay bị bỏ bước hoặc hoàn thành vội. Nêu bước và điều kiện `Done when`, đường quay lại khi test fail.
-
-```text
-Plan -> Inspect inputs -> Execute -> Validate -> Report
-If validation fails, return to Inspect/Execute and run validation again.
-```
-
-Checklist là công cụ tổ chức cho tác vụ thực sự phức tạp, không phải làm nghi thức với tác vụ nhỏ.
-
-### SK-07 — Feedback loop [CONDITIONAL MUST]
-
-**Why:** output chất lượng cao không được chấp nhận chỉ vì agent nói "done". Chạy `validate -> diagnose -> fix -> revalidate`, giới hạn attempts hợp lý và báo blocker thay vì lặp vô hạn.
-
-**Check:** validator/script cung cấp lỗi gồm tên trường, giá trị sai, các giá trị đúng hoặc hướng khắc phục. Review phong cách cũng có thể dùng style guide nhưng phải ghi tiêu chí đánh giá.
-
-### SK-08 — Templates / Examples / Branches [SHOULD]
-
-**Why:** với kết quả định dạng chặt, ví dụ thật hữu ích hơn những mô tả trừu tượng. Template phải ghi **Strict** (schema/API/csv) hay **Flexible** (memo/report).
-
-- Khi output có format strict: dùng schema/validator exact.
-- Khi output phụ thuộc style: đưa 1–3 cặp input/output.
-- Nếu 2 nhánh khác nhau: bắt đầu bằng nhánh "Create new?" / "Edit existing?" và đưa reference riêng.
-- Chọn một default và chỉ một escape hatch cần thiết, thay vì nhiều option không có rule lựa chọn.
-
-### SK-09 — Shareability [MUST khi có dependency]
-
-**Why:** máy khác có thể thiếu thư viện, quyền mạng hoặc CLI. Ghi tool, version constraint nếu thực sự cần, cách cài và fallback. Đường dẫn tương đối với Skill, forward slash trong Markdown (trừ hệ thống lệnh platform-specific).
-
-**Check:** các file scripts có hướng dẫn "Run" hay "Read"; có no-network scenario; file path không đóng cứng `C:\Users\...` hay `/Users/duc/...`; không chứa secret. Lưu assets trong chính Skill. Sử dụng environment/path abstraction khi chuyển agent; `${CLAUDE_SKILL_DIR}` là Claude-specific, không portable.
-
-### SK-10 — Must-hold enforcement [CONDITIONAL MUST]
-
-**Why:** lời nhắc có thể bị bỏ qua, context có thể bị compact. Nếu có rủi ro mất dữ liệu/phát sinh tiền/gửi ra ngoài, cần permission/hook/tool gate thực tế.
-
-**Check:** xác định sự kiện `PreToolUse` nếu Claude Code có hook được hỗ trợ; với Codex/AGY phải tra adapter về cơ chế kiểm soát tương đương, không copy YAML hook giữa các agent. Test `allow` và `block` case độc lập. Hook Skill của Claude có lifecycle sau invocation; guardrail toàn cục phải thuộc policy runtime.
-
-### SK-11 — Build evaluations first [SHOULD, production-critical MUST]
-
-**Why:** tránh viết tài liệu hoành tráng nhưng không sửa lỗi thật. Trước khi mở rộng Skill, tạo 3 prompts thực tế và baseline no-skill; trong mỗi repo, thêm một negative trigger.
-
-**Check:** `evals/<name>/cases.json` hợp lệ và có 3 case, rubrics/owner/version. `studio.py evals` test schema; chạy model thật cần [evals/RUNBOOK.md](../evals/RUNBOOK.md).
-
-### SK-12 — Critical instructions near top [SHOULD]
-
-**Why:** Claude Code có compaction/lifecycle chỉ gắn lại phần đầu của Skill ở một số hoàn cảnh; nhưng không nhầm threshold 500 dòng với 5000 tokens.
-
-**Check:** các quy tắc phải giữ xuyên workflow nằm ngay sau frontmatter và purpose. Detail/history/example dài ở references/assets. Với must-hold enforcement vẫn cần runtime gate riêng, không chỉ chuyển đoạn văn lên đầu.
-
-### SK-13 — No reasoning echo [MUST]
-
-**Why:** yêu cầu agent xuất toàn bộ chain-of-thought nội bộ có thể dẫn đến refusal trên các model và không cần thiết để audit chất lượng.
-
-**Fix:** thay "show your private chain of thought step by step" bằng "give conclusion, assumptions, verifiable evidence, tests and a concise explanation". Không cấm giải thích lập luận cấp cao hoặc mô tả hành động đã làm.
-
-## Hướng dẫn với resources
-
-- `references/`: chỉ dẫn tư duy, khái niệm nghiệp vụ, tiêu chuẩn, mapping; tên file nói rõ chức năng.
-- `scripts/`: hành động deterministic, error handling/usage/documentation; không đọc toàn bộ script vào context khi chỉ cần chạy.
-- `assets/`: biểu mẫu, dữ liệu mẫu, ảnh, schema, layout, config được dùng trực tiếp cho output. Phân loại theo vai trò, không phải đuôi file.
-- `evals/`: để ở cấp repository theo chuẩn Studio; không đóng gói runtime; chứa stimuli, oracle/rubrics, baseline logs **từ run thật**.
+### SK-15 — Contents và điều giữ ở đầu [SHOULD] · kiểm: `ST5`/`ST7`
+Reference >100 dòng phải có `## Contents`; thân >100 dòng nên có. Ngay dưới tiêu đề cấp một: `Tìm mục: grep -n "^## " <file>`, rồi `- <Tên ## đúng chữ> — <khi nào đọc, ≤8 từ>` mỗi mục (≤12). Điều phải luôn giữ đặt trong 5 000 token đầu (`SK-12`).
 
 ## Definition of Done
-
-Một Skill mới hoàn thành khi: frontmatter portable, trigger/negative scope rõ, tài liệu trực tiếp truy xuất, steps có acceptance, scripts tested, assets không rò secret, eval schema pass, 3+ case và model eval có kết quả ghi nhận nếu Skill production. Không đồng nhất "static validation PASS" với "model execution PASS".
-
-**Ngoại lệ:** 500 dòng, 100 dòng, nội dung checklist, test scope có thể điều chỉnh theo quy mô dự án; phải có rationale trong audit và không đưa sự điều chỉnh này vào vendor standard.
-
-**Sources:** [Anthropic Skill Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices), [Claude Code Skills](https://code.claude.com/docs/en/skills), [Agent Skills Spec](https://agentskills.io/specification), PDF *The 10 SKILL Rules* (trang 4–10), [RoboNuggets community repository](https://github.com/robonuggets/skill-creator-plus).
+Frontmatter portable, trigger và negative scope rõ, script đã test, không secret, eval ≥3 case pass, skill production có model eval. Ngoại lệ (500/100 dòng, phạm vi test) cần lý do trong audit.
