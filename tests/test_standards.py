@@ -1,6 +1,8 @@
 """Shape checks for the documents under standards/ (SPR-33)."""
 import ast
 import re
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -278,6 +280,60 @@ class StandardsTest(unittest.TestCase):
                 ok,
                 "%s lacks a link that resolves to standards/EVALUATION_STANDARD.md#%s" % (rel, slug),
             )
+
+
+
+class SkillCreatorStudioManifestTests(unittest.TestCase):
+    """SKILL.md of skill-creator-studio must not drift from the standard and from the real CLI (SPR-33 TK11)."""
+
+    SKILL = ROOT_DIR / "skills" / "skill-creator-studio" / "SKILL.md"
+    STUDIO = ROOT_DIR / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
+
+    @classmethod
+    def help_of(cls, *args: str) -> str:
+        proc = subprocess.run(
+            [sys.executable, "-X", "utf8", str(cls.STUDIO), *args, "--help"],
+            capture_output=True, text=True, encoding="utf-8", timeout=60,
+        )
+        if proc.returncode != 0:
+            raise AssertionError("studio.py %s --help exit %d: %s" % (" ".join(args), proc.returncode, proc.stderr))
+        return proc.stdout
+
+    def body(self) -> str:
+        return self.SKILL.read_text(encoding="utf-8")
+
+    def test_rule_count_matches_standard(self) -> None:
+        standard = (ROOT_DIR / "standards" / "SKILL_AUTHORING_STANDARD.md").read_text(encoding="utf-8")
+        expected = len(re.findall(r"^### SK-\d\d\b", standard, re.MULTILINE)) - 1  # minus SK-00
+        stated = re.findall(r"\b(\d+) rules\b", self.body())
+        self.assertEqual(
+            stated, [str(expected)],
+            "SKILL.md states rule counts %s, the standard has %d (without SK-00)" % (stated, expected),
+        )
+
+    def test_has_gotchas_and_no_resources(self) -> None:
+        headings = re.findall(r"^## (.+?)\s*$", self.body(), re.MULTILINE)
+        self.assertIn("Gotchas", headings)
+        self.assertNotIn("Resources", headings)
+
+    def test_every_flag_and_command_exists_in_real_help(self) -> None:
+        top = self.help_of()
+        commands = re.search(r"\{([a-z,\-]+)\}", top)
+        self.assertIsNotNone(commands, top)
+        names = commands.group(1).split(",")
+        helps = {name: self.help_of(name) for name in names}
+        everything = "\n".join(helps.values())
+        body = self.body()
+        flags = set(re.findall(r"(?<![\w-])--[a-z][a-z-]*", body))
+        for needed in ("--lang", "--full", "--target"):
+            self.assertIn(needed, flags, "%s is no longer mentioned in SKILL.md" % needed)
+        missing = sorted(f for f in flags if f != "--help" and f not in everything)
+        self.assertEqual(missing, [], "flags named in SKILL.md but absent from studio.py --help: %s" % missing)
+        for value in re.findall(r"--target ([a-z-]+)", body):
+            self.assertIn(value, helps["validate"], "--target %s is not a choice of validate" % value)
+        listed = re.search(r"\(commands: ([^;]+);", body)
+        self.assertIsNotNone(listed, "SKILL.md no longer lists the sub-commands")
+        self.assertEqual(sorted(re.findall(r"`([a-z-]+)`", listed.group(1))), sorted(names))
 
 
 if __name__ == "__main__":

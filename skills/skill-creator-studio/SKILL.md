@@ -23,7 +23,7 @@ Creates or improves Agent Skills with evidence, independent checks and no silent
 ## Gotchas
 
 - Claude Code-only frontmatter keys such as `when_to_use` or `hooks` fail `FM4` unless you run `validate --target claude-code`.
-- `package` refuses a Skill that still contains `STUDIO-DRAFT`; finish the evals first.
+- `package` refuses a `SKILL.md` that still has the `STUDIO-DRAFT` HTML comment marker; delete it once the body is real (`package` does not check evals).
 
 ## Pick mode
 
@@ -33,7 +33,7 @@ Creates or improves Agent Skills with evidence, independent checks and no silent
 | **AUDIT** | Check/score/review existing SKILL or library | Static report + semantic review; **no edits** |
 | **REFINE** | Existing Skill fails or new evidence arrives | Proposed targeted changes; apply approved changes, regression checks |
 
-Commands below run `scripts/studio.py` (Python 3.9+, standard library only; `--help` lists exact parameters), or `studio.py` at a Studio repo root. It is never an automatic agent action: run it only where you have permission.
+Commands below run from this Skill's folder as `python3 scripts/studio.py <command>` (commands: `new`, `validate`, `audit`, `evals`, `package`, `install`, `sync-template`, `doctor`, `fmt`; Python 3.9+, standard library only; `--help` lists exact parameters), or `studio.py` at a Studio repo root. It is never an automatic agent action: run it only where you have permission. In any mode, when a claim about a rule or its source needs checking, read [references/SOURCE_NOTES.md](references/SOURCE_NOTES.md).
 
 ## NEW — create a Skill
 
@@ -46,7 +46,7 @@ Commands below run `scripts/studio.py` (Python 3.9+, standard library only; `--h
 
 ## AUDIT — assess without editing
 
-1. Run static validator: `python3 scripts/studio.py audit <skill-folder>` or `audit --all` inside a Studio repo. Add `--target claude-code` when the Skill uses Claude Code-only frontmatter keys. For a library spread over many skill folders, run `doctor --roots "<dir1>;<dir2>"` (report-only scan). All of these list findings without changing files.
+1. Run static validator: `python3 scripts/studio.py audit <skill-folder>` or `audit --all` inside a Studio repo. For Claude Code-only frontmatter keys see Gotchas. For a library spread over many skill folders, run `doctor --roots "<dir1>;<dir2>"` (report-only scan). All of these list findings without changing files.
 2. Read [references/AUDIT_CHECKLIST.md](references/AUDIT_CHECKLIST.md) before the manual review, or for a release check: it maps the 15 rules `SK-01`…`SK-15` (plus the `SK-00` manifest gate) to observable checks. Inspect `SKILL.md`, each linked reference, scripts and assets. Done when syntax and semantic risks have evidence, not only impressions.
 3. Read [references/SOURCE_NOTES.md](references/SOURCE_NOTES.md) only when a finding needs a source: which requirement is official and which is community advice.
 4. Write report: `Path:line | Rule | Severity | Evidence | Proposed fix | Risk`. Separate auto-checks and manual checks; prioritize high-impact issues.
