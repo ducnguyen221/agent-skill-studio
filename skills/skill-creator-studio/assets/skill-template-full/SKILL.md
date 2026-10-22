@@ -1,5 +1,5 @@
 ---
-name: skill-template
+name: skill-template-full
 description: "Demonstrates a portable Agent Skill structure. Use when learning how to author a new reusable task-specific Skill from the Agent Skill Studio template."
 metadata:
   version: "0.1.0"

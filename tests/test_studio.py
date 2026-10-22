@@ -581,6 +581,11 @@ class TemplateTests(unittest.TestCase):
         for needle in ("# Process Template", "> **Conclusion:**", "## When to use / not", "## Steps", "### Step 1",
                        "Command:", "Expect:", "Stop if:", "## Gotchas", "## Done when"):
             self.assertIn(needle, text)
+        lines = text.replace("\r\n", "\n").split("\n")
+        for label in ("Command", "Expect", "Stop if"):
+            self.assertEqual(1, sum(1 for ln in lines if ln.startswith("- %s: " % label)), label)
+            self.assertFalse([ln for ln in lines if ln.startswith(label + ":")], "bare %s: line would merge when rendered" % label)
+        self.assertIn("- Command: [FILL: ", text)
         self.assertFalse((process.parent / "WORKFLOW_GUIDE.md").exists())
         self.assertEqual("# Optional, Codex only; delete if unused.", (process.parent.parent / "agents" / "openai.yaml").read_text(encoding="utf-8").splitlines()[0])
 
@@ -667,6 +672,143 @@ class TemplateTests(unittest.TestCase):
                 self.assertIn("parent directory not found", run.stderr)
                 self.assertEqual([], list(home.iterdir()), "must not create anything under HOME")
                 self.assertFalse((home / parent).exists())
+
+    def test_full_and_minimal_templates_validate_clean(self):
+        """Round-2 fix 1: the full template is named like its folder, so validate has no FM2."""
+        for folder in ("skill-template", "skill-template-full"):
+            findings = studio.validate_skill(ROOT / "templates" / folder)
+            self.assertEqual([], [f for f in findings if f["level"] == "ERROR"], folder)
+            run = self.run_cli("validate", ROOT / "templates" / folder)
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            self.assertIn(": 0 errors;", run.stdout)
+        self.assertIn("name: skill-template-full\n", (ROOT / "templates" / "skill-template-full" / "SKILL.md").read_text(encoding="utf-8"))
+
+    def test_new_full_does_not_leak_template_suffix_into_name(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-nm", "--full")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            text = (skill / "SKILL.md").read_text(encoding="utf-8")
+            self.assertEqual(1, len(re.findall(r"^name: demo-nm$", text, re.M)), text[:200])
+            self.assertNotIn("demo-nm-full", text)
+            self.assertNotIn("name: skill-template", text)
+            self.assertEqual([], [f for f in studio.validate_skill(skill) if f["code"] == "FM2"])
+
+    def test_install_without_scope_flag_means_workspace_dot(self):
+        """No --workspace/--user is --workspace . (the current directory), not its parent."""
+        source = (ROOT / "skills" / "data-quality-audit").resolve()
+        with tempfile.TemporaryDirectory() as t:
+            cwd = Path(t) / "proj" / "inner"
+            cwd.mkdir(parents=True)
+            run = subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "studio.py"), "install", str(source), "--agent", "codex"],
+                                 cwd=cwd, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            dest = cwd / ".agents" / "skills" / "data-quality-audit"
+            self.assertTrue((dest / "SKILL.md").is_file(), run.stdout)
+            self.assertTrue(dest.resolve().is_relative_to(Path(t).resolve()))
+            self.assertFalse((cwd.parent / ".agents").exists())
+            self.assertIn("Installed data-quality-audit for codex at ", run.stdout)
+
+    def test_install_force_refuses_symlink_destination_in_process(self):
+        """Guard test that needs no symlink privilege: a destination reported as a link is never replaced."""
+        import contextlib
+        import io
+        from unittest import mock
+
+        original = Path.is_symlink
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents/skills")
+            dest = home / ".agents" / "skills" / "data-quality-audit"
+            dest.mkdir()
+            (dest / "marker.txt").write_text("keep", encoding="utf-8")
+            out, err = io.StringIO(), io.StringIO()
+
+            def fake(self):
+                return self == dest or original(self)
+
+            with mock.patch.dict(os.environ, env), mock.patch.object(Path, "is_symlink", fake), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = studio.main(["install", str(ROOT / "skills" / "data-quality-audit"), "--agent", "codex", "--user", "--force"])
+            self.assertEqual((1, True), (code, "symlink destination refused" in err.getvalue()), err.getvalue())
+            self.assertEqual("keep", (dest / "marker.txt").read_text(encoding="utf-8"))
+            self.assertEqual(["data-quality-audit"], sorted(p.name for p in dest.parent.iterdir()), "no backup may be created")
+
+    @unittest.skipUnless(os.name == "nt", "directory junctions are the unprivileged link type on Windows; plain symlinks need admin there")
+    def test_install_user_force_refuses_junction_destination(self):
+        import _winapi
+        import hashlib
+
+        def tree_sha(base):
+            digest = hashlib.sha256()
+            for q in sorted(base.rglob("*")):
+                digest.update(q.relative_to(base).as_posix().encode() + (q.read_bytes() if q.is_file() else b""))
+            return digest.hexdigest()
+
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents/skills")
+            outside = Path(t) / "outside"
+            outside.mkdir()
+            (outside / "keep.txt").write_text("keep", encoding="utf-8")
+            before = tree_sha(outside)
+            dest = home / ".agents" / "skills" / "data-quality-audit"
+            _winapi.CreateJunction(str(outside), str(dest))
+            try:
+                run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "codex", "--user", "--force")
+                self.assertEqual(1, run.returncode, run.stdout + run.stderr)
+                self.assertIn("symlink destination refused", run.stderr)
+                self.assertEqual(before, tree_sha(outside), "junction target must not be written through")
+                self.assertEqual(["keep.txt"], sorted(q.name for q in outside.iterdir()))
+                self.assertEqual(["data-quality-audit"], sorted(q.name for q in dest.parent.iterdir()), "no backup may be created")
+            finally:
+                try:
+                    os.rmdir(dest)  # removes the junction itself, never its target; a real dir here means the guard failed
+                except OSError:
+                    pass
+
+    @unittest.skipUnless(os.name == "nt", "directory junctions are the unprivileged link type on Windows; plain symlinks need admin there")
+    def test_install_user_force_junction_to_source_refuses_self_overwrite(self):
+        import _winapi
+        import hashlib
+        import shutil
+
+        def tree_sha(base):
+            digest = hashlib.sha256()
+            for q in sorted(base.rglob("*")):
+                digest.update(q.relative_to(base).as_posix().encode() + (q.read_bytes() if q.is_file() else b""))
+            return digest.hexdigest()
+
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents/skills")
+            source = Path(t) / "src" / "data-quality-audit"
+            shutil.copytree(ROOT / "skills" / "data-quality-audit", source)
+            before = tree_sha(source)
+            dest = home / ".agents" / "skills" / "data-quality-audit"
+            _winapi.CreateJunction(str(source), str(dest))
+            try:
+                run = self.run_cli_env(env, "install", source, "--agent", "codex", "--user", "--force")
+                self.assertEqual(1, run.returncode, run.stdout + run.stderr)
+                self.assertIn("refusing self-overwrite", run.stderr)
+                self.assertEqual(before, tree_sha(source))
+            finally:
+                try:
+                    os.rmdir(dest)  # removes the junction itself, never its target; a real dir here means the guard failed
+                except OSError:
+                    pass
+
+    def test_is_link_detects_reparse_points(self):
+        with tempfile.TemporaryDirectory() as t:
+            plain = Path(t) / "plain"
+            plain.mkdir()
+            self.assertFalse(studio.is_link(plain))
+            self.assertFalse(studio.is_link(Path(t) / "absent"))
+            if os.name == "nt":
+                import _winapi
+                link = Path(t) / "junction"
+                _winapi.CreateJunction(str(plain), str(link))
+                try:
+                    self.assertTrue(studio.is_link(link))
+                finally:
+                    os.rmdir(link)
+
 
     def test_install_user_in_process(self):
         """Same paths through main() so the changed lines are measured by coverage."""

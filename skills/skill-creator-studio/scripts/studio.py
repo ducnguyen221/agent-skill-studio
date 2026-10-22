@@ -14,6 +14,7 @@ import argparse
 import ast
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
@@ -181,6 +182,16 @@ def skill_dirs(root: Path) -> list[Path]:
     if not p.is_dir():
         return []
     return sorted(x for x in p.iterdir() if x.is_dir() and (x / "SKILL.md").exists())
+
+
+def is_link(path: Path) -> bool:
+    """True for a symlink or, on Windows, any reparse point such as a directory junction (os.path.isjunction needs Python 3.12)."""
+    if path.is_symlink():
+        return True
+    try:
+        return bool(getattr(os.lstat(path), "st_file_attributes", 0) & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+    except OSError:
+        return False
 
 
 def valid_resolved_under(child: Path, parent: Path) -> bool:
@@ -713,7 +724,7 @@ def cmd_new(args) -> int:
         shutil.copyfile(template, target / "SKILL.md")
     p = target / "SKILL.md"
     content = p.read_text(encoding="utf-8")
-    content = content.replace("name: skill-template", "name: " + name, 1)
+    content = re.sub(r"^name: skill-template(-full)?$", lambda _m: "name: " + name, content, count=1, flags=re.MULTILINE)
     escaped = json.dumps(args.description, ensure_ascii=False)
     content = re.sub(r'^description: .*$', "description: " + escaped, content, count=1, flags=re.MULTILINE)
     content = content.replace("# Skill Template", "# " + name.replace("-", " ").title(), 1)
@@ -886,8 +897,8 @@ def cmd_install(args) -> int:
         print("ERROR: %s exists; no changes made. Use --force only if you intend replacement." % dest, file=sys.stderr)
         return 1
     if dest.exists() and args.force:
-        # Refuse symlink targets and back up rather than silently erasing.
-        if dest.is_symlink():
+        # Refuse symlink/junction targets and back up rather than silently erasing.
+        if is_link(dest):
             print("ERROR: symlink destination refused", file=sys.stderr)
             return 1
         from datetime import datetime, timezone

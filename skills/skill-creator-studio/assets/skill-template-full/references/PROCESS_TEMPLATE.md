@@ -10,9 +10,9 @@
 
 ### Step 1 — [FILL: verb]
 
-Command: [FILL: the exact command or action]
-Expect: [FILL: the observable result that means it worked]
-Stop if: [FILL: the condition that means stop and report instead of continuing]
+- Command: [FILL: the exact command or action]
+- Expect: [FILL: the observable result that means it worked]
+- Stop if: [FILL: the condition that means stop and report instead of continuing]
 
 ## Gotchas
 
