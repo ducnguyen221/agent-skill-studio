@@ -315,16 +315,23 @@ def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
 
 def prose_lines(body: str) -> list[tuple[int, str]]:
     """Prose lines of a Markdown body as (1-based line number inside `body`, text); file line = body_start + number.
-    Left out: blank lines, fenced and indented code, table rows, and lines marked <!-- studio:vi-ok -->.
-    In the text, inline code, link targets, URLs and HTML comments are blanked; the text is not normalized, so VI1 can see NFD."""
+    Left out: blank lines, fenced and indented code, table rows, lines marked <!-- studio:vi-ok -->, and the lines of a
+    multi-line HTML comment. In the text, inline code, link targets, URLs and HTML comments are blanked; the text is not
+    normalized, so VI1 can see NFD."""
     found: list[tuple[int, str]] = []
-    fence, prev_blank, in_indented, list_context = None, True, False, False
+    fence, prev_blank, in_indented, list_context, in_comment = None, True, False, False, False
     for offset, text in enumerate(body.splitlines()):
         stripped = text.strip()
         if fence:
             if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), stripped):
                 fence = None
             continue
+        if in_comment:
+            closed = text.find("-->")
+            if closed < 0:
+                continue
+            text, in_comment = text[closed + 3:], False
+            stripped = text.strip()
         opened = FENCE_OPEN_RE.match(text)
         if opened:
             fence, prev_blank = opened.group(1), False
@@ -344,6 +351,8 @@ def prose_lines(body: str) -> list[tuple[int, str]]:
             continue
         prose = HTML_COMMENT_RE.sub(" ", text)
         prose = CODE_SPAN_RE.sub(" ", prose)
+        if "<!--" in prose:  # a comment that continues on the next lines
+            prose, in_comment = prose[:prose.index("<!--")], True
         prose = MD_LINK_RE.sub(r"\1", prose)
         prose = URL_RE.sub(" ", prose)
         if prose.strip():
@@ -441,17 +450,22 @@ def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path) -> l
         return next((i + 1 for i, x in enumerate(front) if x.lstrip().startswith(key + ":")), default)
 
     def accented(value) -> bool:
-        return isinstance(value, str) and _vi_counts(value)[1] > 0
+        return isinstance(value, str) and _vi_counts(HTML_COMMENT_RE.sub(" ", value))[1] > 0
 
-    pairs: list[tuple[str, object]] = []
-    for key, value in meta.items():
-        if key != "description":
-            pairs += [("%s.%s" % (key, k), v) for k, v in value.items()] if isinstance(value, dict) else [(key, value)]
+    def strings(label: str, value) -> list[tuple[str, str]]:
+        """Every string inside a frontmatter value (nested dicts and lists), labelled by its path."""
+        if isinstance(value, dict):
+            return [pair for k, v in value.items() for pair in strings("%s.%s" % (label, k), v)]
+        if isinstance(value, (list, tuple)):
+            return [pair for i, v in enumerate(value) for pair in strings("%s[%d]" % (label, i), v)]
+        return [(label, value)] if isinstance(value, str) else []
+
+    pairs = [pair for key, value in meta.items() if key != "description" for pair in strings(key, value)]
     for label, value in pairs:
-        at = front_line(label, 2)
+        at = front_line(label.split("[")[0], 2)
         if accented(value) and not (at <= len(front) and VI_OK_MARK in front[at - 1]):
             findings.append(emit("WARN", "VI4", manifest, at, "frontmatter '%s' has Vietnamese letters; keep frontmatter values English (V13)" % label))
-    desc = meta.get("description")
+    desc = HTML_COMMENT_RE.sub(" ", meta["description"]) if isinstance(meta.get("description"), str) else None
     at = front_line("description", 3)
     if accented(desc) and not VI_TRIGGER_RE.search(desc) and not (at <= len(front) and VI_OK_MARK in front[at - 1]):
         findings.append(emit("WARN", "VI4", manifest, at,

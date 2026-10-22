@@ -561,6 +561,58 @@ class VietnameseLintTest(StudioCase):
         self.assertIn("VI3", run.stdout)
 
 
+    # Round 2 (review of ffc6aa7): boundaries, sentence splitting, comments and frontmatter shapes.
+    def test_lint_vi_vi5_letter_and_accent_boundaries(self):
+        def section(text):
+            return vi_body("", "## Quy trình", text)
+        self.assertEqual(of(self.vi(section("a" * 79)), "VI5"), [], "79 letters: below the minimum")
+        self.assertEqual(len(of(self.vi(section("a" * 80), "vi-80"), "VI5")), 1, "80 letters: reported")
+        self.assertEqual(of(self.vi(section("a" * 99 + "ế"), "vi-100"), "VI5"), [], "1 accent in 100 letters = 1 %: not under")
+        self.assertEqual(len(of(self.vi(section("a" * 100 + "ế"), "vi-101"), "VI5")), 1, "1 accent in 101 letters is under 1 %")
+
+    def test_lint_vi_vi2_two_digit_year_and_short_day(self):
+        found = of(self.vi(vi_body("", "Họp vào ngày 22/10/26 theo kế hoạch.")), "VI2")
+        self.assertEqual([f["line"] for f in found], [9])
+        self.assertEqual(len(of(self.vi(vi_body("", "Họp vào ngày 5/3/2026 theo kế hoạch."), "vi-short"), "VI2")), 1)
+        self.assertEqual(of(self.vi(vi_body("", "Tỉ lệ 1/2/3 là nhãn nội bộ."), "vi-nodate"), "VI2"), [], "a one-digit year is not a date")
+
+    def test_lint_vi_vi3_semicolon_and_unpunctuated_items(self):
+        halves = " ".join(["việc"] * 21) + "; " + " ".join(["việc"] * 21) + "."
+        self.assertEqual(of(self.vi(vi_body("", halves)), "VI3"), [], "';' ends a sentence: 21 + 21 words")
+        bare = " ".join(["việc"] * 30)
+        items = vi_body("", bare, "- " + bare, "- " + bare, "## " + bare, bare, "## " + bare, bare + ".")
+        self.assertEqual(of(self.vi(items, "vi-bare"), "VI3"), [], "items and headings without a final stop still end a sentence")
+        self.assertEqual(len(of(self.vi(vi_body("", bare, bare + "."), "vi-ctl"), "VI3")), 1, "control: two plain lines are one 60-word sentence")
+
+    def test_lint_vi_urls_and_comments_leave_prose_lines(self):
+        self.assertEqual(studio.prose_lines("Xem https://example.com/22/10/2026 xong."), [(1, "Xem   xong.")])
+        self.assertEqual(studio.prose_lines("A <!-- 22/10/2026 --> B"), [(1, "A   B")])
+        multi = "Đầu.\n<!--\nNgày 22/10/2026 trong ghi chú\n-->\nCuối."
+        self.assertEqual(studio.prose_lines(multi), [(1, "Đầu."), (5, "Cuối.")])
+        self.assertEqual(studio.prose_lines("Trước <!-- mở\nđóng --> sau."), [(1, "Trước "), (2, " sau.")])
+        self.assertEqual(studio.prose_lines("Trước `<!--` giữa\nvẫn là văn xuôi."), [(1, "Trước   giữa"), (2, "vẫn là văn xuôi.")], "backticked '<!--' opens nothing")
+        body = vi_body("", "<!--", "Ngày 22/10/2026 trong ghi chú nhiều dòng.", "-->", "Ngày 22/10/2026 nằm ngoài.", "Xem https://example.com/22/10/2026 thôi.")
+        self.assertEqual([f["line"] for f in of(self.vi(body), "VI2")], [12], "only the date outside the comment and the URL is reported")
+
+    def test_lint_vi_frontmatter_list_dict_and_comments(self):
+        meta = {"name": "x", "description": "Does a job. Use when testing.", "tags": ["ok", "Đức"], "metadata": {"deep": {"who": "Đức"}, "plain": "ok"}}
+        found = of(studio.lint_vietnamese(meta, vi_body(), 4, self.tmp / "none" / "SKILL.md"), "VI4")
+        self.assertEqual(sorted(f["message"].split("'")[1] for f in found), ["metadata.deep.who", "tags[1]"])
+        clean = {"name": "x", "description": "Does a job. Use when testing.", "tags": ["ok"], "metadata": {"deep": {"who": "ok"}}}
+        self.assertEqual(studio.lint_vietnamese(clean, vi_body(), 4, self.tmp / "none" / "SKILL.md"), [])
+        listed = of(self.vi(vi_body(), "vi-list", extra=('tags: ["Đức"]',)), "VI4")
+        self.assertEqual([f["line"] for f in listed], [4], "a flow-list value with diacritics is reported")
+        # a comment on a frontmatter line is not part of the value
+        noted = self.vi(vi_body(), "vi-note", extra=("metadata:", "  author: Duc <!-- ghi chú của Đức -->"))
+        self.assertEqual(of(noted, "VI4"), [], "diacritics inside a comment are not the value")
+        value = self.vi(vi_body(), "vi-value", extra=("metadata:", "  author: Đức <!-- note -->"))
+        self.assertEqual(len(of(value, "VI4")), 1, "diacritics in the value are still reported")
+        desc = self.vi(vi_body(), "vi-desc", desc="Does a job. Use when testing. <!-- studio:vi-ok -->")
+        self.assertEqual(of(desc, "VI4"), [])
+        trick = self.vi(vi_body(), "vi-trick", desc="Kiểm tra <!-- Use when testing -->")
+        self.assertEqual(len(of(trick, "VI4")), 1, "a trigger phrase hidden in a comment does not count")
+
+
 class RepoStaysCleanTest(StudioCase):
     def test_validate_all_has_no_errors_or_warnings(self):
         for folder in studio.skill_dirs(ROOT):
