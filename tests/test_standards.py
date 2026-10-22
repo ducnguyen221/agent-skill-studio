@@ -12,13 +12,13 @@ SOURCE_TAGS: tuple[str, ...] = (
 
 # Cụm then chốt của rule hành vi (SPEC 9.2 "Không được cắt"): thiếu cụm nào là rule đã rơi.
 BEHAVIOR_PHRASES: dict[str, tuple[str, ...]] = {
-    "SK-03": ("tự do", "rủi ro"),
-    "SK-04": ("A/B", "trực giác"),
-    "SK-06": ("bước",),
-    "SK-07": ("validate",),
+    "SK-03": ("tự do", "rủi ro", "approval"),
+    "SK-04": ("A/B", "trực giác", "không kém"),
+    "SK-06": ("bước", "plan-validate-execute"),
+    "SK-07": ("validate", "giá trị hợp lệ", "văn phong"),
     "SK-08": ("Strict", "Flexible"),
-    "SK-09": ("đường dẫn",),
-    "SK-10": ("hook",),
+    "SK-09": ("đường dẫn", "asset nằm trong skill"),
+    "SK-10": ("hook", "`block`", "chỉ chạy sau khi skill được gọi", "policy runtime"),
     "SK-11": ("baseline",),
     "SK-12": ("5 000",),
     "SK-13": ("reasoning_extraction",),
@@ -42,14 +42,15 @@ def read_std(name: str) -> str:
 
 
 def sk_blocks(text: str) -> dict:
-    """Map 'SK-NN' -> text of its '### SK-NN' block (up to the next '#' heading)."""
+    """Map 'SK-NN' -> BODY lines of its '### SK-NN' block (the heading line is excluded, so a
+    key phrase repeated in the title cannot mask a deleted body; ends at the next '#' heading)."""
     blocks: dict = {}
     current = None
     for line in text.splitlines():
         m = SK_HEAD_RE.match(line)
         if m:
             current = m.group(1)
-            blocks[current] = line + "\n"
+            blocks[current] = ""
         elif re.match(r"^#{1,3} ", line):
             current = None
         elif current:
@@ -111,6 +112,21 @@ class StandardsTest(unittest.TestCase):
             self.assertIn(needle, text)
         self.assertIn("hai tầng", sk_blocks(text).get("SK-02", ""), "SK-02 needs the three cutting questions")
         self.assertLessEqual(len(text), 5600)
+        self.assertIn("(EVALUATION_STANDARD.md)", text.split("## Definition of Done")[-1], "DoD must point to the model-eval standard")
+
+    def test_sk_blocks_exclude_heading_line(self):
+        blocks = sk_blocks("### SK-03 — Mức tự do theo rủi ro [MUST] · kiểm: review\nthân\n### SK-04 — x [SHOULD] · kiểm: review\n")
+        self.assertEqual(blocks["SK-03"], "thân\n")
+
+    def test_authoring_standard_check_codes_exist_in_validator(self):
+        text = read_std("SKILL_AUTHORING_STANDARD.md")
+        studio = (ROOT_DIR / "studio.py").read_text(encoding="utf-8")
+        for head in re.findall(r"^### SK-\d\d .*kiểm: (.*)$", text, re.M):
+            codes = set(re.findall(r"`([A-Z]{2}\d+)`", head))
+            for pre, a, b in re.findall(r"`([A-Z]{2})(\d+)`–`[A-Z]{2}(\d+)`", head):
+                codes.update("%s%s" % (pre, i) for i in range(int(a), int(b) + 1))
+            for code in codes:
+                self.assertIn('"%s"' % code, studio, "%s is cited as a check but studio.py never emits it" % code)
 
     def test_authoring_standard_keeps_behavior_rules(self):
         blocks = sk_blocks(read_std("SKILL_AUTHORING_STANDARD.md"))
@@ -141,6 +157,9 @@ class StandardsTest(unittest.TestCase):
         for url in NEW_SOURCE_URLS:
             self.assertIn(url, text)
         self.assertIn("measure-skill-budget.py", text)
+        self.assertIn("485", text, "skill-creator body measured at 485 lines")
+        self.assertIn(">300", text, "skill-creator recommends a TOC for references >300 lines")
+        self.assertIn("100", text, "Studio keeps the 100-line TOC threshold")
         for code in ("A10", "A15", "A16", "SK-14", "SK-15"):
             self.assertIn(code, text)
 
@@ -148,7 +167,8 @@ class StandardsTest(unittest.TestCase):
         text = (ROOT_DIR / "skills" / "skill-creator-studio" / "references" / "AUDIT_CHECKLIST.md").read_text(encoding="utf-8")
         self.assertIn("SK-14", text)
         self.assertIn("SK-15", text)
-        self.assertIn("hai tầng", text, "AUDIT_CHECKLIST needs the three cutting questions")
+        self.assertIn("two levels", text, "AUDIT_CHECKLIST needs the three cutting questions")
+        self.assertNotIn("hai tầng", text, "AUDIT_CHECKLIST is an English file")
 
     def test_no_fake_pass_defined_once(self):
         md_files = [

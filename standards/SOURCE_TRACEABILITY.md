@@ -36,7 +36,7 @@
 
 **Nội bộ / mã nguồn đo được**
 
-- **A16 — `SYS/bootstrap/measure-skill-budget.py:13-14`** `[codex 0.147, mã]`: Codex 0.147 giới hạn `description` 1 024 ký tự và thân skill 8 000 B (`ST3`). Trần nội bộ 350 ký tự / description trong cùng file là quyết định OpcOS, không phải chuẩn Studio.
+- **A16 — `SYS/bootstrap/measure-skill-budget.py:13-14`** `[codex 0.147, mã]`: Codex 0.147 giới hạn `description` 1 024 ký tự và thân skill 8 000 B (`ST3`, mã thêm ở SPR-33 TK9, chưa có trong validator lúc viết chuẩn). Trần nội bộ 350 ký tự / description trong cùng file là quyết định OpcOS, không phải chuẩn Studio.
 
 ## Ma trận quy tắc
 
@@ -65,7 +65,7 @@
 3. **5000 tokens ở Claude Code compaction**: không phải giới hạn file size của chuẩn portable; ưu tiên nội dung quan trọng đầu SKILL.md.
 4. **Claude versions Fable 5, Opus/Sonnet 5.5:** thông tin này được PDF và hướng dẫn model riêng đề cập; về lâu dài dùng action principle "test on models actually deployed", không đóng cứng version vào rule.
 5. **Claude skill hook**: khi invoke, hook có scope lifecycle của Skill, không bảo vệ trước invoke hoặc runtime khác.
-6. **PDF trang 11 so sánh Anthropic skill-creator (300 lines vs 100)** là lời community và không khớp số đo: `SKILL.md` của skill-creator chính thức đo được 485 dòng (đo cục bộ 2026-10-22), dưới mốc 500 của A2. Studio dùng 500 dòng cho thân và 100 dòng cho Contents theo A2.
+6. **PDF trang 11 so sánh Anthropic skill-creator (300 lines vs 100)** là lời community, lẫn hai số khác nhau. (a) Thân `SKILL.md` của skill-creator chính thức đo được 485 dòng (đo cục bộ 2026-10-22), dưới mốc 500 của A2. (b) Skill-creator khuyến nghị mục lục cho reference >300 dòng (`skill-creator/SKILL.md:98`; dossier SPR-33 `dossier-skill-docs2.md:37`), còn A2 nêu >100 dòng. Studio chọn 100 dòng cho Contents theo A2 và 500 dòng cho thân.
 7. **Antigravity migration date:** các URL chính thức `antigravity.google` và `www.antigravity.google` từng có thông tin thời hạn workflow khác nhau (October 19 vs November 1 2026 trong kết quả công khai). Không đóng cứng một ngày migration thành quy tắc; cần xác minh bản docs/cấu hình runtime tại thời điểm triển khai.
 8. **Không có automatic evaluation model** trong bộ CLI này. Static validator và model A/B test là hai tầng khác nhau.
 
