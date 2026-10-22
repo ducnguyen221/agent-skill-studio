@@ -7,7 +7,7 @@ updated: 2026-10-23
 Date: 2026-10-22
 Trạng thái: v0 tạm; thay bằng chuẩn v1 khi SPR-33 đóng (Cổng 2).
 Người dùng: SPR-31 và SPR-32 viết skill theo hai bảng dưới; lớp (a) là hình thức, lớp (b) là văn phong cho Claude 5.x.
-Kiểm: `python -X utf8 studio.py validate <skill>` chạy trong worktree `C:\Users\DucNguyen\OpcOS\plugins\agent-skill-studio\.worktrees\spr-33-skill-standard` — bản `main` đủ cho FM/DS/ST cũ; `--target` và `CT10` chỉ có ở worktree SPR-33 tới Cổng 2. Mã rule (`FM*`/`DS*`/`ST*`/`CT10`) tra ở `standards/SKILL_AUTHORING_STANDARD.md` + `studio.py`. Mã `[nội bộ]` và ngưỡng như 500 ký tự, ≤12 dòng Contents là hướng dẫn của Studio; validator chỉ chặn một phần cho tới khi TK2 xong.
+Kiểm: `python -X utf8 studio.py validate <skill>` chạy trong worktree `agent-skill-studio/.worktrees/spr-33-skill-standard` — bản `main` đủ cho FM/DS/ST cũ; `--target` và `CT10` chỉ có ở worktree SPR-33 tới Cổng 2. Mã rule (`FM*`/`DS*`/`ST*`/`CT10`) tra ở `standards/SKILL_AUTHORING_STANDARD.md` + `studio.py`. Mã `[nội bộ]` và ngưỡng như 500 ký tự, ≤12 dòng Contents là hướng dẫn của Studio; validator chỉ chặn một phần cho tới khi TK2 xong.
 
 Nguồn đã mở lại ngày 22/10/2026: **[spec]** agentskills.io/specification · **[bp]** platform.claude.com/…/agent-skills/best-practices · **[cc]** code.claude.com/docs/en/skills · **[ab]** agentskills.io/skill-creation/best-practices · **[ae]** agentskills.io/skill-creation/evaluating-skills · **[pb]** platform.claude.com/…/claude-prompting-best-practices · **[fable-5]** …/prompting-claude-fable-5 · **[sonnet-5.5]** …/prompting-claude-sonnet-5-5. Câu trích: `evidence/sources.md` của SPR-33.
 

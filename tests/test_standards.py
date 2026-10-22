@@ -15,15 +15,15 @@ SOURCE_TAGS: tuple[str, ...] = (
 
 # Cụm then chốt của rule hành vi (SPEC 9.2 "Không được cắt"): thiếu cụm nào là rule đã rơi.
 BEHAVIOR_PHRASES: dict[str, tuple[str, ...]] = {
-    "SK-03": ("tự do", "rủi ro", "approval", "tổn thất"),
-    "SK-04": ("A/B", "trực giác", "không kém"),
-    "SK-06": ("bước", "plan-validate-execute"),
-    "SK-07": ("validate", "giá trị hợp lệ", "văn phong"),
-    "SK-08": ("Strict", "Flexible"),
-    "SK-09": ("đường dẫn", "asset nằm trong skill", "không mạng"),
+    "SK-03": ("tự do", "rủi ro", "approval", "tổn thất", "Trộn mức trong cùng skill"),
+    "SK-04": ("A/B", "trực giác", "không kém", "ghim `--model`", "ghi `not_run`"),
+    "SK-06": ("bước", "plan-validate-execute", "`Done when`", "đường quay lại"),
+    "SK-07": ("validate", "giá trị hợp lệ", "văn phong", "giới hạn số lần", "báo blocker"),
+    "SK-08": ("Strict", "Flexible", "Một mặc định, một lối thoát"),
+    "SK-09": ("đường dẫn", "asset nằm trong skill", "không mạng", "không secret"),
     "SK-10": ("hook", "`block`", "chỉ chạy sau khi skill được gọi", "policy runtime", "PreToolUse"),
-    "SK-11": ("baseline", "ngoài `skills/`"),
-    "SK-12": ("5 000", "sau frontmatter"),
+    "SK-11": ("baseline", "ngoài `skills/`", "một negative trigger"),
+    "SK-12": ("5 000", "sau frontmatter", "guardrail và Definition of Done"),
     "SK-13": ("reasoning_extraction", "kết luận"),
 }
 

@@ -10,7 +10,8 @@
   - `new --lang {en,vi}` và `--full`; hai template: `templates/skill-template/` (`SKILL.md`, `SKILL.vi.md`) và `templates/skill-template-full/` (kèm `references/PROCESS_TEMPLATE.md`, `scripts/`, `assets/`, `agents/openai.yaml`); hai skill được tối giản theo template.
   - `install --user` cho Codex (`~/.agents/skills`) và Antigravity (`~/.gemini/config/skills`); Claude Code `--user` thoát 2; thiếu thư mục cha cũng thoát 2.
   - `evals --export agentskills`, `doctor` (quét nhiều gốc skill, chỉ báo cáo) và `fmt` (`--check` mặc định, `--fix` tạo `<file>.bak-<ISO>`, `--no-backup`).
-  - Thư mục `content/` (mẫu `description`, case eval, hai skill mẫu tiếng Anh và tiếng Việt), `evals/tools/` (`activation.py`, `oracle.py`, `redact.py`), `.gitignore` thêm `.coverage`.
+  - Thư mục `content/` (mẫu `description`, case eval, hai skill mẫu tiếng Anh và tiếng Việt), `.gitignore` thêm `.coverage`.
+  - **Đổi hợp đồng:** `ST5` (reference >100 dòng thiếu `## Contents`) đổi từ WARN sang ERROR, nên `validate` thoát 1 với skill có reference như vậy; `ST7` (thân `SKILL.md`) vẫn là WARN. `fmt --fix` mặc định chép file đổi sang `<file>.bak-<ISO>` trước khi ghi; `--no-backup` bỏ bản sao đó.
   - Tài liệu trạng thái khớp mã: `README.md`, `QA_REPORT.md`, bốn file `adapters/*` (`Checked: 2026-10-23` kèm nguồn), `registry/SKILL_CATALOG.md`, `templates/README.md`, `standards/README.md`. Lô kích hoạt SPR-33 chạy trên Claude Code; `model_evaluated` vẫn `false`.
 
 ## 0.1.0 — 2026-10-12

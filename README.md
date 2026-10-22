@@ -136,7 +136,7 @@ python3 studio.py evals --all
 # kiểm thử script và cấu trúc
 python3 -m unittest discover -s tests -v
 # tạo một skill mới từ mẫu (thân tiếng Anh mặc định; --lang vi cho thân tiếng Việt; --full cho template đầy đủ)
-python3 studio.py new powerbi-reporting --output skills --description "Builds and validates Power BI reports. Use when creating Power BI semantic models, DAX measures, or dashboard reports." 
+python3 studio.py new powerbi-reporting --output skills --description "Builds and validates Power BI reports. Use when creating Power BI semantic models, DAX measures, or dashboard reports."
 # kiểm kiểu trình bày Markdown của vài tài liệu (mặc định chỉ báo cáo, không ghi file)
 python3 studio.py fmt --check standards/README.md templates/README.md
 # tạo bản package chỉ gồm các file runtime, không kèm evals
@@ -213,7 +213,7 @@ Hướng dẫn agent sử dụng Skill factory: [skills/skill-creator-studio/SKI
 ## Quality gates
 
 1. `SKILL.md` có YAML frontmatter hợp lệ trong **tập con YAML mà CLI offline hỗ trợ** (strings, folded description và metadata string-map); với cú pháp YAML phức tạp phải đơn giản hóa hoặc kiểm tra bổ sung bằng parser YAML đầy đủ bên ngoài CLI. `name`/`description` phải đúng chuẩn.
-2. Nội dung vượt 500 dòng được **WARN**, không bị cấm tuyệt đối. Reference Markdown trên 100 dòng thiếu Contents được **WARN**.
+2. Nội dung vượt 500 dòng được **WARN**, không bị cấm tuyệt đối. Reference Markdown trên 100 dòng thiếu Contents là **ERROR** (`ST5`, `validate` thoát 1); thân `SKILL.md` trên 100 dòng thiếu Contents là **WARN** (`ST7`).
 3. Không có local link trỏ ra ngoài Skill, symlink lạ, file `evals/` hoặc secret bị đóng vào package.
 4. `evals/<name>/cases.json` hợp lệ, có ít nhất 3 ca và có positive/negative. `studio.py evals` chỉ test **schema**, không chấm được model.
 5. Chạy unit tests / CI, test thật với agent mục tiêu theo [evals/RUNBOOK.md](evals/RUNBOOK.md). Định nghĩa: [Không pass giả](standards/EVALUATION_STANDARD.md#không-pass-giả-not_run).
@@ -223,7 +223,13 @@ Hướng dẫn agent sử dụng Skill factory: [skills/skill-creator-studio/SKI
 
 ## Phát hành
 
-Trước khi phát hành: `python studio.py doctor` / `fmt --check` before release, rồi `validate --all --require-evals`, `evals --all`, `sync-template --check` và `python3 -m unittest discover -s tests`. Ghi số đo vào [QA_REPORT.md](QA_REPORT.md), thêm mục vào [CHANGELOG.md](CHANGELOG.md) (chỉ thêm, không ghi đè), rồi mới tăng version. `model_evaluated` giữ `false` cho đến khi `registry/catalog.json` có đủ bằng chứng đếm lại được.
+Trước khi phát hành: `python3 studio.py doctor`, rồi `fmt --check` trên danh sách file của đợt (13 đường của SPR-33, phải thoát 0 và báo `0 skipped`):
+
+```bash
+python3 studio.py fmt --check standards/MEMO-SKILL-V0.md standards/SKILL_AUTHORING_STANDARD.md standards/SOURCE_TRACEABILITY.md standards/EVALUATION_STANDARD.md standards/CORE_STANDARD.md standards/README.md standards/VIETNAMESE_SKILL_WRITING.md content templates/skill-template templates/skill-template-full templates/README.md
+```
+
+`fmt --check` không kèm đường thì thoát 2; `fmt --check --all` hiện thoát 1 vì còn dòng cũ và file chuẩn không được chạm trong đợt này. Sau đó `validate --all --require-evals`, `evals --all`, `sync-template --check` và `python3 -m unittest discover -s tests`. Ghi số đo vào [QA_REPORT.md](QA_REPORT.md), thêm mục vào [CHANGELOG.md](CHANGELOG.md) (chỉ thêm, không ghi đè), rồi mới tăng version. `model_evaluated` giữ `false` cho đến khi `registry/catalog.json` có đủ bằng chứng đếm lại được.
 
 ## Đọc tài liệu theo nhiệm vụ
 
