@@ -17,5 +17,5 @@ Turns the staged diff into one Conventional Commits message, so history stays se
 
 ## Gotchas
 
-- A breaking change needs a footer line `BREAKING CHANGE: <what breaks>`, or a `!` after the type. The subject alone does not signal it.
+- Mark a breaking change with a `!` right before the colon (`feat!:`, `feat(api)!:`) or with a footer line `BREAKING CHANGE: <what breaks>`.
 - Do not invent a ticket code. Add a `Refs:` footer only when the user or the branch name gave one.

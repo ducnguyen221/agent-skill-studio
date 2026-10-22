@@ -2,7 +2,7 @@
 
 > **Kết luận:** ba case mẫu cho skill `writing-commit-messages` (một typical, một edge, một near-miss), viết đúng dạng `evals/<skill>/cases.json`, kèm bản xuất agentskills viết tay. Đây là mẫu để chép và sửa, không phải eval đã chạy trên model (`not_run`).
 
-Cách dùng: đặt các khối JSON dưới đây vào mảng `cases` của `evals/<skill>/cases.json` (đối tượng gốc có `skill_name` và `cases`), tạo các file trong `fixtures` cạnh đó, rồi chạy `studio.py evals <skill>`. Quy tắc: [EVALUATION_STANDARD.md](../standards/EVALUATION_STANDARD.md) và `SK-11`. Fixture của mẫu này không đi kèm; tự tạo khi áp dụng.
+Cách dùng: đặt các khối JSON dưới đây vào mảng `cases` của `evals/<skill>/cases.json` (đối tượng gốc có `skill_name`, `status` — `draft` khi mới dựng — và `cases`), tạo các file trong `fixtures` cạnh đó, rồi chạy `studio.py evals <skill>`. Quy tắc: [EVALUATION_STANDARD.md](../standards/EVALUATION_STANDARD.md) và `SK-11`. Fixture của mẫu này không đi kèm; tự tạo khi áp dụng.
 
 ### Case 1 — typical
 ```json

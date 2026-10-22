@@ -11,7 +11,7 @@ Cách dùng: đối chiếu `description` của skill mình với từng lỗi b
 - **Source:** https://agentskills.io/specification — description phải nêu cả việc skill làm và khi nào dùng.
 
 ### Pair 2 — Viết ở ngôi thứ nhất
-- **Bad:** "I can help you analyze Excel files. You can ask me to build pivot tables and charts."
+- **Bad:** "I can help you analyze Excel files. Use when you ask me to build pivot tables and charts."
 - **Good:** "Analyzes Excel spreadsheets, builds pivot tables and charts. Use when the user works with .xlsx files or tabular data; not for cleaning CSV exports."
 - **Why:** `description` được chèn vào system prompt của agent. Ngôi thứ nhất hoặc thứ hai làm câu mô tả lẫn với lời của người dùng và của agent, nên chọn skill kém chính xác. Dùng ngôi thứ ba, động từ chia ở hiện tại (`SK-05`, `DS2`).
 - **Source:** https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices — "Always write in third person".
@@ -29,7 +29,7 @@ Cách dùng: đối chiếu `description` của skill mình với từng lỗi b
 - **Source:** `[nội bộ]` `SK-05` và `SK-11`; ca near-miss ở `evals/data-quality-audit/cases.json`.
 
 ### Pair 5 — Chữ ép buộc thay cho điều kiện chọn
-- **Bad:** "CRITICAL: You MUST use this skill whenever the user mentions databases. ALWAYS call it first. NEVER answer without it."
+- **Bad:** "CRITICAL: You MUST use this skill whenever the user mentions databases. Use when any database comes up; ALWAYS call it first. NEVER answer without it."
 - **Good:** "Reviews SQL migrations for locking and rollback risks. Use when the user shares a migration file or asks whether a schema change is safe; not for query tuning."
 - **Why:** Model gần đây theo sát system prompt, nên chữ in hoa kiểu ép buộc làm skill bị gọi quá đà ở cả những prompt không liên quan. Nêu điều kiện bằng "Use when …" và thêm lý do khi cần nhấn mạnh (`SK-14`, `CT10`).
 - **Source:** https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices — "The fix is to soften any aggressive language".

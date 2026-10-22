@@ -7,7 +7,7 @@ metadata:
 
 # Writing Release Notes
 
-Soạn ghi chú phát hành từ các pull request đã gộp kể từ tag gần nhất, để người dùng thấy ngay điều gì đổi với họ. Mỗi dòng nêu tác động, không kể lại diff.
+Soạn ghi chú phát hành từ các pull request đã gộp kể từ tag gần nhất. Người dùng thấy ngay điều gì đổi với họ. Mỗi dòng nêu tác động, không kể lại diff.
 
 ## Bước
 

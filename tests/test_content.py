@@ -27,6 +27,10 @@ EXPORT_EVAL_KEYS = {"id", "prompt", "expected_output", "files", "assertions"}
 ALLOWED_URL_RE = re.compile(r"https://(platform\.claude\.com|code\.claude\.com|agentskills\.io)/")
 ANY_URL_RE = re.compile(r"https?://[^\s)\]\"'`,;]+")
 INTERNAL_TAG = unicodedata.normalize("NFC", "[nội bộ]")
+# Mã mà validator phải báo cho Bad của các cặp đã chốt (Bad cô lập đúng lỗi chính của cặp):
+# cặp 1 mơ hồ không có "Use when" -> DS3; cặp 2 ngôi thứ nhất -> DS2; cặp 3 cụm kích hoạt quá muộn -> DS4;
+# cặp 4 (thiếu phạm vi âm) và cặp 5 (chữ ép buộc) không vấp mã DS nào.
+EXPECTED_BAD_CODES = {1: ["DS3"], 2: ["DS2"], 3: ["DS4"], 4: [], 5: []}
 VI_BODY = "Đọc yêu cầu của người dùng, rồi làm từng bước và kiểm lại kết quả trước khi báo xong."
 
 
@@ -97,6 +101,20 @@ def json_block(lines: list) -> dict:
     return json.loads(match.group(1))
 
 
+def expected_export(skill_name: str, cases: list) -> dict:
+    """Agentskills export that SPEC 9.6 prescribes for parsed cases.json cases (should_trigger true only, ids 1..n)."""
+    evals = []
+    for case in (c for c in cases if c["should_trigger"]):
+        evals.append({
+            "id": len(evals) + 1,
+            "prompt": case["prompt"],
+            "expected_output": "; ".join(case["expected_behaviors"]),
+            "files": ["evals/files/" + Path(rel).name for rel in case["fixtures"]],
+            "assertions": list(case["expected_behaviors"]),
+        })
+    return {"skill_name": skill_name, "evals": evals}
+
+
 def skill_body(path: Path) -> str:
     text = read(path / "SKILL.md")
     _meta, _findings, body_start = studio.parse_frontmatter(text, path / "SKILL.md")
@@ -118,6 +136,13 @@ class ContentKitTests(unittest.TestCase):
                 bad_codes = [f["code"] for f in findings if f["code"].startswith("DS") or f["code"] == "VI4"]
                 self.assertEqual([], bad_codes, "Pair %d Good vấp %s" % (pair["n"], bad_codes))
                 self.assertNotEqual(good, bad)
+                bad_findings = [f["code"] for f in validate_description(bad, Path(t))]
+                if pair["n"] in EXPECTED_BAD_CODES:
+                    self.assertEqual(EXPECTED_BAD_CODES[pair["n"]], bad_findings, "Pair %d Bad must show exactly its own error" % pair["n"])
+                if pair["n"] == 5:
+                    self.assertRegex(bad, studio.FORCE_RE, "Pair 5 Bad must carry the forcing words")
+                if pair["n"] == 4:
+                    self.assertNotRegex(bad, r"(?i)(?:^|[^a-z])not for(?:[^a-z]|$)", "Pair 4 Bad must keep the near-miss gap (no 'not for')")
                 if pair["n"] == 3:
                     self.assertGreaterEqual(len(bad), 600)
                     self.assertGreaterEqual(studio.TRIGGER_RE.search(bad).start(), 600, "Bad trigger must sit after 600 chars")
@@ -152,9 +177,9 @@ class ContentKitTests(unittest.TestCase):
         self.assertIsNotNone(marker, "eval-cases.md needs a '## Agentskills export' section")
         exported = json_block(text[marker.end():].splitlines())
         self.assertEqual({"skill_name", "evals"}, set(exported))
-        self.assertEqual(sum(1 for c in parsed if c["should_trigger"]), len(exported["evals"]))
         for item in exported["evals"]:
             self.assertEqual(EXPORT_EVAL_KEYS, set(item))
+        self.assertEqual(expected_export("writing-commit-messages", parsed), exported)
         # exemplars
         self.assertTrue((EXEMPLAR / "SKILL.md").is_file())
         self.assertTrue((EXEMPLAR_VI / "SKILL.md").is_file())
