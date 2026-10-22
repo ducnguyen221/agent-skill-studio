@@ -23,37 +23,37 @@
       {
         "line": 45,
         "tool": "Bash",
-        "match": "python3 \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" new --help"
+        "match": "python3 \"~/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" new --help"
       },
       {
         "line": 74,
         "tool": "Bash",
-        "match": "py \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" new weekly-sales-reconciliation --description \"Reconci"
+        "match": "py \"~/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" new weekly-sales-reconciliation --description \"Reconci"
       },
       {
         "line": 131,
         "tool": "Bash",
-        "match": "py \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" validate ./skills/weekly-sales-reconciliation"
+        "match": "py \"~/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" validate ./skills/weekly-sales-reconciliation"
       },
       {
         "line": 133,
         "tool": "Bash",
-        "match": "py \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" evals --help"
+        "match": "py \"~/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" evals --help"
       },
       {
         "line": 141,
         "tool": "Bash",
-        "match": "py \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" evals weekly-sales-reconciliation --eval-root ./evals"
+        "match": "py \"~/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" evals weekly-sales-reconciliation --eval-root ./evals"
       },
       {
         "line": 194,
         "tool": "Bash",
-        "match": "py \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" evals weekly-sales-reconciliation --eval-root ./evals"
+        "match": "py \"~/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" evals weekly-sales-reconciliation --eval-root ./evals"
       },
       {
         "line": 196,
         "tool": "Bash",
-        "match": "py \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" validate ./skills/weekly-sales-reconciliation --requir"
+        "match": "py \"~/OpcOS/workspaces/spr-33-eval/plugin/skills/skill-creator-studio/scripts/studio.py\" validate ./skills/weekly-sales-reconciliation --requir"
       }
     ],
     "count_on_filtered_copy_equal": true,

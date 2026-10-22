@@ -16,7 +16,7 @@
         "line": 61,
         "tool": "Read",
         "via": "read-SKILL.md",
-        "match": "C:\\Users\\DucNguyen\\OpcOS\\workspaces\\spr-33-eval\\plugin\\skills\\skill-creator-studio\\SKILL.md"
+        "match": "~\\OpcOS\\workspaces\\spr-33-eval\\plugin\\skills\\skill-creator-studio\\SKILL.md"
       }
     ],
     "scripts": [],

@@ -23,12 +23,12 @@
       {
         "line": 54,
         "tool": "PowerShell",
-        "match": "python -I \"C:\\Users\\DucNguyen\\OpcOS\\workspaces\\spr-33-eval\\plugin\\skills\\data-quality-audit\\scripts\\validate_csv.py\" --file fixtures\\missing_column.csv --requir"
+        "match": "python -I \"~\\OpcOS\\workspaces\\spr-33-eval\\plugin\\skills\\data-quality-audit\\scripts\\validate_csv.py\" --file fixtures\\missing_column.csv --requir"
       },
       {
         "line": 74,
         "tool": "Bash",
-        "match": "python -I \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/data-quality-audit/scripts/validate_csv.py\" --file fixtures/missing_column.csv --requir"
+        "match": "python -I \"~/OpcOS/workspaces/spr-33-eval/plugin/skills/data-quality-audit/scripts/validate_csv.py\" --file fixtures/missing_column.csv --requir"
       }
     ],
     "count_on_filtered_copy_equal": true,

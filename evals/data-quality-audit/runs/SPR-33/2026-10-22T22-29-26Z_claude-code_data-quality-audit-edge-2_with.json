@@ -23,7 +23,7 @@
       {
         "line": 59,
         "tool": "Bash",
-        "match": "python -I \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/data-quality-audit/scripts/validate_csv.py\" --file \"C:/Users/DucNguyen/OpcOS/workspaces"
+        "match": "python -I \"~/OpcOS/workspaces/spr-33-eval/plugin/skills/data-quality-audit/scripts/validate_csv.py\" --file \"~/OpcOS/workspaces"
       }
     ],
     "count_on_filtered_copy_equal": true,

@@ -89,6 +89,14 @@ Giữ các khoá mẫu cũ và thêm: `pair_id` (`<skill>/<case-id>/<runtime>`),
 `status` ∈ `ran` | `not_run` | `contaminated` | `invalid-version` | `invalid-model`. Transcript đầy đủ không nằm trong repo này mà ở hồ sơ sprint
 của OpcOS; log chỉ giữ `hits` và băm.
 
+Lô SPR-33 ghi thêm năm khoá (đọc được từ log mẫu; `activation.py verify|summarize` không dùng chúng):
+
+- `should_trigger`: kỳ vọng của bộ câu (`true` cho câu dương, `false` cho câu âm/near-miss), chép từ `cases.json`; so với `triggered` để tính dương/âm.
+- `loading_mode`: cách skill vào phiên; `plugin-dir` = nạp bằng `--plugin-dir` từ cây `git archive` đã chốt (không dùng plugin cài sẵn của máy).
+- `plugin_dir`: nguồn của cây plugin đó (thư mục thử và commit đã archive, `autocrlf=false`), viết dạng tương đối hoặc `~`, không đường tuyệt đối của máy.
+- `session_id`: mã phiên `claude -p` (tên transcript `<session_id>.jsonl`); khi chạy không qua cầu A2A thì `ledger_id = session_id`.
+- `not_run_reason`: lý do khi `status` khác `ran` (ví dụ chạm giới hạn phiên); khoá chỉ xuất hiện ở phiên không chạy, nên 16/16 log SPR-33 (đều `ran`) không mang khoá này.
+
 ## Antigravity — đo trong IDE (bàn giao cho sprint riêng RQ-117)
 
 Cầu `ask-agy` (headless `--print`) không đo được kích hoạt: một lượt đo 17/10/2026 cho thấy (1) không có transcript (thư mục `brain/` không mọc thêm),
