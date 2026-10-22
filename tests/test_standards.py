@@ -57,6 +57,25 @@ def sk_blocks(text: str) -> dict:
     return blocks
 
 
+# Câu định nghĩa "không pass giả" cũ (file, chuỗi con nguyên văn) — SPR-33 TK5 đóng băng; phải biến khỏi tài liệu cấp repo.
+OLD_NO_FAKE_PASS: list[tuple[str, str]] = [
+    ("standards/EVALUATION_STANDARD.md",
+     "**Không** dùng một agent tự nhận đã pass nếu không có log/artefact."),
+    ("standards/EVALUATION_STANDARD.md",
+     "Nếu chưa chạy model, ghi `not_run` và không gọi production-tested."),
+    ("standards/EVALUATION_STANDARD.md",
+     "Giữ những trường `null` và `not_run` cho đến khi có test thật; **không tự điền score/pass**."),
+    ("standards/CORE_STANDARD.md",
+     "Kết quả chưa thực thi phải gắn `not_run`."),
+    ("README.md",
+     'Evals được phép ghi "not_run" nếu chưa thực thi, tuyệt đối không ghi pass giả.'),
+    ("evals/RUNBOOK.md",
+     "nếu không chạy được, ghi `not_run` thay vì giả kết quả."),
+    ("ECOSYSTEM.md",
+     "eval chưa chạy ghi `not_run`, không ghi pass giả."),
+]
+
+
 class StandardsTest(unittest.TestCase):
     def test_memo_v0_shape(self):
         p = STANDARDS_DIR / "MEMO-SKILL-V0.md"
@@ -130,6 +149,31 @@ class StandardsTest(unittest.TestCase):
         self.assertIn("SK-14", text)
         self.assertIn("SK-15", text)
         self.assertIn("hai tầng", text, "AUDIT_CHECKLIST needs the three cutting questions")
+
+    def test_no_fake_pass_defined_once(self):
+        md_files = [
+            f for f in ROOT_DIR.rglob("*.md")
+            if not any(part in (".git", ".tmp", ".worktrees", "dist", "runs") for part in f.relative_to(ROOT_DIR).parts)
+        ]
+        heading = re.compile(r"^## Không pass giả", re.M)
+        defining = sorted(
+            f.relative_to(ROOT_DIR).as_posix() for f in md_files
+            if heading.search(f.read_text(encoding="utf-8"))
+        )
+        self.assertEqual(
+            defining, ["standards/EVALUATION_STANDARD.md"],
+            "'## Không pass giả' must be defined exactly once, in EVALUATION_STANDARD.md; found in %s" % defining,
+        )
+        problems = []
+        for rel, old in OLD_NO_FAKE_PASS:
+            text = (ROOT_DIR / rel).read_text(encoding="utf-8")
+            if old in text:
+                problems.append("%s: old definition still present: %r" % (rel, old))
+        self.assertFalse(problems, "; ".join(problems))
+        # file đã thay câu định nghĩa phải có link tới mục duy nhất (đường tương đối theo vị trí file)
+        for rel in sorted({r for r, _ in OLD_NO_FAKE_PASS} - {"standards/EVALUATION_STANDARD.md"}):
+            text = (ROOT_DIR / rel).read_text(encoding="utf-8")
+            self.assertIn("EVALUATION_STANDARD.md#không-pass-giả-not_run", text, "%s lacks the link to the single definition" % rel)
 
 
 if __name__ == "__main__":

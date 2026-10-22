@@ -19,7 +19,7 @@ evals/<skill-name>/
 
 1. Chọn >=3 prompts thực tế: một typical, một edge, một negative trigger (không nên gọi Skill).
 2. Ghi expected behavior và criteria **trước** khi viết nội dung Skill dài.
-3. Chạy không Skill để có baseline, tốt nhất phiên mới; nếu không chạy được, ghi `not_run` thay vì giả kết quả.
+3. Chạy không Skill để có baseline, tốt nhất phiên mới; nếu không chạy được thì không bịa kết quả — định nghĩa: [Không pass giả](../standards/EVALUATION_STANDARD.md#không-pass-giả-not_run).
 
 ## Khi chạy với Claude, Codex hoặc AGY
 
