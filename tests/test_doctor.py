@@ -4,10 +4,12 @@ import contextlib
 import importlib.util
 import io
 import json
+import ntpath
 import os
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -57,6 +59,71 @@ def snapshot(base: Path):
 
 def codes_of(report, skill_name=None):
     return {c["code"] for s in report["skills"] if skill_name in (None, s["name"]) for c in s["codes"]}
+
+
+@contextlib.contextmanager
+def watching():
+    """Record every call that reaches the OS layer as (function, path, follows-links); used to prove a path was never touched."""
+    calls = []
+
+    def wrap(name, real):
+        def wrapper(path=".", *a, **k):
+            calls.append((name, "" if isinstance(path, int) else os.fspath(path), k.get("follow_symlinks", True)))
+            return real(path, *a, **k)
+        return wrapper
+
+    targets = [(os, n) for n in ("scandir", "listdir", "stat", "lstat", "readlink", "access")] + [(builtins, "open"), (io, "open")]
+    if hasattr(ntpath, "_getfinalpathname"):
+        targets.append((ntpath, "_getfinalpathname"))
+    with contextlib.ExitStack() as stack:
+        for owner, name in targets:
+            stack.enter_context(mock.patch.object(owner, name, wrap(name, getattr(owner, name))))
+        yield calls
+
+
+def norm(path) -> str:
+    return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+
+def is_under(path, base) -> bool:
+    return norm(path) == norm(base) or norm(path).startswith(norm(base) + os.sep)
+
+
+@contextlib.contextmanager
+def cloud_flagged(flags):
+    """os.scandir whose entries report the given Windows file attributes ({full path: attributes}), as OneDrive placeholders do."""
+    real = os.scandir
+    wanted = {norm(k): v for k, v in flags.items()}
+
+    class Entry:
+        def __init__(self, entry):
+            self._entry = entry
+
+        def __getattr__(self, name):
+            return getattr(self._entry, name)
+
+        def stat(self, *, follow_symlinks=True):
+            base = self._entry.stat(follow_symlinks=follow_symlinks)
+            fields = {k: getattr(base, k) for k in dir(base) if k.startswith("st_")}
+            fields["st_file_attributes"] = wanted[norm(self._entry.path)]
+            return types.SimpleNamespace(**fields)
+
+    class Scan:
+        def __init__(self, path):
+            self._inner = real(path)
+
+        def __enter__(self):
+            self._inner.__enter__()
+            return self
+
+        def __exit__(self, *exc):
+            return self._inner.__exit__(*exc)
+
+        def __iter__(self):
+            return (Entry(e) if norm(e.path) in wanted else e for e in self._inner)
+
+    with mock.patch.object(os, "scandir", Scan):
+        yield
 
 
 class DoctorTests(unittest.TestCase):
@@ -154,6 +221,7 @@ class DoctorTests(unittest.TestCase):
             trap_secret = make_skill(home / ".secret", "trap-secret")
             trap_cloud = make_skill(home / "proj" / "OneDrive - X", "trap-cloud")
             make_skill(home / "SharePoint-site", "trap-share")
+            make_skill(home / "proj" / ".secret", "trap-nested-secret")
             (trap_secret.parent / "token.json").write_bytes(b"{}")
             (ok / "auth.json").write_bytes(b"{}")  # secret-looking file inside a skill: never opened
             (ok / "references" / "OneDrive-copy").mkdir(parents=True)  # a folder named like a zone inside a skill: never entered
@@ -172,7 +240,7 @@ class DoctorTests(unittest.TestCase):
                     mock.patch.object(os, "listdir", watch(os.listdir)), mock.patch.object(os, "stat", watch(os.stat)), \
                     mock.patch.object(os, "lstat", watch(os.lstat)), mock.patch.object(builtins, "open", watch(builtins.open)), \
                     mock.patch.object(io, "open", watch(io.open)):
-                code, out, _ = run("--roots", ";".join(map(str, (home, home / ".secret", trap_cloud, absent_cloud))), "--json")
+                code, out, _ = run("--roots", ";".join(map(str, (home / "proj", home / ".secret", home / "SharePoint-site", trap_cloud, absent_cloud))), "--json")
             report = json.loads(out)
             self.assertEqual(code, 0, out)
             self.assertEqual([s["name"] for s in report["skills"]], ["fine-skill"])
@@ -181,7 +249,7 @@ class DoctorTests(unittest.TestCase):
             self.assertIn(("OneDrive - X", "cloud"), reasons)
             self.assertIn(("OneDrive - Y", "cloud"), reasons)
             self.assertIn(("SharePoint-site", "cloud"), reasons)
-            for hidden in ("trap-secret", "trap-cloud", "trap-share"):
+            for hidden in ("trap-secret", "trap-cloud", "trap-share", "trap-nested-secret"):
                 self.assertNotIn(hidden, json.dumps(report["skills"]))
             self.assertTrue(touched, "the access watcher saw nothing; the test would prove nothing")
             for path in touched:
@@ -279,8 +347,31 @@ class DoctorTests(unittest.TestCase):
         before = snapshot(FIX)
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "report.json"
-            code, stdout, _ = run("--roots", str(FIX), "--json", "--out", str(out))
+            written, mutated = [], []
+            real_open = builtins.open
+
+            def spy_open(path, mode="r", *a, **k):
+                if isinstance(path, (str, os.PathLike)) and any(c in mode for c in "wax+"):
+                    written.append(os.path.normcase(os.path.abspath(os.fspath(path))))
+                return real_open(path, mode, *a, **k)
+
+            def spy_mut(name):
+                real = getattr(os, name)
+
+                def wrapper(*a, **k):
+                    mutated.append(name)
+                    return real(*a, **k)
+                return wrapper
+
+            patches = [mock.patch.object(builtins, "open", spy_open), mock.patch.object(io, "open", spy_open)]
+            patches += [mock.patch.object(os, n, spy_mut(n)) for n in ("mkdir", "makedirs", "remove", "unlink", "rename", "replace", "rmdir", "utime", "chmod")]
+            with contextlib.ExitStack() as stack:
+                for p in patches:
+                    stack.enter_context(p)
+                code, stdout, _ = run("--roots", str(FIX), "--json", "--out", str(out))
             self.assertEqual(code, 1)
+            self.assertEqual(written, [os.path.normcase(os.path.abspath(out))], "doctor opened something for writing besides --out")
+            self.assertEqual(mutated, [], "doctor created, removed, renamed or re-stamped something")
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["report.json"])
             self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["schema"], 1)
             self.assertNotIn('"schema"', stdout, "with --out the JSON goes to the file, stdout keeps a summary")
@@ -390,6 +481,326 @@ class DoctorTests(unittest.TestCase):
         self.assertEqual(subprocess.run(cmd + ["--roots", str(ROOT / "content" / "exemplar")], env=env, capture_output=True).returncode, 0)
         self.assertEqual(subprocess.run(cmd + ["--roots", str(FIX)], env=env, capture_output=True).returncode, 1)
         self.assertEqual(subprocess.run(cmd + ["--roots", str(ROOT / ".tmp" / "khong-co")], env=env, capture_output=True).returncode, 2)
+
+
+CHILD = (
+    "import sys, importlib.util, tempfile, time\n"
+    "from pathlib import Path\n"
+    "spec = importlib.util.spec_from_file_location('s', sys.argv[1]); s = importlib.util.module_from_spec(spec); spec.loader.exec_module(s)\n"
+    "head = '---\\nname: bench\\ndescription: Bench. Use when benching.\\n%s---\\n\\n# T\\n\\n'\n"
+    "vi = 'Xin chào các bạn. '\n"
+    "cases = {\n"
+    "  'brackets': ('[' * 100000, ''),\n"
+    "  'comments': ('<!--' * 25000, ''),\n"
+    "  'emptylinks': ('[](' * 33000, ''),\n"
+    "  'meta': (vi * 30 + '\\n', 'metadata:\\n' + ''.join('  k%d: v\\n' % i for i in range(20000))),\n"
+    "  'vi_lines': ('Xin chào.\\n' * 40000, ''),\n"
+    "  'many_links': ('[x](a)\\n' * 60000, ''),\n"
+    "  'one_line_links': ('[](a)' * 100000, ''),\n"
+    "  'backticks': ('`' * 100000, ''),\n"
+    "}\n"
+    "body, extra = cases[sys.argv[2]]\n"
+    "with tempfile.TemporaryDirectory() as t:\n"
+    "    d = Path(t) / 'bench'; d.mkdir()\n"
+    "    (d / 'SKILL.md').write_bytes((head % extra + body).encode('utf-8'))\n"
+    "    start = time.perf_counter(); s.validate_skill(d); print('%.3f' % (time.perf_counter() - start))\n"
+)
+
+
+class DoctorHardeningTests(unittest.TestCase):
+    """SPR-33 TK9 round 2: the review of the first doctor found it could read what it must not (RK15) and be made to spin."""
+
+    def test_doctor_skips_cloud_attribute_entries(self):
+        for bit in (0x40000, 0x400000, 0x1000, 0x80000, 0x100000):  # RECALL_ON_OPEN, RECALL_ON_DATA_ACCESS, OFFLINE, PINNED, UNPINNED
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve() / "root"
+                ok = make_skill(root, "ok-skill")
+                (ok / "references").mkdir()
+                (ok / "references" / "placeholder.md").write_bytes(b"line\n" * 300)  # would be an ST5 ERROR if it were read
+                (ok / "references" / "sub").mkdir()
+                (ok / "references" / "sub" / "deep.md").write_bytes(b"line\n" * 300)
+                make_skill(root / "KPIM Joint Stock Company", "trap-dir")
+                make_skill(root, "trap-manifest")
+                flags = {root / "KPIM Joint Stock Company": bit, root / "trap-manifest" / "SKILL.md": bit,
+                         ok / "references" / "placeholder.md": bit, ok / "references" / "sub": bit}
+                with mock.patch.object(studio, "CLOUD_ATTRS_AVAILABLE", True), cloud_flagged(flags), watching() as calls:
+                    code, out, err = run("--roots", str(root), "--json")
+                report = json.loads(out)
+                self.assertEqual(code, 0, (hex(bit), out, err))
+                self.assertEqual([s["name"] for s in report["skills"]], ["ok-skill"], hex(bit))
+                reasons = {(Path(s["path"]).name, s["reason"]) for s in report["skipped"]}
+                self.assertIn(("KPIM Joint Stock Company", "cloud"), reasons, hex(bit))
+                self.assertIn(("trap-manifest", "cloud"), reasons, hex(bit))
+                codes = [c["code"] for c in report["skills"][0]["codes"]]
+                self.assertNotIn("ST5", codes, "a cloud placeholder reference must not be read")
+                self.assertIn("SZ2", codes)
+                for _, path, _ in calls:
+                    low = path.replace("\\", "/").lower()
+                    self.assertFalse(low.endswith(("trap-manifest/skill.md", "/placeholder.md", "/sub/deep.md", "/sub")), (hex(bit), path))
+                    self.assertNotIn("/trap-dir", low, (hex(bit), path))
+
+    def test_doctor_refuses_roots_that_are_too_broad(self):
+        scans = []
+        real_scandir = os.scandir
+
+        def spy(path):
+            scans.append(os.fspath(path))
+            return real_scandir(path)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp).resolve() / "people" / "home"
+            make_skill(home / "proj", "fine-skill")
+            with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}), mock.patch.object(os, "scandir", spy):
+                for broad in (home, home.parent, home.parent.parent, Path(home.anchor)):
+                    code, out, err = run("--roots", str(broad), "--json")
+                    self.assertEqual((code, out), (2, ""), str(broad))
+                    self.assertIn("too broad", err, str(broad))
+                listing = Path(tmp) / "roots.txt"
+                listing.write_text("%s\n%s\n" % (home / "proj", home), encoding="utf-8")
+                self.assertEqual(run("--roots-file", str(listing))[0], 2)
+                self.assertEqual(run("--roots", "%s;%s" % (home / "proj", home))[0], 2)
+                self.assertEqual(scans, [], "a refused run must not list anything")
+                self.assertEqual(run("--roots", str(home / "proj"))[0], 0)
+            if os.name == "nt":  # a drive that is not the home drive: only the "is a root" rule can refuse it
+                with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
+                    self.assertTrue(studio.root_too_broad("Z:\\") and studio.root_too_broad("\\\\tk9-nohost.invalid\\share"))
+                    self.assertFalse(studio.root_too_broad("Z:\\work"))
+            with mock.patch.object(os, "scandir", spy):
+                scans.clear()
+                self.assertEqual(run("--roots", str(Path.home()))[0], 2, "the real home folder is a root that is too broad")
+                self.assertEqual(scans, [])
+
+    def test_doctor_skip_marker_names_extra_cloud_folders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "root"
+            make_skill(root, "ok-skill")
+            make_skill(root / "Acme Sync Folder" / "team", "trap-one")
+            make_skill(root / "other-share", "trap-two")
+            plain = json.loads(run("--roots", str(root), "--json")[1])
+            self.assertEqual(sorted(s["name"] for s in plain["skills"]), ["ok-skill", "trap-one", "trap-two"], "without a marker nothing is guessed")
+            code, out, _ = run("--roots", str(root), "--json", "--skip-marker", "acme sync", "--skip-marker", "OTHER-share")
+            report = json.loads(out)
+            self.assertEqual((code, [s["name"] for s in report["skills"]]), (0, ["ok-skill"]))
+            self.assertEqual({(Path(s["path"]).name, s["reason"]) for s in report["skipped"]}, {("Acme Sync Folder", "cloud"), ("other-share", "cloud")})
+            with watching() as calls:
+                run("--roots", str(root), "--json", "--skip-marker", "Acme Sync")
+            self.assertFalse([p for _, p, _ in calls if "trap-one" in p or p.endswith("team")], "a marked folder is not entered")
+            code, _, err = run("--roots", str(root), "--skip-marker", "  ")
+            self.assertEqual(code, 2)
+            self.assertIn("--skip-marker", err)
+            code, out, _ = run("--roots", str(root / "Acme Sync Folder"), "--json", "--skip-marker", "acme sync")
+            self.assertEqual((json.loads(out)["skills"], [s["reason"] for s in json.loads(out)["skipped"]]), ([], ["cloud"]), "a marked root is skipped whole")
+
+    def test_doctor_does_not_follow_junctions_inside_a_skill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp).resolve() / "home"
+            secret = home / ".secret"
+            secret.mkdir(parents=True)
+            (secret / "CANARY-SECRET-NAME.md").write_bytes(b"line\n" * 300)
+            (secret / "CANARY-SECRET-RUN.py").write_bytes(b"print(1)\n")
+            sk = make_skill(home / "work", "linked-skill")
+            (sk / "SKILL.md").write_bytes((sk / "SKILL.md").read_bytes() + b"\nRun [it](scripts/run.py).\n")
+            make_dir_link(self, sk / "scripts", secret)
+            make_dir_link(self, sk / "references", secret)
+            with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}), watching() as calls:
+                code, out, err = run("--roots", str(home / "work"), "--json")
+            self.assertEqual(code, 1, (out, err))
+            report = json.loads(out)
+            self.assertNotIn("CANARY", out + err, "nothing from behind the junction may reach the report")
+            sec = {c["file"] for s in report["skills"] for c in s["codes"] if c["code"] == "SEC"}
+            self.assertTrue({"scripts", "references"} <= sec, sec)
+            self.assertIn("ST6", {c["code"] for s in report["skills"] for c in s["codes"]}, "a link through a junction is refused, not resolved")
+            for name, path, follow in calls:
+                for link in (sk / "scripts", sk / "references"):
+                    if is_under(path, link):
+                        self.assertTrue(norm(path) == norm(link) and name == "lstat" or (name == "stat" and not follow and norm(path) == norm(link)),
+                                        "%s touched %s" % (name, path))
+                self.assertNotIn(".secret", path.lower(), "%s reached the secret folder: %s" % (name, path))
+
+    def test_doctor_never_opens_unc_or_absolute_links(self):
+        links = ["//tk9-nohost.invalid/share/a.md", "\\\\tk9-nohost.invalid\\share\\b.md", "file://tk9-nohost.invalid/c.md",
+                 "smb://tk9-nohost.invalid/d.md", "C:/tk9-absolute/e.md", "/tk9-absolute/f.md"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "root"
+            sk = make_skill(root, "linker")
+            (sk / "SKILL.md").write_bytes((sk / "SKILL.md").read_bytes() + b"\n" + b"\n".join(b"See [x](%s)." % x.encode() for x in links) + b"\n")
+            for extra in ([], ["--profile", "opcos"]):
+                with watching() as calls:
+                    code, out, err = run("--roots", str(root), "--json", *extra)
+                self.assertEqual(code, 1, (extra, out, err))
+                st6 = [c for s in json.loads(out)["skills"] for c in s["codes"] if c["code"] == "ST6"]
+                self.assertEqual([c["level"] for c in st6], ["ERROR"] * len(links), extra)
+                self.assertTrue(all("not opened" in c["message"] for c in st6), st6)
+                for name, path, _ in calls:
+                    low = path.replace("\\", "/").lower()
+                    self.assertNotIn("tk9-nohost", low, (extra, name, path))
+                    self.assertNotIn("tk9-absolute", low, (extra, name, path))
+            code, out, _ = run("--roots", str(root), "--json", "--profile", "opcos")
+            plain = studio.validate_skill(sk, profile="opcos", allow_links_under=root)
+            self.assertEqual(len([f for f in plain if f["code"] == "ST6"]), len(links), "an absolute link is an ERROR even where the scanned root would allow a link")
+
+    def test_doctor_does_not_echo_secret_file_content(self):
+        canary = "CANARY-TOKEN-9f3a"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            dotenv = tmp / ".env"
+            dotenv.write_text("API_KEY=%s\n" % canary, encoding="utf-8")
+            auth = tmp / "auth.json"
+            auth.write_text('{"token": "%s"}' % canary, encoding="utf-8")
+            for argv in (["--roots-file", str(dotenv)], ["--baseline", str(dotenv)], ["--baseline", str(auth)],
+                         ["--roots", CLEAN_ROOTS, "--baseline", str(dotenv)], ["--roots-file", str(tmp / "x.credentials.json")]):
+                with watching() as calls:
+                    code, out, err = run(*argv)
+                self.assertEqual(code, 2, argv)
+                self.assertNotIn(canary, out + err, argv)
+                self.assertFalse([p for _, p, _ in calls if p.endswith((".env", "auth.json", "x.credentials.json"))], ("opened", argv))
+            listing = tmp / "roots.txt"
+            listing.write_text("# comment\n%s\n" % canary, encoding="utf-8")
+            code, out, err = run("--roots-file", str(listing))
+            self.assertEqual(code, 2)
+            self.assertNotIn(canary, out + err, "the message names the line number, not the line")
+            self.assertRegex(err, r"line 2")
+            binary = tmp / "roots.bin"
+            binary.write_bytes(b"\x97" + canary.encode())
+            code, out, err = run("--roots-file", str(binary))
+            self.assertEqual(code, 2)
+            self.assertNotIn(canary, out + err)
+
+    def test_doctor_out_refuses_sensitive_names_and_foreign_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            keep = {}
+            for name in (".env", ".env.local", "auth.json", "server.pem", "id.key", "x.credentials.json", "notes.txt", "README.md"):
+                keep[name] = tmp / name
+                keep[name].write_bytes(b"KEEP-ME")
+            for name, path in keep.items():
+                code, _, err = run("--roots", CLEAN_ROOTS, "--out", str(path))
+                self.assertEqual(code, 2, name)
+                self.assertEqual(path.read_bytes(), b"KEEP-ME", "%s was overwritten" % name)
+            old = tmp / "old-report.json"
+            old.write_bytes(b"{}")
+            self.assertEqual(run("--roots", CLEAN_ROOTS, "--out", str(old))[0], 0)
+            self.assertEqual(json.loads(old.read_text(encoding="utf-8"))["schema"], 1, "an earlier .json report may be replaced")
+            self.assertEqual(run("--roots", CLEAN_ROOTS, "--out", str(tmp / "fresh.txt"))[0], 0, "a new file may have any name")
+
+    def test_doctor_out_may_sit_under_a_folder_the_scan_skips(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plugins = Path(tmp).resolve() / "plugins"
+            make_skill(plugins / "studio" / "skills", "x")
+            make_skill(plugins, "solo")
+            for sub in (("studio", ".worktrees", "spr", ".tmp"), ("studio", ".tmp"), ("keep-cache",), ("other",)):
+                (plugins.joinpath(*sub)).mkdir(parents=True)
+            fine = plugins / "studio" / ".worktrees" / "spr" / ".tmp" / "x.json"
+            self.assertEqual(run("--roots", str(plugins), "--out", str(fine))[0], 0)
+            self.assertTrue(fine.is_file())
+            self.assertEqual(run("--roots", str(plugins), "--out", str(plugins / "studio" / ".tmp" / "x.json"))[0], 0)
+            self.assertEqual(run("--roots", str(plugins), "--out", str(plugins / "keep-cache" / "x.json"))[0], 0)
+            for bad in (plugins / "studio" / "skills" / "x" / "r.json", plugins / "other" / "r.json", plugins / "solo" / "r.json"):
+                code, _, err = run("--roots", str(plugins), "--out", str(bad))
+                self.assertEqual(code, 2, str(bad))
+                self.assertFalse(bad.exists(), str(bad))
+            (plugins / "solo" / ".tmp").mkdir()
+            self.assertEqual(run("--roots", str(plugins), "--out", str(plugins / "solo" / ".tmp" / "r.json"))[0], 2, "still inside a skill that is scanned")
+            self.assertEqual(run("--roots", str(plugins), "--include-cache", "--out", str(plugins / "keep-cache" / "y.json"))[0], 2, "--include-cache scans that folder")
+
+    def test_doctor_size_cap_skips_oversized_files(self):
+        cap = 2000
+        with mock.patch.object(studio, "DOCTOR_MAX_FILE_BYTES", cap), tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "root"
+            big_ref = make_skill(root, "big-ref")
+            (big_ref / "references").mkdir()
+            (big_ref / "references" / "BIG.md").write_bytes(b"line\n" * 1000)  # 5000 B: ST5 if it were read
+            (big_ref / "references" / "small.md").write_bytes(b"ok\n")
+            big_manifest = make_skill(root, "big-manifest")
+            (big_manifest / "SKILL.md").write_bytes((big_manifest / "SKILL.md").read_bytes() + b"padding line\n" * 400)
+            reads = []
+            real_open = builtins.open
+
+            class Proxy:
+                def __init__(self, handle, path):
+                    self._h, self._p = handle, path
+
+                def __getattr__(self, name):
+                    return getattr(self._h, name)
+
+                def __enter__(self):
+                    self._h.__enter__()
+                    return self
+
+                def __exit__(self, *exc):
+                    return self._h.__exit__(*exc)
+
+                def read(self, size=-1, *a):
+                    reads.append((self._p, size))
+                    return self._h.read(size, *a)
+
+            def spy(path, *a, **k):
+                handle = real_open(path, *a, **k)
+                return Proxy(handle, os.fspath(path)) if isinstance(path, (str, os.PathLike)) and os.fspath(path).endswith(("BIG.md", "SKILL.md")) else handle
+
+            with mock.patch.object(builtins, "open", spy), mock.patch.object(io, "open", spy):
+                code, out, err = run("--roots", str(root), "--json")
+            report = json.loads(out)
+            self.assertEqual(code, 0, (out, err))
+            by_name = {s["name"]: s for s in report["skills"]}
+            ref_codes = [(c["code"], c["level"], c["file"]) for c in by_name["big-ref"]["codes"]]
+            self.assertIn(("SZ1", "WARN", "references/BIG.md"), ref_codes)
+            self.assertNotIn("ST5", [c[0] for c in ref_codes])
+            man_codes = [(c["code"], c["level"], c["file"]) for c in by_name["big-manifest"]["codes"]]
+            self.assertEqual(man_codes, [("SZ1", "WARN", "SKILL.md")], "an oversized SKILL.md is not linted")
+            limited = {Path(s["path"]).name for s in report["skipped"] if s["reason"] == "limit"}
+            self.assertEqual(limited, {"BIG.md", "SKILL.md"})
+            big_reads = [(p, n) for p, n in reads if p.endswith("BIG.md") or "big-manifest" in p]
+            self.assertTrue(big_reads)
+            for path, size in big_reads:
+                self.assertTrue(isinstance(size, int) and 0 < size <= cap + 1, "read(%r) on %s would load the whole file" % (size, path))
+            # without a cap (plain validate) behaviour is unchanged
+            self.assertIn("ST5", [f["code"] for f in studio.validate_skill(big_ref)])
+
+    def test_validate_skill_is_fast_on_hostile_bodies(self):
+        for case in ("brackets", "comments", "emptylinks", "meta", "vi_lines", "many_links", "one_line_links", "backticks"):
+            try:
+                done = subprocess.run([sys.executable, "-X", "utf8", "-c", CHILD, str(ROOT / "studio.py"), case], capture_output=True, text=True, timeout=30)
+            except subprocess.TimeoutExpired:
+                self.fail("%s: validate_skill still running after 30 s" % case)
+            self.assertEqual(done.returncode, 0, (case, done.stderr[-300:]))
+            self.assertLess(float(done.stdout.strip()), 5.0, "%s took %s s" % (case, done.stdout.strip()))
+
+    def test_strip_html_comments_matches_the_regex_it_replaced(self):
+        import random
+        import re
+        rng = random.Random(7)
+        pieces = ["<!--", "-->", "x", " ", "\n", "-", ">", "!", "<", "--"]
+        for _ in range(4000):
+            sample = "".join(rng.choice(pieces) for _ in range(rng.randint(0, 14)))
+            self.assertEqual(studio.strip_html_comments(sample), re.sub(r"<!--.*?-->", " ", sample), repr(sample))
+            self.assertEqual(studio.strip_html_comments(sample, "#"), re.sub(r"<!--.*?-->", "#", sample), repr(sample))
+
+    def test_zone_reason_secret_branches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            (tmp / "real" / "home").mkdir(parents=True)
+            alias = tmp / "alias"
+            make_dir_link(self, alias, tmp / "real" / "home")
+            studio._secret_dirs.cache_clear()
+            with mock.patch.dict(os.environ, {"HOME": str(alias), "USERPROFILE": str(alias)}):
+                try:
+                    self.assertEqual(studio.zone_reason(tmp / "elsewhere" / ".secret" / "k.json"), "secret-zone", "a .secret folder outside HOME")
+                    self.assertEqual(studio.zone_reason(tmp / "elsewhere" / ".SECRET" / "k.json"), "secret-zone", "case does not matter on any platform")
+                    self.assertEqual(studio.zone_reason(alias / ".secret" / "k.json"), "secret-zone", "HOME spelled through the link")
+                    self.assertEqual(studio.zone_reason(tmp / "real" / "home" / ".secret"), "secret-zone", "HOME spelled by its real path")
+                    self.assertIsNone(studio.zone_reason(tmp / "real" / "home" / "work"))
+                finally:
+                    studio._secret_dirs.cache_clear()
+
+    def test_doctor_st3_counts_bytes_not_characters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sk = make_skill(Path(tmp), "wide-body")
+            (sk / "SKILL.md").write_bytes((sk / "SKILL.md").read_bytes() + ("é" * 5000).encode("utf-8"))  # ~5 000 characters, ~10 000 bytes
+            self.assertEqual([f["level"] for f in studio.validate_skill(sk) if f["code"] == "ST3"], ["WARN"])
+            narrow = make_skill(Path(tmp), "narrow-body")
+            (narrow / "SKILL.md").write_bytes((narrow / "SKILL.md").read_bytes() + b"x" * 7000)
+            self.assertEqual([f for f in studio.validate_skill(narrow) if f["code"] == "ST3"], [])
 
 
 if __name__ == "__main__":

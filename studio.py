@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import bisect
 import functools
 import hashlib
 import json
@@ -38,11 +39,10 @@ FORCE_RE = re.compile(r"\b(MUST|NEVER|ALWAYS|CRITICAL)\b")
 REASON_RE = re.compile(r"\b(because|since|so that|otherwise|to avoid|in order to|vì|để|nếu không)\b", re.IGNORECASE)
 STRICT_OPEN, STRICT_CLOSE = "<!-- studio:strict -->", "<!-- /studio:strict -->"
 CONTENTS_RE = re.compile(r"^##\s+(Table of Contents|Contents|Mục lục)\s*$", re.IGNORECASE)
-MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")  # [text](target) -> text
+MD_LINK_RE = re.compile(r"\[([^\[\]]*)\]\([^()]*\)")  # [text](target) -> text; no nested brackets or parens, so a line of "[" stays linear
 FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 CODE_SPAN_RE = re.compile(r"(`+).+?\1")
 URL_RE = re.compile(r"https?://\S+")
-HTML_COMMENT_RE = re.compile(r"<!--.*?-->")
 LIST_ITEM_RE = re.compile(r"^\s*([-*+]|\d+[.)])\s")
 CONTENTS_MAX = 12
 CONTENTS_WINDOW = 25  # Contents must start within the first 25 lines of the reference / body
@@ -64,7 +64,8 @@ SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+")
 SENTENCE_ABBREV_RE = re.compile(r"\b(e\.g|i\.e)\.")
 TRIGGER_RE = re.compile(r"(?i)\b(use when|when to use|used when|for tasks involving)\b")
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+LINK_RE = re.compile(r"\[[^\[\]\n]*\]\(([^()\n]+)\)")  # one line, no nested brackets or parens: linear on hostile input
+ABSOLUTE_LINK_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*:")  # a scheme (file:, smb:) or a drive letter (C:)
 FRONT_KEY_RE = re.compile(r"^([a-zA-Z][\w-]*):(?:\s+(.*))?$")
 META_KEY_RE = re.compile(r"^\s{2,}([\w.-]+):(?:\s+(.*))?$")
 SKIP_DIRS = {"__pycache__", ".git", ".venv", "evals", "tests", ".pytest_cache", ".mypy_cache"}
@@ -79,7 +80,10 @@ TEMPLATE_PAIRS = (("skill-template", "skill-template"), ("skill-template-full", 
 PROFILES = ("portable", "opcos")
 DOCTOR_EXCLUDE_PARTS = (".claude/skills", ".agents/skills", ".worktrees", ".claude/worktrees", "node_modules", ".tmp", "__pycache__")
 DOCTOR_PRUNE_SILENT = frozenset({".git", ".venv", ".pytest_cache", ".mypy_cache"})  # never skills, never worth a skipped[] line
-CLOUD_MARKERS = ("OneDrive", "SharePoint")
+CLOUD_MARKERS = ("OneDrive", "SharePoint")  # --skip-marker adds more: a synced folder need not carry either word
+# FILE_ATTRIBUTE_RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS | OFFLINE | PINNED | UNPINNED: a cloud placeholder, or a file the sync client manages; opening it can start a download
+CLOUD_ATTR_MASK = 0x40000 | 0x400000 | 0x1000 | 0x80000 | 0x100000
+CLOUD_ATTRS_AVAILABLE = os.name == "nt"  # st_file_attributes exists on Windows only
 ST8_ALLOWED_DIRS = frozenset({"references", "scripts", "assets", "agents", "tests"})
 OPCOS_PROVENANCE_KEYS = frozenset({"source", "source_sha", "base_sha", "rewrite_before_public"})
 CODEX_BODY_MAX_BYTES = 8000  # [codex 0.147]; standards/SOURCE_TRACEABILITY.md A16
@@ -88,6 +92,7 @@ DOCTOR_SCHEMA = 1
 DOCTOR_MAX_DEPTH = 12  # folder levels below a root
 DOCTOR_MAX_DIRS = 100000  # folders listed per run
 DOCTOR_MAX_SKILLS = 3000
+DOCTOR_MAX_FILE_BYTES = 1_000_000  # a SKILL.md or reference above this is not read (SZ1)
 
 
 def emit(level: str, code: str, path: Path, line: int, message: str) -> dict:
@@ -221,16 +226,16 @@ def valid_resolved_under(child: Path, parent: Path) -> bool:
 
 @functools.lru_cache(maxsize=8)
 def _secret_dirs(home: str) -> tuple:
-    """Normalized spellings of ~/.secret. Only `home` is resolved (a lstat chain up to it), never the secret folder."""
-    return (os.path.normcase(os.path.abspath(os.path.join(home, ".secret"))),
-            os.path.join(os.path.normcase(os.path.realpath(home)), ".secret"))
+    """Normalized, case-folded spellings of ~/.secret. Only `home` is resolved (a lstat chain up to it), never the secret folder."""
+    return (os.path.normcase(os.path.abspath(os.path.join(home, ".secret"))).casefold(),
+            os.path.join(os.path.normcase(os.path.realpath(home)), ".secret").casefold())
 
 
-def zone_reason(path) -> str | None:
-    """'cloud' for a path naming OneDrive/SharePoint, 'secret-zone' for ~/.secret or any folder called .secret, else None.
-    Compares strings only: it never stats, lists or opens `path` (RK15)."""
-    text = os.path.normcase(os.path.abspath(os.fspath(path)))
-    if any(marker.lower() in text.lower() for marker in CLOUD_MARKERS):
+def zone_reason(path, markers=CLOUD_MARKERS) -> str | None:
+    """'cloud' for a path naming one of `markers` (OneDrive, SharePoint and any --skip-marker; case-insensitive), 'secret-zone' for ~/.secret
+    or any folder called .secret (any case, any platform), else None. Compares strings only: it never stats, lists or opens `path` (RK15)."""
+    text = os.path.normcase(os.path.abspath(os.fspath(path))).casefold()
+    if any(marker.casefold() in text for marker in markers):
         return "cloud"
     if ".secret" in text.split(os.sep):
         return "secret-zone"
@@ -239,6 +244,85 @@ def zone_reason(path) -> str | None:
     except (RuntimeError, KeyError, OSError):
         return None
     return "secret-zone" if any(text == s or text.startswith(s + os.sep) for s in secrets) else None
+
+
+def entry_is_cloud(entry) -> bool:
+    """True when a directory entry carries Windows cloud attributes. DirEntry.stat(follow_symlinks=False) reads the listing, not the file."""
+    if not CLOUD_ATTRS_AVAILABLE:
+        return False
+    try:
+        return bool(getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0) & CLOUD_ATTR_MASK)
+    except OSError:
+        return False
+
+
+def path_is_cloud(path) -> bool:
+    """The same test for a path: one lstat (metadata only; it neither follows a link nor starts a download)."""
+    if not CLOUD_ATTRS_AVAILABLE:
+        return False
+    try:
+        return bool(getattr(os.lstat(path), "st_file_attributes", 0) & CLOUD_ATTR_MASK)
+    except OSError:
+        return False
+
+
+def root_too_broad(path) -> bool:
+    """True for a drive or filesystem root, the home folder, or any folder above it. Names only: nothing is stat-ed."""
+    text = os.path.normcase(os.path.abspath(os.fspath(path)))
+    if not os.path.splitdrive(text)[1].strip("\\/"):
+        return True
+    try:
+        home = os.path.normcase(os.path.abspath(str(Path.home())))
+        return os.path.commonpath([text, home]) == text
+    except (RuntimeError, KeyError, OSError, ValueError):
+        return False
+
+
+def link_crosses_link(base: Path, link: str) -> bool:
+    """True when walking `link` from `base` passes through a symlink or junction. One lstat per step; nothing is followed or resolved."""
+    current = Path(base)
+    for part in re.split(r"[\\/]+", link):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            current = current.parent
+        else:
+            current = current / part
+            if is_link(current):
+                return True
+    return False
+
+
+def read_capped(path, limit: int | None) -> tuple:
+    """(text, too_big). With a limit the file is read in binary up to limit+1 bytes and never further; newlines are folded as read_text does."""
+    if limit is None:
+        return Path(path).read_text(encoding="utf-8"), False
+    with open(path, "rb") as handle:
+        data = handle.read(limit + 1)
+    if len(data) > limit:
+        return None, True
+    return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n"), False
+
+
+def strip_html_comments(text: str, repl: str = " ") -> str:
+    """Replace each `<!-- ... -->` that opens and closes on one line, as re.sub(r"<!--.*?-->") did, but in linear time:
+    thousands of unclosed '<!--' made that regex quadratic."""
+    out, pos = [], 0
+    i = text.find("<!--")
+    while i != -1:
+        eol = text.find("\n", i + 4)
+        j = text.find("-->", i + 4, len(text) if eol == -1 else eol)
+        if j == -1:  # nothing closes on this line, so no later opener on it can either
+            if eol == -1:
+                break
+            i = text.find("<!--", eol + 1)
+            continue
+        out.append(text[pos:i])
+        out.append(repl)
+        pos = j + 3
+        i = text.find("<!--", pos)
+    out.append(text[pos:])
+    return "".join(out)
 
 
 def lexically_inside(path, base) -> bool:
@@ -256,17 +340,17 @@ def is_sensitive_name(name: str) -> bool:
     return low.startswith(".env") or low.endswith(".credentials.json") or low == "auth.json" or low.endswith((".pem", ".key"))
 
 
-def zone_named(name: str) -> bool:
-    """A single folder name that is a cloud/secret zone by itself (.secret, or one containing OneDrive/SharePoint)."""
-    low = name.lower()
-    return low == ".secret" or any(marker.lower() in low for marker in CLOUD_MARKERS)
+def zone_named(name: str, markers=CLOUD_MARKERS) -> bool:
+    """A single folder name that is a cloud/secret zone by itself (.secret, or one containing a marker such as OneDrive/SharePoint)."""
+    low = name.casefold()
+    return low == ".secret" or any(marker.casefold() in low for marker in markers)
 
 
-def walk_files(base: Path) -> tuple[list[Path], set, set]:
-    """(every file and folder under `base`, sorted; the symlinks and the real folders the listing itself reports).
-    A symlink or junction is listed but never entered, a folder named like a cloud/secret zone is listed but never entered
-    or stat-ed, and nothing else is stat-ed per entry except folders about to be entered."""
-    found, links, dirs, stack = [], set(), set(), [base]
+def walk_files(base: Path, markers=CLOUD_MARKERS) -> tuple[list[Path], set, set, set]:
+    """(every file and folder under `base`, sorted; the links, the real folders and the cloud placeholders the listing itself reports).
+    A symlink or junction (any reparse point) is listed as a link and never entered, a folder named like a cloud/secret zone and
+    anything carrying cloud attributes are listed but never entered or opened, and nothing else is stat-ed per entry except folders about to be entered."""
+    found, links, dirs, cloud, stack = [], set(), set(), set(), [base]
     while stack:
         current = stack.pop()
         try:
@@ -278,17 +362,23 @@ def walk_files(base: Path) -> tuple[list[Path], set, set]:
             path = Path(entry.path)
             found.append(path)
             try:
-                if entry.is_symlink():
+                if entry_is_cloud(entry):
+                    cloud.add(path)
+                    if entry.is_dir(follow_symlinks=False):
+                        dirs.add(path)
+                elif entry.is_symlink():
                     links.add(path)
                 elif entry.is_dir(follow_symlinks=False):
-                    if zone_named(entry.name):
+                    if zone_named(entry.name, markers):  # decided from the name: no stat, even for a link
                         dirs.add(path)
-                    elif not is_link(path):
+                    elif is_link(path):
+                        links.add(path)
+                    else:
                         dirs.add(path)
                         stack.append(path)
             except OSError:
                 continue
-    return sorted(found), links, dirs
+    return sorted(found), links, dirs, cloud
 
 
 def check_evals(folder: Path) -> list[dict]:
@@ -511,7 +601,7 @@ def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
         prev_blank = False
         if stripped.startswith("|"):
             continue
-        prose = HTML_COMMENT_RE.sub(" ", text)
+        prose = strip_html_comments(text)
         prose = CODE_SPAN_RE.sub(" ", prose)
         prose = MD_LINK_RE.sub(" ", prose)
         prose = URL_RE.sub(" ", prose)
@@ -563,7 +653,7 @@ def prose_lines(body: str) -> list[tuple[int, str]]:
         prev_blank = False
         if stripped.startswith("|") or VI_OK_MARK in text:
             continue
-        prose = HTML_COMMENT_RE.sub(" ", text)
+        prose = strip_html_comments(text)
         prose = CODE_SPAN_RE.sub(" ", prose)
         if "<!--" in prose:  # a comment that continues on the next lines
             prose, in_comment = prose[:prose.index("<!--")], True
@@ -609,11 +699,12 @@ def _vi_sentences(lines: list[tuple[int, str]]) -> list[tuple[int, int]]:
             parts.append(text)
             pos += len(text) + 1
         joined = SENTENCE_ABBREV_RE.sub(lambda m: m.group(1) + "․", " ".join(parts))
+        offsets = [at for at, _ in starts]
         start = 0
         for cut in list(SENTENCE_SPLIT_RE.finditer(joined)) + [None]:
             end = cut.start() if cut else len(joined)
             if joined[start:end].split():
-                sentences.append(([rel for at, rel in starts if at <= start][-1], len(joined[start:end].split())))
+                sentences.append((starts[bisect.bisect_right(offsets, start) - 1][1], len(joined[start:end].split())))
             if cut:
                 start = cut.end()
         buf.clear()
@@ -632,7 +723,7 @@ def _vi_sentences(lines: list[tuple[int, str]]) -> list[tuple[int, int]]:
     return sentences
 
 
-def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path) -> list:
+def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path, front_lines: list | None = None) -> list:
     """FR16 / SPEC 9.10: VI1-VI5, all WARN, only when the body is Vietnamese (detect_lang). Line numbers are file lines.
     VI1 body not NFC (first deviating line) · VI2 d/m/yyyy date · VI3 sentence over VI_SENTENCE_MAX words ·
     VI4 frontmatter outside `description` holds Vietnamese letters, or `description` does but has no 'Use when' ·
@@ -654,17 +745,25 @@ def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path) -> l
         if words > VI_SENTENCE_MAX:
             findings.append(emit("WARN", "VI3", manifest, body_start + rel,
                                  "sentence has %d words (>%d); split it, aim for 25 or fewer (V03)" % (words, VI_SENTENCE_MAX)))
-    try:
-        front = manifest.read_text(encoding="utf-8").splitlines()[:body_start]
-    except (OSError, UnicodeError):
-        front = []
+    if front_lines is not None:
+        front = list(front_lines)
+    else:
+        try:
+            front = manifest.read_text(encoding="utf-8").splitlines()[:body_start]
+        except (OSError, UnicodeError):
+            front = []
+    first_line: dict = {}  # key -> first frontmatter line that starts with "key:", built once (a scan per key was quadratic)
+    for number, raw in enumerate(front, 1):
+        stripped = raw.lstrip()
+        colon = stripped.find(":")
+        if colon > 0:
+            first_line.setdefault(stripped[:colon], number)
 
     def front_line(label: str, default: int) -> int:
-        key = label.rsplit(".", 1)[-1]
-        return next((i + 1 for i, x in enumerate(front) if x.lstrip().startswith(key + ":")), default)
+        return first_line.get(label.rsplit(".", 1)[-1], default)
 
     def accented(value) -> bool:
-        return isinstance(value, str) and _vi_counts(HTML_COMMENT_RE.sub(" ", value))[1] > 0
+        return isinstance(value, str) and _vi_counts(strip_html_comments(value))[1] > 0
 
     def strings(label: str, value) -> list[tuple[str, str]]:
         """Every string inside a frontmatter value (nested dicts and lists), labelled by its path."""
@@ -679,7 +778,7 @@ def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path) -> l
         at = front_line(label.split("[")[0], 2)
         if accented(value) and not (at <= len(front) and VI_OK_MARK in front[at - 1]):
             findings.append(emit("WARN", "VI4", manifest, at, "frontmatter '%s' has Vietnamese letters; keep frontmatter values English (V13)" % label))
-    desc = HTML_COMMENT_RE.sub(" ", meta["description"]) if isinstance(meta.get("description"), str) else None
+    desc = strip_html_comments(meta["description"]) if isinstance(meta.get("description"), str) else None
     at = front_line("description", 3)
     if accented(desc) and not VI_TRIGGER_RE.search(desc) and not (at <= len(front) and VI_OK_MARK in front[at - 1]):
         findings.append(emit("WARN", "VI4", manifest, at,
@@ -738,17 +837,23 @@ def lint_contents(path: Path, lines: list, kind: str, offset: int = 0) -> list:
 
 
 def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: bool = False, target: str = "portable",
-                   profile: str = "portable", allow_links_under: Path | None = None) -> list[dict]:
+                   profile: str = "portable", allow_links_under: Path | None = None, max_file_bytes: int | None = None,
+                   skip_markers: tuple = ()) -> list[dict]:
     """Findings for one skill. profile "opcos" (doctor): an existing link that leaves the skill but stays under `allow_links_under`
-    is a WARN ST6, the OPCOS_PROVENANCE_KEYS are WARN FM4, and no `metadata.opcos_*` key is a NOTE MD1. ST3 and ST8 apply to every profile."""
+    is a WARN ST6, the OPCOS_PROVENANCE_KEYS are WARN FM4, and no `metadata.opcos_*` key is a NOTE MD1. ST3 and ST8 apply to every profile.
+    `max_file_bytes` (doctor passes DOCTOR_MAX_FILE_BYTES): a SKILL.md or reference above it is not read, WARN SZ1. `skip_markers` extend CLOUD_MARKERS.
+    A symlink, junction or cloud placeholder inside the skill is reported (SEC, SZ2) and never opened, listed or followed."""
     folder = folder.resolve()
     manifest = folder / "SKILL.md"
     if not manifest.is_file():
         return [emit("ERROR", "FM1", manifest, 0, "SKILL.md is missing")]
+    markers = CLOUD_MARKERS + tuple(skip_markers)
     try:
-        text = manifest.read_text(encoding="utf-8")
+        text, too_big = read_capped(manifest, max_file_bytes)
     except UnicodeError:
         return [emit("ERROR", "FM1", manifest, 0, "SKILL.md must be UTF-8 text")]
+    if too_big:
+        return [emit("WARN", "SZ1", manifest, 0, "SKILL.md is larger than %d bytes; not read or linted" % max_file_bytes)]
     claude = target == "claude-code"
     meta, findings, body_start = parse_frontmatter(text, manifest, CLAUDE_CODE_KEYS if claude else frozenset())
     all_lines = text.splitlines()
@@ -808,12 +913,41 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
         findings.append(emit("WARN", "ST2", manifest, body_start + 1, "Skill body is about %d tokens (estimate, not a tokenizer); keep it under %d and move detail to references" % (tokens, BODY_TOKEN_MAX)))
     findings.extend(lint_forcing_words(body, body_start, manifest))
     findings.extend(lint_contents(manifest, body.splitlines(), "skill_body", body_start))
-    findings.extend(lint_vietnamese(meta, body, body_start, manifest))
+    findings.extend(lint_vietnamese(meta, body, body_start, manifest, all_lines[:body_start]))
     if re.search(r"<!--\s*STUDIO-DRAFT|\[FILL:|\bTODO\b|\bFIXME\b", body, re.IGNORECASE):
         findings.append(emit("WARN", "CT9", manifest, body_start + 1, "draft marker/TODO/FIXME remains; do not ship unreviewed scaffold"))
     if re.search(r"(?i)(show|write out|transcribe|echo)\s+(your\s+)?(private\s+)?(chain.of.thought|internal reasoning|hidden reasoning)", body):
         findings.append(emit("WARN", "NM2", manifest, body_start + 1, "possible request to disclose private model reasoning"))
     refs_linked = set()
+    newlines: list | None = None  # offsets of "\n" in the body, built the first time a finding needs a line number
+    verdicts: dict = {}  # link text -> (level, message) or (None, resolved path): one check per distinct target
+
+    def line_of(offset: int) -> int:
+        nonlocal newlines
+        if newlines is None:
+            newlines = [m.start() for m in re.finditer("\n", body)]
+        return body_start + bisect.bisect_left(newlines, offset) + 1
+
+    def classify(link: str) -> tuple:
+        if ABSOLUTE_LINK_RE.match(link) or link.startswith(("/", "\\")):  # UNC, drive, file:, smb:, rooted: never resolved, stat-ed or opened (Windows would authenticate to a share)
+            return "ERROR", "reference escapes Skill folder: absolute or UNC link not opened: '%s'" % link
+        resolved = folder / link
+        if not lexically_inside(resolved, folder) and zone_reason(resolved, markers):  # named outside and in a forbidden zone: do not resolve or stat it
+            return "ERROR", "reference escapes Skill folder into a cloud or secret zone (not opened): '%s'" % link
+        if link_crosses_link(folder, link):
+            return "ERROR", "reference goes through a symlink or junction (not opened): '%s'" % link
+        if not valid_resolved_under(resolved, folder):
+            if (profile == "opcos" and allow_links_under is not None and not zone_reason(resolved.resolve(), markers)
+                    and valid_resolved_under(resolved, allow_links_under) and resolved.exists()):
+                return "WARN", "link leaves the Skill folder but stays inside the scanned root: '%s'" % link
+            return "ERROR", "reference escapes Skill folder: '%s'" % link
+        if not resolved.exists():
+            return "ERROR", "missing referenced resource '%s'" % link
+        try:
+            return None, resolved.resolve()
+        except OSError:
+            return None, None
+
     for match in LINK_RE.finditer(body):
         link = match.group(1).strip().strip('<>')
         if link.startswith(("http://", "https://", "mailto:", "#")):
@@ -821,27 +955,19 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
         link = link.split('#')[0].split('?')[0]
         if not link:
             continue
-        resolved = folder / link
-        line = body_start + body[:match.start()].count("\n") + 1
-        if not lexically_inside(resolved, folder) and zone_reason(resolved):  # named outside and in a forbidden zone: do not resolve or stat it
-            findings.append(emit("ERROR", "ST6", manifest, line, "reference escapes Skill folder into a cloud or secret zone (not opened): '%s'" % link))
-        elif not valid_resolved_under(resolved, folder):
-            if (profile == "opcos" and allow_links_under is not None and not zone_reason(resolved.resolve())
-                    and valid_resolved_under(resolved, allow_links_under) and resolved.exists()):
-                findings.append(emit("WARN", "ST6", manifest, line, "link leaves the Skill folder but stays inside the scanned root: '%s'" % link))
-            else:
-                findings.append(emit("ERROR", "ST6", manifest, line, "reference escapes Skill folder: '%s'" % link))
-        elif not resolved.exists():
-            findings.append(emit("ERROR", "ST6", manifest, line, "missing referenced resource '%s'" % link))
-        else:
-            try:
-                refs_linked.add(resolved.resolve())
-            except OSError:
-                pass
+        if link not in verdicts:
+            verdicts[link] = classify(link)
+        level, detail = verdicts[link]
+        if level:
+            findings.append(emit(level, "ST6", manifest, line_of(match.start()), detail))
+        elif detail is not None:
+            refs_linked.add(detail)
     ref_dir = folder / "references"
-    tree, tree_links, tree_dirs = walk_files(folder)
-    if ref_dir.is_dir():
+    tree, tree_links, tree_dirs, tree_cloud = walk_files(folder, markers)
+    if ref_dir in tree_dirs:
         for p in (x for x in tree if ref_dir in x.parents and x.name.endswith(".md") and not is_sensitive_name(x.name)):
+            if p in tree_cloud:
+                continue  # reported as SZ2 below, never opened
             if p not in tree_links and not p.is_file():
                 continue
             if p in tree_links:
@@ -850,18 +976,24 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
             if p.resolve() not in refs_linked:
                 findings.append(emit("WARN", "ST4", p, 0, "reference Markdown is not directly linked from SKILL.md"))
             try:
-                ref_lines = p.read_text(encoding="utf-8").splitlines()
+                ref_text, ref_too_big = read_capped(p, max_file_bytes)
             except UnicodeError:
                 findings.append(emit("ERROR", "ST6", p, 0, "reference must be UTF-8"))
                 continue
-            findings.extend(lint_contents(p, ref_lines, "reference"))
+            if ref_too_big:
+                findings.append(emit("WARN", "SZ1", p, 0, "reference is larger than %d bytes; not read or linted" % max_file_bytes))
+                continue
+            findings.extend(lint_contents(p, ref_text.splitlines(), "reference"))
     scripts = folder / "scripts"
-    if scripts.is_dir():
-        for script in scripts.iterdir():
-            if script.is_file() and script.suffix in {".py", ".sh", ".js", ".ts"} and script.name not in body:
+    if scripts in tree_dirs:
+        for script in tree:
+            if (script.parent == scripts and script not in tree_links and script not in tree_dirs and script not in tree_cloud
+                    and script.suffix in {".py", ".sh", ".js", ".ts"} and script.name not in body):
                 findings.append(emit("WARN", "SC3", script, 0, "script not mentioned in SKILL.md; document whether to run or read"))
     for p in tree:
-        if p in tree_links:
+        if p in tree_cloud:
+            findings.append(emit("WARN", "SZ2", p, 0, "cloud placeholder (OneDrive/SharePoint attributes) inside the skill; not opened or listed"))
+        elif p in tree_links:
             findings.append(emit("ERROR", "SEC", p, 0, "symlinks are not portable/safe in distributed skill packages"))
         elif (p.parent == folder and p.name not in ST8_ALLOWED_DIRS and p.name not in SKIP_DIRS and not is_sensitive_name(p.name)
               and p in tree_dirs):
@@ -1203,37 +1335,48 @@ def _is_excluded(parts: tuple, include_cache: bool) -> bool:
     return not include_cache and "cache" in low[-1]
 
 
-def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None) -> list[Path]:
+def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, skip_markers: tuple = ()) -> list[Path]:
     """Absolute root paths from --roots (`;` separated) and --roots-file (one per line, `#` comments).
     Without either, the repo's skills/ is the root; outside the repo that is an error. A path in a cloud or secret zone is
-    returned without being looked at (doctor reports it as skipped); any other root must be an existing directory."""
-    items = [x.strip() for x in (roots or "").split(";") if x.strip()]
+    returned without being looked at (doctor reports it as skipped); any other root must be an existing directory and not too
+    broad (a drive root, the home folder or a folder above it). A --roots-file with a secret-looking name is refused unread, and
+    an error about one of its lines names the line number, never the line."""
+    markers = CLOUD_MARKERS + tuple(skip_markers)
+    items = [(x.strip(), x.strip()) for x in (roots or "").split(";") if x.strip()]
     if roots_file:
         listing = Path(os.path.abspath(os.path.expanduser(roots_file)))
-        if zone_reason(listing):
-            raise ValueError("--roots-file is inside a %s zone; not read: %s" % (zone_reason(listing), roots_file))
+        if is_sensitive_name(listing.name):
+            raise ValueError("--roots-file has a secret-looking file name; not read")
+        if zone_reason(listing, markers):
+            raise ValueError("--roots-file is inside a %s zone; not read: %s" % (zone_reason(listing, markers), roots_file))
         try:
             lines = listing.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeError) as exc:
-            raise ValueError("cannot read --roots-file %s: %s" % (roots_file, exc))
-        items += [x.strip() for x in lines if x.strip() and not x.lstrip().startswith("#")]
+        except UnicodeError:
+            raise ValueError("cannot read --roots-file %s: not UTF-8 text" % roots_file)
+        except OSError as exc:
+            raise ValueError("cannot read --roots-file %s: %s" % (roots_file, exc.strerror or type(exc).__name__))
+        items += [(x.strip(), "--roots-file line %d" % number) for number, x in enumerate(lines, 1) if x.strip() and not x.lstrip().startswith("#")]
     if not items:
         if repo is None:
             raise ValueError("outside the Studio repository doctor needs --roots or --roots-file")
-        items = [str(repo / "skills")]
+        items = [(str(repo / "skills"),) * 2]
     found = []
-    for item in items:
+    for item, label in items:
         path = Path(os.path.abspath(os.path.expanduser(item)))
-        if not zone_reason(path) and not path.is_dir():
-            raise ValueError("root not found or not a directory: %s" % item)
+        if root_too_broad(path):
+            raise ValueError("root too broad; pass narrower roots (not a drive root, the home folder or a folder above it): %s" % label)
+        if not zone_reason(path, markers) and not path.is_dir():
+            raise ValueError("root not found or not a directory: %s" % label)
         found.append(path)
     return found
 
 
-def iter_skill_dirs(roots: list, include_cache: bool = False) -> tuple[list, list]:
+def iter_skill_dirs(roots: list, include_cache: bool = False, skip_markers: tuple = ()) -> tuple[list, list]:
     """(skill folders, skipped[{path, reason}]). A skill is a folder holding SKILL.md; the scan never goes below one, never
-    follows a symlink or junction, and de-duplicates by real path. Reasons: cloud, secret-zone (decided from the path text alone,
-    nothing is listed or opened there), link, excluded, limit, unreadable."""
+    follows a symlink or junction, and de-duplicates by real path. Reasons: cloud (a name with a marker, or Windows cloud
+    attributes on the folder or its SKILL.md), secret-zone (both decided without listing or opening anything there),
+    link, excluded, limit, unreadable."""
+    markers = CLOUD_MARKERS + tuple(skip_markers)
     skills, skipped, seen_skills, seen_skips, seen_roots, listed = [], [], set(), set(), set(), 0
 
     def skip(path, reason):
@@ -1244,7 +1387,7 @@ def iter_skill_dirs(roots: list, include_cache: bool = False) -> tuple[list, lis
 
     for given in roots:
         given = Path(os.path.abspath(os.fspath(given)))
-        reason = zone_reason(given)
+        reason = zone_reason(given, markers) or ("cloud" if path_is_cloud(given) else None)
         if reason:
             skip(given, reason)
             continue
@@ -1253,7 +1396,7 @@ def iter_skill_dirs(roots: list, include_cache: bool = False) -> tuple[list, lis
         except (OSError, RuntimeError):
             skip(given, "unreadable")
             continue
-        reason = zone_reason(real)
+        reason = zone_reason(real, markers)
         if reason:
             skip(given, reason)
             continue
@@ -1277,6 +1420,8 @@ def iter_skill_dirs(roots: list, include_cache: bool = False) -> tuple[list, lis
             if manifest is not None:
                 if manifest.is_symlink():
                     skip(current / "SKILL.md", "link")
+                elif entry_is_cloud(manifest):
+                    skip(current, "cloud")
                 elif len(skills) >= DOCTOR_MAX_SKILLS:
                     skip(current, "limit")
                 elif os.path.normcase(str(current)) not in seen_skills:
@@ -1290,9 +1435,11 @@ def iter_skill_dirs(roots: list, include_cache: bool = False) -> tuple[list, lis
                         continue
                 except OSError:
                     continue
-                reason = zone_reason(child)
+                reason = zone_reason(child, markers)
                 if reason:
                     skip(child, reason)
+                elif entry_is_cloud(entry):
+                    skip(child, "cloud")
                 elif entry.is_symlink() or is_link(child):
                     skip(child, "link")
                 elif entry.name.lower() in DOCTOR_PRUNE_SILENT:
@@ -1306,12 +1453,14 @@ def iter_skill_dirs(roots: list, include_cache: bool = False) -> tuple[list, lis
     return sorted(skills, key=lambda p: os.path.normcase(str(p))), skipped
 
 
-def _skill_identity(skill: Path, target: str) -> tuple[str, str]:
-    """(name, 'en'|'vi') from SKILL.md: frontmatter name (folder name when unreadable) and the body language."""
+def _skill_identity(skill: Path, target: str, max_bytes: int | None = None) -> tuple[str, str]:
+    """(name, 'en'|'vi') from SKILL.md: frontmatter name (folder name when unreadable or above `max_bytes`) and the body language."""
     manifest = skill / "SKILL.md"
     try:
-        text = manifest.read_text(encoding="utf-8")
+        text, too_big = read_capped(manifest, max_bytes)
     except (OSError, UnicodeError):
+        return skill.name, "en"
+    if too_big:
         return skill.name, "en"
     meta, _, body_start = parse_frontmatter(text, manifest, CLAUDE_CODE_KEYS if target == "claude-code" else frozenset())
     name = meta.get("name") if isinstance(meta.get("name"), str) and meta["name"] else skill.name
@@ -1337,12 +1486,16 @@ def diff_baseline(current: dict, baseline: dict) -> list[dict]:
             if after > before.get((path, code), 0)]
 
 
-def doctor_run(roots: list, profile: str, target: str, include_cache: bool, baseline: dict | None) -> dict:
-    """The doctor report (SPEC 9.11, schema 1). Reads skills, writes nothing."""
-    skills, skipped = iter_skill_dirs(roots, include_cache)
+def doctor_run(roots: list, profile: str, target: str, include_cache: bool, baseline: dict | None,
+               skip_markers: tuple = (), scanned: tuple | None = None) -> dict:
+    """The doctor report (SPEC 9.11, schema 1). Reads skills, writes nothing. `scanned` = a finished iter_skill_dirs result to reuse.
+    A file above DOCTOR_MAX_FILE_BYTES or a cloud placeholder inside a skill is not read; it is listed in skipped as well as flagged in the skill."""
+    skills, skipped = scanned if scanned is not None else iter_skill_dirs(roots, include_cache, skip_markers)
+    skipped = list(skipped)
+    seen_skips = {(os.path.normcase(x["path"]), x["reason"]) for x in skipped}
     real_roots = []
     for root in roots:
-        if not zone_reason(root):
+        if not zone_reason(root, CLOUD_MARKERS + tuple(skip_markers)):
             try:
                 real_roots.append(Path(root).resolve())
             except OSError:
@@ -1351,16 +1504,22 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
     totals = {"skills": 0, "errors": 0, "warnings": 0, "notes": 0}
     for skill in skills:
         under = next((r for r in real_roots if valid_resolved_under(skill, r)), None)
-        findings = validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under)
+        findings = validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under,
+                                  max_file_bytes=DOCTOR_MAX_FILE_BYTES, skip_markers=skip_markers)
         codes = []
         for f in findings:
+            if f["code"] in ("SZ1", "SZ2"):
+                note = {"path": _posix(f["path"]), "reason": "limit" if f["code"] == "SZ1" else "cloud"}
+                if (os.path.normcase(note["path"]), note["reason"]) not in seen_skips:
+                    seen_skips.add((os.path.normcase(note["path"]), note["reason"]))
+                    skipped.append(note)
             path = Path(f["path"])
             try:
                 shown = path.relative_to(skill).as_posix()
             except ValueError:
                 shown = _posix(path)
             codes.append({"code": f["code"], "level": f["level"], "file": shown, "line": f["line"], "message": f["message"]})
-        name, lang = _skill_identity(skill, target)
+        name, lang = _skill_identity(skill, target, DOCTOR_MAX_FILE_BYTES)
         errors, warnings = sum(c["level"] == "ERROR" for c in codes), sum(c["level"] == "WARN" for c in codes)
         entries.append({"path": _posix(skill), "name": name, "lang": lang, "errors": errors, "warnings": warnings, "codes": codes})
         totals["skills"] += 1
@@ -1384,26 +1543,55 @@ def _baseline_problem(obj) -> str | None:
     return None
 
 
-def _out_problem(out: Path, roots: list, repo: Path | None) -> str | None:
-    reason = zone_reason(out)
+def _out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), include_cache: bool = False, skip_markers: tuple = ()) -> str | None:
+    """Why `out` may not be written, else None. The report may not land in what the scan reads: not in a zone, not under skills/, not in a
+    scanned skill, and not in a scanned root unless the folder in between (.tmp, .worktrees, a cache...) is one the scan leaves out.
+    It may not carry a secret-looking name, and an existing file that is not a .json report is never overwritten."""
+    markers = CLOUD_MARKERS + tuple(skip_markers)
+    reason = zone_reason(out, markers)
     if reason:
         return "--out is inside a %s zone" % reason
+    if is_sensitive_name(out.name):
+        return "--out has a secret-looking file name: %s" % out.name
     if not out.parent.is_dir():
         return "folder of --out does not exist: %s (doctor never creates folders)" % out.parent
     if out.is_dir() or is_link(out):
         return "--out must be a plain file path: %s" % out
-    if any(part.lower() == "skills" for part in out.parts[:-1]) or (repo is not None and valid_resolved_under(out, repo / "skills")):
+    if out.exists() and out.suffix.lower() != ".json":
+        return "--out would overwrite an existing file that is not a .json report: %s" % out
+    try:
+        real = out.parent.resolve() / out.name
+    except (OSError, RuntimeError):
+        return "--out cannot be resolved: %s" % out
+    reason = zone_reason(real, markers)
+    if reason:
+        return "--out is inside a %s zone (through a link)" % reason
+    if any(part.lower() == "skills" for part in out.parts[:-1]) or (repo is not None and valid_resolved_under(real, repo / "skills")):
         return "--out must not be under a skills/ folder: %s" % out
-    if any(not zone_reason(r) and valid_resolved_under(out, r) for r in roots):
-        return "--out must not be inside a scanned root: %s" % out
+    if any(valid_resolved_under(real, skill) for skill in skills):
+        return "--out must not be inside a scanned skill folder: %s" % out
+    for root in roots:
+        if zone_reason(root, markers):
+            continue
+        try:
+            below = real.parent.relative_to(Path(root).resolve()).parts
+        except (ValueError, OSError, RuntimeError):
+            continue
+        if not any(_is_excluded(below[:n], include_cache) for n in range(1, len(below) + 1)):
+            return "--out must not be inside a scanned root (a folder the scan skips, such as .tmp, is fine): %s" % out
     return None
 
 
 def cmd_doctor(args) -> int:
     """Report-only scan of many skill roots. Exit 0 nothing at the --fail-on level, 1 findings, 2 could not scan."""
     repo = repo_root(Path(__file__)) or repo_root(Path.cwd())
+    skip_markers = tuple(x.strip() for x in (args.skip_marker or []))
+    if any(not x for x in skip_markers):
+        print("ERROR: --skip-marker needs non-empty text", file=sys.stderr)
+        return 2
+    markers = CLOUD_MARKERS + skip_markers
     try:
-        roots = parse_roots(args.roots, args.roots_file, repo)
+        roots = parse_roots(args.roots, args.roots_file, repo, skip_markers)
     except ValueError as exc:
         print("ERROR: %s" % exc, file=sys.stderr)
         return 2
@@ -1413,25 +1601,35 @@ def cmd_doctor(args) -> int:
         return 2
     if args.baseline:
         source = Path(os.path.abspath(os.path.expanduser(args.baseline)))
-        problem = "is inside a %s zone; not read" % zone_reason(source) if zone_reason(source) else None
+        if is_sensitive_name(source.name):
+            problem = "has a secret-looking file name; not read"
+        elif zone_reason(source, markers):
+            problem = "is inside a %s zone; not read" % zone_reason(source, markers)
+        else:
+            problem = None
         if problem is None:
             try:
                 baseline = json.loads(source.read_text(encoding="utf-8"))
-            except (OSError, ValueError) as exc:
-                problem = "cannot be read as JSON (%s)" % exc
+            except UnicodeError:
+                problem = "cannot be read: not UTF-8 text"
+            except OSError as exc:
+                problem = "cannot be read (%s)" % (exc.strerror or type(exc).__name__)
+            except ValueError as exc:
+                problem = "cannot be read as JSON (line %s column %s)" % (getattr(exc, "lineno", "?"), getattr(exc, "colno", "?"))
             else:
                 problem = _baseline_problem(baseline)
         if problem:
             print("ERROR: baseline %s %s" % (args.baseline, problem), file=sys.stderr)
             return 2
+    scanned = iter_skill_dirs(roots, args.include_cache, skip_markers)
     out = None
     if args.out:
         out = Path(os.path.abspath(os.path.expanduser(args.out)))
-        problem = _out_problem(out, roots, repo)
+        problem = _out_problem(out, roots, repo, scanned[0], args.include_cache, skip_markers)
         if problem:
             print("ERROR: %s" % problem, file=sys.stderr)
             return 2
-    report = doctor_run(roots, args.profile, args.target, args.include_cache, baseline)
+    report = doctor_run(roots, args.profile, args.target, args.include_cache, baseline, skip_markers, scanned)
     if out is not None:
         try:
             with open(out, "w", encoding="utf-8", newline="\n") as handle:
@@ -1518,9 +1716,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--profile", choices=PROFILES, default="portable", help="opcos: a link inside the scanned root is a WARN, provenance keys are WARN, missing metadata.opcos_* is a NOTE")
     p.add_argument("--target", choices=TARGETS, default="portable")
     p.add_argument("--include-cache", action="store_true", help="also scan folders whose name contains 'cache'")
+    p.add_argument("--skip-marker", action="append", metavar="TEXT", help="skip any path containing TEXT (case-insensitive); repeatable. A synced SharePoint folder need not say 'SharePoint' (for example 'KPIM Joint Stock Company')")
     p.add_argument("--baseline", help="an earlier doctor JSON report; new_vs_baseline lists the (skill, code) pairs that grew")
     p.add_argument("--json", action="store_true", help="print the JSON report (with --out it goes to the file only)")
-    p.add_argument("--out", help="write the JSON report here; the folder must exist and must not be under skills/ or a scanned root")
+    p.add_argument("--out", help="write the JSON report here; the folder must exist; not under skills/, a scanned skill or a scanned root (a folder the scan skips, such as .tmp, is fine); not a secret-looking name")
     p.add_argument("--fail-on", choices=DOCTOR_FAIL_ON, default="error", help="what makes the exit code 1 (default error; new needs --baseline)")
     p.set_defaults(func=cmd_doctor)
     args = parser.parse_args(argv)

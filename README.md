@@ -127,6 +127,8 @@ python3 studio.py doctor --roots "<dir1>;<dir2>" --json
 
 `python studio.py doctor --roots "<dir1>;<dir2>" --json` — report-only scan of many skill roots; exit 0 clean, 1 findings, 2 cannot scan. Not Claude Code's `/skill-doctor`.
 
+`doctor` is built to read only what is safe. It never lists or opens `~/.secret`, a path that names a cloud folder (`OneDrive`, `SharePoint`), a file or folder that Windows marks as a cloud placeholder, or anything behind a symlink or junction; it refuses a root that is a drive root, your home folder or a folder above it (exit 2, `root too broad`). A synced SharePoint folder whose path has neither word is not recognised by name: add `--skip-marker TEXT` (repeatable, case-insensitive, matched anywhere in the path), for example `--skip-marker "KPIM Joint Stock Company"`. A `SKILL.md` or reference above 1,000,000 bytes is not read (`SZ1`, listed in `skipped` with reason `limit`). `--out` may sit in a folder the scan skips (such as `.tmp`), never in a scanned skill or root, never under a name like `.env` or `auth.json`, and it never overwrites an existing file that is not a `.json` report.
+
 ## Ba agent và cách cài
 
 **Cài như plugin (Claude Code, Codex):** repo có manifest plugin ở `.claude-plugin/` và `.codex-plugin/`. Với Claude Code:
