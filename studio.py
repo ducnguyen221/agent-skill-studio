@@ -17,11 +17,34 @@ import json
 import re
 import shutil
 import sys
+import unicodedata
 import zipfile
 from pathlib import Path
 
 VERSION = "0.1.0"
 PORTABLE_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
+TARGETS = ("portable", "claude-code")
+# Claude Code extension keys beyond the portable set (code.claude.com/docs/en/skills, read 2026-10-22).
+CLAUDE_CODE_KEYS = frozenset({
+    "when_to_use", "argument-hint", "arguments", "disable-model-invocation", "user-invocable",
+    "disallowed-tools", "model", "effort", "context", "agent", "background", "hooks", "paths", "shell",
+})
+RESERVED_NAME_WORDS = ("anthropic", "claude")
+CLAUDE_CODE_RESERVED_NAMES = frozenset({"synced"})
+FORCE_RE = re.compile(r"\b(MUST|NEVER|ALWAYS|CRITICAL)\b")
+REASON_RE = re.compile(r"\b(because|since|so that|otherwise|to avoid|in order to|vì|để|nếu không)\b", re.IGNORECASE)
+STRICT_OPEN, STRICT_CLOSE = "<!-- studio:strict -->", "<!-- /studio:strict -->"
+CONTENTS_RE = re.compile(r"^##\s+(Contents|Mục lục)\s*$")
+CONTENTS_MAX = 12
+CONTENTS_WINDOW = 25  # Contents must start within the first 25 lines of the reference / body
+REF_TOC_LINES = 100
+BODY_TOC_LINES = 100
+FRONTMATTER_EXTRA_MAX = 1024
+LISTING_MAX = 1536  # Claude Code skill listing: description + when_to_use
+TRIGGER_LATEST = 500  # the trigger phrase should begin inside the first 500 description characters
+BODY_TOKEN_MAX = 5000
+VI_CHARS = frozenset("ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ")
+TRIGGER_RE = re.compile(r"(?i)\b(use when|when to use|used when|for tasks involving)\b")
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 FRONT_KEY_RE = re.compile(r"^([a-zA-Z][\w-]*):(?:\s+(.*))?$")
@@ -52,7 +75,9 @@ def scalar(value: str) -> str:
     return value
 
 
-def parse_frontmatter(text: str, path: Path) -> tuple[dict, list, int]:
+def parse_frontmatter(text: str, path: Path, opaque_keys: frozenset = frozenset()) -> tuple[dict, list, int]:
+    """Parse the supported YAML subset. A key in `opaque_keys` with an empty value keeps its nested
+    indented block as one raw string (no FM1); the block ends at the next top-level key."""
     lines = text.splitlines()
     findings: list[dict] = []
     if not lines or lines[0].strip() != "---":
@@ -63,7 +88,7 @@ def parse_frontmatter(text: str, path: Path) -> tuple[dict, list, int]:
         return {}, [emit("ERROR", "FM1", path, 1, "closing frontmatter '---' not found")], 0
     parsed: dict = {}
     key = None
-    mode = None  # 'block' or 'meta' or None
+    mode = None  # 'block', 'meta', 'opaque' or None
     block_lines: list[str] = []
     block_kind = None
 
@@ -71,6 +96,8 @@ def parse_frontmatter(text: str, path: Path) -> tuple[dict, list, int]:
         nonlocal key, mode, block_lines, block_kind
         if mode == "block" and key is not None:
             parsed[key] = ("\n" if block_kind == "|" else " ").join(block_lines).strip()
+        elif mode == "opaque" and key is not None:
+            parsed[key] = "\n".join(block_lines)
         mode = None
         block_lines = []
         block_kind = None
@@ -95,6 +122,9 @@ def parse_frontmatter(text: str, path: Path) -> tuple[dict, list, int]:
             elif key == "metadata" and val == "":
                 mode = "meta"
                 parsed[key] = {}
+            elif key in opaque_keys and val == "":
+                mode = "opaque"
+                parsed[key] = ""
             else:
                 try:
                     parsed[key] = scalar(val)
@@ -104,6 +134,8 @@ def parse_frontmatter(text: str, path: Path) -> tuple[dict, list, int]:
         else:
             if mode == "block" and raw.startswith((" ", "\t")):
                 block_lines.append(raw.strip())
+            elif mode == "opaque":
+                block_lines.append(raw.rstrip())
             elif mode == "meta":
                 match = META_KEY_RE.fullmatch(raw.rstrip())
                 if not match:
@@ -192,7 +224,93 @@ def check_evals(folder: Path) -> list[dict]:
     return results
 
 
-def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: bool = False) -> list[dict]:
+def frontmatter_extra_len(lines: list, body_start: int) -> int:
+    """Characters of the frontmatter outside the `description` key (the key's own lines are skipped)."""
+    total, in_description = 0, False
+    for raw in lines[1:max(body_start - 1, 1)]:
+        if raw and not raw[0].isspace():
+            in_description = raw.startswith("description:")
+        if not in_description:
+            total += len(raw) + 1
+    return total
+
+
+def estimate_tokens(body: str) -> int:
+    """Rough estimate: chars / 4; Vietnamese bodies tokenize about 1.2-2x worse (lower bound used). Not a tokenizer."""
+    letters = [c for c in body.lower() if c.isalpha()]
+    vietnamese = bool(letters) and sum(c in VI_CHARS for c in letters) / len(letters) > 0.1
+    return int(len(body) / 4 * (1.2 if vietnamese else 1))
+
+
+def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
+    """SK-14 / CT10: an all-caps MUST/NEVER/ALWAYS/CRITICAL line needs a reason on the same line.
+    Skips fenced code (``` or ~~~) and <!-- studio:strict --> ... <!-- /studio:strict --> blocks."""
+    findings: list[dict] = []
+    fence, strict = None, False
+    for offset, line in enumerate(body.splitlines()):
+        text = unicodedata.normalize("NFC", line)
+        stripped = text.strip()
+        if fence:
+            if stripped.startswith(fence):
+                fence = None
+            continue
+        if stripped.startswith(("```", "~~~")):
+            fence = stripped[:3]
+            continue
+        if STRICT_OPEN in text:
+            strict = True
+        if strict:
+            if STRICT_CLOSE in text:
+                strict = False
+            continue
+        match = FORCE_RE.search(text)
+        if match and not REASON_RE.search(text):
+            findings.append(emit("WARN", "CT10", manifest, body_start + offset + 1,
+                                 "'%s' without a reason on the same line (SK-14); state why, or mark a deliberately strict step with %s ... %s"
+                                 % (match.group(1), STRICT_OPEN, STRICT_CLOSE)))
+    return findings
+
+
+def lint_contents(path: Path, lines: list, kind: str, offset: int = 0) -> list:
+    """FR15: Contents rules. kind 'reference' -> ST5, 'skill_body' -> ST7; `offset` = lines before lines[0]."""
+    code = "ST5" if kind == "reference" else "ST7"
+    limit = REF_TOC_LINES if kind == "reference" else BODY_TOC_LINES
+    findings: list[dict] = []
+    norm = [unicodedata.normalize("NFC", x) for x in lines]
+    start = next((i for i, x in enumerate(norm[:CONTENTS_WINDOW]) if CONTENTS_RE.match(x.strip())), None)
+    if start is None:
+        if len(lines) > limit:
+            level = "ERROR" if kind == "reference" else "WARN"
+            what = "reference" if kind == "reference" else "SKILL.md body"
+            findings.append(emit(level, code, path, offset + 1, "%s >%d lines needs a '## Contents' (or '## Mục lục') in its first %d lines" % (what, limit, CONTENTS_WINDOW)))
+        return findings
+    headings, fence = set(), None
+    for i, x in enumerate(norm):
+        s = x.strip()
+        if fence:
+            if s.startswith(fence):
+                fence = None
+            continue
+        if s.startswith(("```", "~~~")):
+            fence = s[:3]
+        elif i != start and re.match(r"^##\s+\S", x):
+            headings.add(x[2:].strip())
+    entries = []
+    for i in range(start + 1, len(norm)):
+        s = norm[i].strip()
+        if s.startswith("#"):
+            break
+        if s.startswith(("- ", "* ")):
+            entries.append((i, s[2:].split(" — ")[0].strip()))
+    if len(entries) > CONTENTS_MAX:
+        findings.append(emit("WARN", code, path, offset + start + 1, "Contents has %d entries; keep it to %d or fewer" % (len(entries), CONTENTS_MAX)))
+    for i, name in entries:
+        if name not in headings:
+            findings.append(emit("WARN", code, path, offset + i + 1, "Contents entry '%s' matches no '## ' heading in this file" % name))
+    return findings
+
+
+def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: bool = False, target: str = "portable") -> list[dict]:
     folder = folder.resolve()
     manifest = folder / "SKILL.md"
     if not manifest.is_file():
@@ -201,29 +319,58 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
         text = manifest.read_text(encoding="utf-8")
     except UnicodeError:
         return [emit("ERROR", "FM1", manifest, 0, "SKILL.md must be UTF-8 text")]
-    meta, findings, body_start = parse_frontmatter(text, manifest)
+    claude = target == "claude-code"
+    meta, findings, body_start = parse_frontmatter(text, manifest, CLAUDE_CODE_KEYS if claude else frozenset())
+    all_lines = text.splitlines()
     name = meta.get("name")
     desc = meta.get("description")
     if not isinstance(name, str) or not NAME_RE.fullmatch(name) or len(name) > 64:
         findings.append(emit("ERROR", "FM2", manifest, 2, "name must be lowercase kebab-case, 1–64 chars and without '--'"))
     elif name != folder.name:
         findings.append(emit("ERROR", "FM2", manifest, 2, "name '%s' differs from folder '%s'" % (name, folder.name)))
+    if isinstance(name, str):
+        word = next((w for w in RESERVED_NAME_WORDS if w in name), None)
+        if word:
+            findings.append(emit("ERROR", "FM5", manifest, 2, "name must not contain the reserved word '%s'" % word))
+        elif claude and name in CLAUDE_CODE_RESERVED_NAMES:
+            findings.append(emit("ERROR", "FM5", manifest, 2, "name '%s' is reserved by Claude Code" % name))
     if not isinstance(desc, str) or not desc.strip() or len(desc) > 1024 or re.search(r"<[^>]+>", desc or ""):
         findings.append(emit("ERROR", "DS1", manifest, 3, "description must be a nonempty string <=1024 chars without XML tags"))
     elif not re.search(r"(?i)\b(use when|when to use|used when|for tasks involving)\b", desc):
         findings.append(emit("WARN", "DS3", manifest, 3, "description should describe when to invoke the Skill, e.g. 'Use when ...'"))
     elif re.match(r"(?i)^\s*(i can|you can|i will|we can)\b", desc):
         findings.append(emit("WARN", "DS2", manifest, 3, "prefer third-person description e.g. 'Validates CSV...'"))
+    if isinstance(desc, str):
+        trigger = TRIGGER_RE.search(desc)
+        if trigger and trigger.start() >= TRIGGER_LATEST:
+            findings.append(emit("WARN", "DS4", manifest, 3, "trigger phrase starts at character %d; put 'Use when ...' inside the first %d characters" % (trigger.start() + 1, TRIGGER_LATEST)))
+        listing = len(desc) + (len(meta["when_to_use"]) if isinstance(meta.get("when_to_use"), str) else 0)
+        if claude and listing > LISTING_MAX:
+            findings.append(emit("WARN", "DS5", manifest, 3, "description + when_to_use is %d chars; Claude Code truncates the skill listing at %d" % (listing, LISTING_MAX)))
+    allowed = sorted(PORTABLE_KEYS | CLAUDE_CODE_KEYS) if claude else sorted(PORTABLE_KEYS)
     for key in meta:
-        if key not in PORTABLE_KEYS:
-            findings.append(emit("ERROR", "FM4", manifest, 2, "unknown portable frontmatter key '%s'; use metadata or a target adapter" % key))
+        if key in PORTABLE_KEYS:
+            continue
+        if claude and key in CLAUDE_CODE_KEYS:
+            at = next((i + 1 for i, x in enumerate(all_lines[:body_start]) if x.startswith(key + ":")), 2)
+            findings.append(emit("WARN", "FM6", manifest, at, "frontmatter key '%s' is Claude Code only; claude.ai and the API reject it with a hard error" % key))
+        else:
+            findings.append(emit("ERROR", "FM4", manifest, 2, "unknown frontmatter key '%s' for target %s; allowed keys: %s; use metadata or a target adapter" % (key, target, ", ".join(allowed))))
+    extra = frontmatter_extra_len(all_lines, body_start)
+    if extra > FRONTMATTER_EXTRA_MAX:
+        findings.append(emit("WARN", "FM8", manifest, 1, "frontmatter outside description is %d chars (>%d); move detail to the body or references" % (extra, FRONTMATTER_EXTRA_MAX)))
     if "metadata" in meta and (not isinstance(meta["metadata"], dict) or any(not isinstance(v, str) for v in meta["metadata"].values())):
         findings.append(emit("ERROR", "FM4", manifest, 0, "metadata must be a mapping of string keys to string values"))
     if "compatibility" in meta and len(str(meta["compatibility"])) > 500:
         findings.append(emit("ERROR", "FM4", manifest, 0, "compatibility max length is 500 chars"))
-    body = "\n".join(text.splitlines()[body_start:])
+    body = "\n".join(all_lines[body_start:])
     if len(body.splitlines()) >= 500:
         findings.append(emit("WARN", "ST1", manifest, body_start + 1, "Skill body should be under 500 lines (best-practice, not spec hard limit)"))
+    tokens = estimate_tokens(body)
+    if tokens > BODY_TOKEN_MAX:
+        findings.append(emit("WARN", "ST2", manifest, body_start + 1, "Skill body is about %d tokens (estimate, not a tokenizer); keep it under %d and move detail to references" % (tokens, BODY_TOKEN_MAX)))
+    findings.extend(lint_forcing_words(body, body_start, manifest))
+    findings.extend(lint_contents(manifest, body.splitlines(), "skill_body", body_start))
     if re.search(r"<!--\s*STUDIO-DRAFT|\[FILL:|\bTODO\b|\bFIXME\b", body, re.IGNORECASE):
         findings.append(emit("WARN", "CT9", manifest, body_start + 1, "draft marker/TODO/FIXME remains; do not ship unreviewed scaffold"))
     if re.search(r"(?i)(show|write out|transcribe|echo)\s+(your\s+)?(private\s+)?(chain.of.thought|internal reasoning|hidden reasoning)", body):
@@ -260,8 +407,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
             except UnicodeError:
                 findings.append(emit("ERROR", "ST6", p, 0, "reference must be UTF-8"))
                 continue
-            if len(ref_lines) > 100 and not re.search(r"(?im)^#{1,3}\s+(contents|table of contents|mục lục)\b", "\n".join(ref_lines[:25])):
-                findings.append(emit("WARN", "ST5", p, 1, "reference >100 lines should start with Contents / Mục lục"))
+            findings.extend(lint_contents(p, ref_lines, "reference"))
     scripts = folder / "scripts"
     if scripts.is_dir():
         for script in scripts.iterdir():
@@ -366,7 +512,7 @@ def cmd_check(args, audit: bool = False) -> int:
     root = repo_root(Path(__file__))
     external = Path(args.eval_root) if args.eval_root else (root / "evals" if root else None)
     for folder in folders:
-        findings = validate_skill(folder, eval_root=external, require_evals=args.require_evals)
+        findings = validate_skill(folder, eval_root=external, require_evals=args.require_evals, target=getattr(args, "target", "portable"))
         reports.append({"skill": str(folder), "findings": findings})
     if args.json:
         print(json.dumps({"audit": audit, "reports": reports}, ensure_ascii=False, indent=2))
@@ -374,7 +520,7 @@ def cmd_check(args, audit: bool = False) -> int:
         for report in reports:
             print_findings(Path(report["skill"]), report["findings"])
         if audit:
-            print("\nAUDIT IS READ-ONLY. Semantic review is required for SK-03/04/06/07/08/10/12; model tests were not run.")
+            print("\nAUDIT IS READ-ONLY. Semantic review is required for SK-03/04/06/07/08/10/12/14 (SK-14 is only partly machine-checked by CT10); model tests were not run.")
     return 1 if any(f["level"] == "ERROR" for x in reports for f in x["findings"]) else 0
 
 
@@ -542,6 +688,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--all", action="store_true", help="all canonical repo skills")
         p.add_argument("--require-evals", action="store_true", help="require matching external eval manifest")
         p.add_argument("--eval-root", help="where external evals are stored")
+        p.add_argument("--target", choices=TARGETS, default="portable", help="portable (default) or claude-code (also accepts Claude Code only keys as FM6 warnings)")
         p.add_argument("--json", action="store_true")
         p.set_defaults(func=lambda args, audit=(action == "audit"): cmd_check(args, audit))
     p = sub.add_parser("evals", help="validate eval manifest schemas only; no model calls")

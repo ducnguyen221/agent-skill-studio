@@ -15,7 +15,7 @@ Creates or improves Agent Skills with evidence, independent checks and no silent
 1. **Report before changing in AUDIT.** Produce findings with file/line/rule/severity and suggested edits; do not modify any existing Skill unless the user requests specified changes. A direct request to create a new Skill or fix a named issue authorizes that scope only.
 2. **Portable by default.** Use only Agent Skills spec frontmatter for shared Skill artifacts. Explain runtime-specific features in separate adapter files, not in a cross-agent YAML header.
 3. **Minimum effective guidance.** State why a rule exists. Apply one rule in one canonical location; don't append duplicate and stale layers.
-4. **Risk determines freedom.** For expensive, destructive or external actions, require approvals and deterministic runtime gates. Natural-language MUST is not enforcement.
+4. **Risk determines freedom.** For expensive, destructive or external actions, require approvals and deterministic runtime gates. Natural-language rules are not enforcement; use runtime gates for anything that must always hold.
 5. **Evals outside runtime.** Keep tests, oracle/expected behaviors and baseline logs under `evals/<name>/` when in a Studio repo. Exclude them when packaging Skill.
 6. **No invented test results.** Static checks are not model A/B tests. The absence of model execution must be recorded as `not_run`.
 7. **Review real outputs.** Do not request hidden internal reasoning; request conclusions, verifiable assumptions, evidence and concise rationale.
