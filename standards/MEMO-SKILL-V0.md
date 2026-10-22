@@ -2,7 +2,7 @@
 Date: 2026-10-22
 Trạng thái: v0 tạm; thay bằng chuẩn v1 khi SPR-33 đóng (Cổng 2).
 Người dùng: SPR-31 và SPR-32 viết skill theo hai bảng dưới; lớp (a) là hình thức, lớp (b) là văn phong cho Claude 5.x.
-Kiểm: `python <worktree>/studio.py validate <skill>` — bản `main` đủ cho FM/DS/ST cũ; `--target` và `CT10` chỉ có ở worktree SPR-33 tới Cổng 2.
+Kiểm: `python -X utf8 studio.py validate <skill>` chạy trong worktree `C:\Users\DucNguyen\OpcOS\plugins\agent-skill-studio\.worktrees\spr-33-skill-standard` — bản `main` đủ cho FM/DS/ST cũ; `--target` và `CT10` chỉ có ở worktree SPR-33 tới Cổng 2. Mã rule (`FM*`/`DS*`/`ST*`/`CT10`) tra ở `standards/SKILL_AUTHORING_STANDARD.md` + `studio.py`. Mã `[nội bộ]` và ngưỡng như 500 ký tự, ≤12 dòng Contents là hướng dẫn của Studio; validator chỉ chặn một phần cho tới khi TK2 xong.
 
 Nguồn đã mở lại ngày 22/10/2026: **[spec]** agentskills.io/specification · **[bp]** platform.claude.com/…/agent-skills/best-practices · **[cc]** code.claude.com/docs/en/skills · **[ab]** agentskills.io/skill-creation/best-practices · **[ae]** agentskills.io/skill-creation/evaluating-skills · **[pb]** platform.claude.com/…/claude-prompting-best-practices · **[fable-5]** …/prompting-claude-fable-5 · **[sonnet-5.5]** …/prompting-claude-sonnet-5-5. Câu trích: `evidence/sources.md` của SPR-33.
 
@@ -13,12 +13,12 @@ Nguồn đã mở lại ngày 22/10/2026: **[spec]** agentskills.io/specificatio
 | (a1) | `name` 1–64 ký tự, `a-z0-9-`, không đầu/cuối `-`, không `--`, khớp tên thư mục; không thẻ XML, không chứa "anthropic" hay "claude" | [spec], [bp] |
 | (a2) | `description` 1–1 024 ký tự, không thẻ XML, ngôi thứ ba, nói làm gì + khi nào, có từ khoá người dùng hay nói | [spec], [bp] |
 | (a3) | Claude Code cắt `description` + `when_to_use` ở 1 536 ký tự và dặn đặt use case chính lên đầu → Studio: cụm kích hoạt nằm trong ~500 ký tự đầu | [cc] + [nội bộ] cho con số 500 |
-| (a4) | Khoá portable: `license`, `compatibility` ≤500, `metadata` (map chuỗi), `allowed-tools` (thử nghiệm). Khoá riêng Claude Code chỉ dùng cho bản đích Claude Code vì claude.ai/API báo lỗi cứng khi gặp khoá lạ | [spec], [cc] |
+| (a4) | Khoá portable: `license`, `compatibility` ≤500, `metadata` (map chuỗi), `allowed-tools` (thử nghiệm). Khoá riêng Claude Code chỉ dùng cho bản đích Claude Code vì claude.ai/API báo lỗi cứng khi gặp khoá lạ, còn Claude Code bỏ qua khoá lạ, không báo lỗi — nên `validate` cục bộ mới là nơi bắt | [spec], [cc] |
 | (a5) | Thân <500 dòng và <5 000 token; sau compaction Claude Code giữ 5 000 token đầu mỗi skill (tổng 25 000) → điều phải giữ đặt gần đầu | [spec], [cc] |
 | (a6) | Tham chiếu một cấp từ `SKILL.md`, nói *khi nào* đọc từng file; file >100 dòng có mục lục | [bp], [ab] |
 | (a7) | Đường dẫn dùng `/`; nói rõ "chạy" hay "đọc" script; khai phụ thuộc; tên MCP dạng `Server:tool`; API không có mạng, không cài gói | [bp] |
-| (a8) | Eval ≥3 case, có baseline không-skill hoặc bản cũ; định dạng agentskills là `evals/evals.json`; Studio giữ `cases.json` ngoài skill kèm bộ xuất | [bp], [ae] + [nội bộ] |
-| (a9) | Mục lục `## Contents` ngay dưới tiêu đề cấp một, mỗi dòng `- <Tên mục ##> — <khi nào đọc>`, ≤12 dòng; không có luật "N dòng đầu" | [bp] + [nội bộ] cho định dạng |
+| (a8) | Eval ≥3 case, có baseline không-skill hoặc bản cũ; định dạng agentskills là `evals/evals.json`; Studio giữ `evals/<skill>/cases.json` (ngoài `skills/<skill>/`) kèm bộ xuất | [bp], [ae] + [nội bộ] |
+| (a9) | Mục lục `## Contents` ngay dưới tiêu đề cấp một, mỗi dòng `- <Tên mục ##> — <khi nào đọc>`, ≤12 dòng; không có luật "N dòng đầu" | [bp] (TOC file >100 dòng) + [nội bộ] (áp vào SKILL.md, định dạng) |
 
 ## Lớp (b) — văn phong cho Claude 5.x
 
