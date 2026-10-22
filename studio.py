@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ import shutil
 import sys
 import unicodedata
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 VERSION = "0.1.0"
@@ -74,6 +76,18 @@ REJECT_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
 TEMPLATE_LANGS = ("en", "vi")
 # (source dir under templates/, mirror dir under skills/skill-creator-studio/assets/)
 TEMPLATE_PAIRS = (("skill-template", "skill-template"), ("skill-template-full", "skill-template-full"))
+PROFILES = ("portable", "opcos")
+DOCTOR_EXCLUDE_PARTS = (".claude/skills", ".agents/skills", ".worktrees", ".claude/worktrees", "node_modules", ".tmp", "__pycache__")
+DOCTOR_PRUNE_SILENT = frozenset({".git", ".venv", ".pytest_cache", ".mypy_cache"})  # never skills, never worth a skipped[] line
+CLOUD_MARKERS = ("OneDrive", "SharePoint")
+ST8_ALLOWED_DIRS = frozenset({"references", "scripts", "assets", "agents", "tests"})
+OPCOS_PROVENANCE_KEYS = frozenset({"source", "source_sha", "base_sha", "rewrite_before_public"})
+CODEX_BODY_MAX_BYTES = 8000  # [codex 0.147]; standards/SOURCE_TRACEABILITY.md A16
+DOCTOR_FAIL_ON = ("error", "warn", "new")
+DOCTOR_SCHEMA = 1
+DOCTOR_MAX_DEPTH = 12  # folder levels below a root
+DOCTOR_MAX_DIRS = 100000  # folders listed per run
+DOCTOR_MAX_SKILLS = 3000
 
 
 def emit(level: str, code: str, path: Path, line: int, message: str) -> dict:
@@ -203,6 +217,78 @@ def valid_resolved_under(child: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+@functools.lru_cache(maxsize=8)
+def _secret_dirs(home: str) -> tuple:
+    """Normalized spellings of ~/.secret. Only `home` is resolved (a lstat chain up to it), never the secret folder."""
+    return (os.path.normcase(os.path.abspath(os.path.join(home, ".secret"))),
+            os.path.join(os.path.normcase(os.path.realpath(home)), ".secret"))
+
+
+def zone_reason(path) -> str | None:
+    """'cloud' for a path naming OneDrive/SharePoint, 'secret-zone' for ~/.secret or any folder called .secret, else None.
+    Compares strings only: it never stats, lists or opens `path` (RK15)."""
+    text = os.path.normcase(os.path.abspath(os.fspath(path)))
+    if any(marker.lower() in text.lower() for marker in CLOUD_MARKERS):
+        return "cloud"
+    if ".secret" in text.split(os.sep):
+        return "secret-zone"
+    try:
+        secrets = _secret_dirs(str(Path.home()))
+    except (RuntimeError, KeyError, OSError):
+        return None
+    return "secret-zone" if any(text == s or text.startswith(s + os.sep) for s in secrets) else None
+
+
+def lexically_inside(path, base) -> bool:
+    """True when `path` is `base` or below it by name alone (`..` folded, nothing resolved or stat-ed)."""
+    path, base = os.path.normcase(os.path.abspath(os.fspath(path))), os.path.normcase(os.path.abspath(os.fspath(base)))
+    try:
+        return os.path.commonpath([path, base]) == base
+    except ValueError:  # different drives
+        return False
+
+
+def is_sensitive_name(name: str) -> bool:
+    """File names doctor never opens, even inside a skill: .env*, *.credentials.json, auth.json, *.pem, *.key."""
+    low = name.lower()
+    return low.startswith(".env") or low.endswith(".credentials.json") or low == "auth.json" or low.endswith((".pem", ".key"))
+
+
+def zone_named(name: str) -> bool:
+    """A single folder name that is a cloud/secret zone by itself (.secret, or one containing OneDrive/SharePoint)."""
+    low = name.lower()
+    return low == ".secret" or any(marker.lower() in low for marker in CLOUD_MARKERS)
+
+
+def walk_files(base: Path) -> tuple[list[Path], set, set]:
+    """(every file and folder under `base`, sorted; the symlinks and the real folders the listing itself reports).
+    A symlink or junction is listed but never entered, a folder named like a cloud/secret zone is listed but never entered
+    or stat-ed, and nothing else is stat-ed per entry except folders about to be entered."""
+    found, links, dirs, stack = [], set(), set(), [base]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as scan:
+                entries = list(scan)
+        except OSError:
+            continue
+        for entry in entries:
+            path = Path(entry.path)
+            found.append(path)
+            try:
+                if entry.is_symlink():
+                    links.add(path)
+                elif entry.is_dir(follow_symlinks=False):
+                    if zone_named(entry.name):
+                        dirs.add(path)
+                    elif not is_link(path):
+                        dirs.add(path)
+                        stack.append(path)
+            except OSError:
+                continue
+    return sorted(found), links, dirs
 
 
 def check_evals(folder: Path) -> list[dict]:
@@ -651,7 +737,10 @@ def lint_contents(path: Path, lines: list, kind: str, offset: int = 0) -> list:
     return findings
 
 
-def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: bool = False, target: str = "portable") -> list[dict]:
+def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: bool = False, target: str = "portable",
+                   profile: str = "portable", allow_links_under: Path | None = None) -> list[dict]:
+    """Findings for one skill. profile "opcos" (doctor): an existing link that leaves the skill but stays under `allow_links_under`
+    is a WARN ST6, the OPCOS_PROVENANCE_KEYS are WARN FM4, and no `metadata.opcos_*` key is a NOTE MD1. ST3 and ST8 apply to every profile."""
     folder = folder.resolve()
     manifest = folder / "SKILL.md"
     if not manifest.is_file():
@@ -695,8 +784,12 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
         if claude and key in CLAUDE_CODE_KEYS:
             at = next((i + 1 for i, x in enumerate(all_lines[:body_start]) if x.startswith(key + ":")), 2)
             findings.append(emit("WARN", "FM6", manifest, at, "frontmatter key '%s' is Claude Code only; claude.ai and the API reject it with a hard error" % key))
+        elif profile == "opcos" and key in OPCOS_PROVENANCE_KEYS:
+            findings.append(emit("WARN", "FM4", manifest, 2, "provenance key '%s' is an OpcOS convention, not portable; move it under metadata before publishing" % key))
         else:
             findings.append(emit("ERROR", "FM4", manifest, 2, "unknown frontmatter key '%s' for target %s; allowed keys: %s; use metadata or a target adapter" % (key, target, ", ".join(allowed))))
+    if profile == "opcos" and not (isinstance(meta.get("metadata"), dict) and any(k.startswith("opcos_") for k in meta["metadata"])):
+        findings.append(emit("NOTE", "MD1", manifest, 2, "no metadata.opcos_* key; OpcOS registry fields are optional"))
     extra = frontmatter_extra_len(all_lines, body_start)
     if extra > FRONTMATTER_EXTRA_MAX:
         findings.append(emit("WARN", "FM8", manifest, 1, "frontmatter outside description is %d chars (>%d); move detail to the body or references" % (extra, FRONTMATTER_EXTRA_MAX)))
@@ -707,6 +800,9 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     body = "\n".join(all_lines[body_start:])
     if len(body.splitlines()) >= 500:
         findings.append(emit("WARN", "ST1", manifest, body_start + 1, "Skill body should be under 500 lines (best-practice, not spec hard limit)"))
+    body_bytes = len(body.encode("utf-8"))
+    if body_bytes > CODEX_BODY_MAX_BYTES:
+        findings.append(emit("WARN", "ST3", manifest, body_start + 1, "Skill body is %d bytes (>%d, the Codex 0.147 limit); move detail to references (standards/SOURCE_TRACEABILITY.md A16)" % (body_bytes, CODEX_BODY_MAX_BYTES)))
     tokens = estimate_tokens(body)
     if tokens > BODY_TOKEN_MAX:
         findings.append(emit("WARN", "ST2", manifest, body_start + 1, "Skill body is about %d tokens (estimate, not a tokenizer); keep it under %d and move detail to references" % (tokens, BODY_TOKEN_MAX)))
@@ -727,8 +823,14 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
             continue
         resolved = folder / link
         line = body_start + body[:match.start()].count("\n") + 1
-        if not valid_resolved_under(resolved, folder):
-            findings.append(emit("ERROR", "ST6", manifest, line, "reference escapes Skill folder: '%s'" % link))
+        if not lexically_inside(resolved, folder) and zone_reason(resolved):  # named outside and in a forbidden zone: do not resolve or stat it
+            findings.append(emit("ERROR", "ST6", manifest, line, "reference escapes Skill folder into a cloud or secret zone (not opened): '%s'" % link))
+        elif not valid_resolved_under(resolved, folder):
+            if (profile == "opcos" and allow_links_under is not None and not zone_reason(resolved.resolve())
+                    and valid_resolved_under(resolved, allow_links_under) and resolved.exists()):
+                findings.append(emit("WARN", "ST6", manifest, line, "link leaves the Skill folder but stays inside the scanned root: '%s'" % link))
+            else:
+                findings.append(emit("ERROR", "ST6", manifest, line, "reference escapes Skill folder: '%s'" % link))
         elif not resolved.exists():
             findings.append(emit("ERROR", "ST6", manifest, line, "missing referenced resource '%s'" % link))
         else:
@@ -737,9 +839,12 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
             except OSError:
                 pass
     ref_dir = folder / "references"
+    tree, tree_links, tree_dirs = walk_files(folder)
     if ref_dir.is_dir():
-        for p in ref_dir.rglob("*.md"):
-            if p.is_symlink():
+        for p in (x for x in tree if ref_dir in x.parents and x.name.endswith(".md") and not is_sensitive_name(x.name)):
+            if p not in tree_links and not p.is_file():
+                continue
+            if p in tree_links:
                 findings.append(emit("ERROR", "SEC", p, 0, "symlink in reference tree may escape package; replace with real file"))
                 continue
             if p.resolve() not in refs_linked:
@@ -755,9 +860,12 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
         for script in scripts.iterdir():
             if script.is_file() and script.suffix in {".py", ".sh", ".js", ".ts"} and script.name not in body:
                 findings.append(emit("WARN", "SC3", script, 0, "script not mentioned in SKILL.md; document whether to run or read"))
-    for p in folder.rglob('*'):
-        if p.is_symlink():
+    for p in tree:
+        if p in tree_links:
             findings.append(emit("ERROR", "SEC", p, 0, "symlinks are not portable/safe in distributed skill packages"))
+        elif (p.parent == folder and p.name not in ST8_ALLOWED_DIRS and p.name not in SKIP_DIRS and not is_sensitive_name(p.name)
+              and p in tree_dirs):
+            findings.append(emit("WARN", "ST8", p, 0, "folder '%s' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill" % p.name))
     if eval_root is None:
         root = repo_root(folder)
         if root is not None:
@@ -1081,6 +1189,283 @@ def cmd_sync(args) -> int:
     return 0
 
 
+def _posix(path) -> str:
+    return os.fspath(path).replace("\\", "/")
+
+
+def _is_excluded(parts: tuple, include_cache: bool) -> bool:
+    """True when the newest folder name in `parts` (relative to the root) completes a DOCTOR_EXCLUDE_PARTS entry or looks like a cache."""
+    low = [x.lower() for x in parts]
+    for pattern in DOCTOR_EXCLUDE_PARTS:
+        want = pattern.lower().split("/")
+        if low[-len(want):] == want:
+            return True
+    return not include_cache and "cache" in low[-1]
+
+
+def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None) -> list[Path]:
+    """Absolute root paths from --roots (`;` separated) and --roots-file (one per line, `#` comments).
+    Without either, the repo's skills/ is the root; outside the repo that is an error. A path in a cloud or secret zone is
+    returned without being looked at (doctor reports it as skipped); any other root must be an existing directory."""
+    items = [x.strip() for x in (roots or "").split(";") if x.strip()]
+    if roots_file:
+        listing = Path(os.path.abspath(os.path.expanduser(roots_file)))
+        if zone_reason(listing):
+            raise ValueError("--roots-file is inside a %s zone; not read: %s" % (zone_reason(listing), roots_file))
+        try:
+            lines = listing.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("cannot read --roots-file %s: %s" % (roots_file, exc))
+        items += [x.strip() for x in lines if x.strip() and not x.lstrip().startswith("#")]
+    if not items:
+        if repo is None:
+            raise ValueError("outside the Studio repository doctor needs --roots or --roots-file")
+        items = [str(repo / "skills")]
+    found = []
+    for item in items:
+        path = Path(os.path.abspath(os.path.expanduser(item)))
+        if not zone_reason(path) and not path.is_dir():
+            raise ValueError("root not found or not a directory: %s" % item)
+        found.append(path)
+    return found
+
+
+def iter_skill_dirs(roots: list, include_cache: bool = False) -> tuple[list, list]:
+    """(skill folders, skipped[{path, reason}]). A skill is a folder holding SKILL.md; the scan never goes below one, never
+    follows a symlink or junction, and de-duplicates by real path. Reasons: cloud, secret-zone (decided from the path text alone,
+    nothing is listed or opened there), link, excluded, limit, unreadable."""
+    skills, skipped, seen_skills, seen_skips, seen_roots, listed = [], [], set(), set(), set(), 0
+
+    def skip(path, reason):
+        key = (os.path.normcase(os.fspath(path)), reason)
+        if key not in seen_skips:
+            seen_skips.add(key)
+            skipped.append({"path": _posix(path), "reason": reason})
+
+    for given in roots:
+        given = Path(os.path.abspath(os.fspath(given)))
+        reason = zone_reason(given)
+        if reason:
+            skip(given, reason)
+            continue
+        try:
+            real = given.resolve()
+        except (OSError, RuntimeError):
+            skip(given, "unreadable")
+            continue
+        reason = zone_reason(real)
+        if reason:
+            skip(given, reason)
+            continue
+        if os.path.normcase(str(real)) in seen_roots:
+            continue
+        seen_roots.add(os.path.normcase(str(real)))
+        stack = [(real, ())]
+        while stack:
+            current, rel = stack.pop()
+            listed += 1
+            if listed > DOCTOR_MAX_DIRS:
+                skip(current, "limit")
+                break
+            try:
+                with os.scandir(current) as scan:
+                    entries = sorted(scan, key=lambda e: e.name)
+            except OSError:
+                skip(current, "unreadable")
+                continue
+            manifest = next((e for e in entries if e.name == "SKILL.md"), None)
+            if manifest is not None:
+                if manifest.is_symlink():
+                    skip(current / "SKILL.md", "link")
+                elif len(skills) >= DOCTOR_MAX_SKILLS:
+                    skip(current, "limit")
+                elif os.path.normcase(str(current)) not in seen_skills:
+                    seen_skills.add(os.path.normcase(str(current)))
+                    skills.append(current)
+                continue
+            for entry in reversed(entries):
+                child = current / entry.name
+                try:
+                    if not (entry.is_dir(follow_symlinks=False) or entry.is_symlink()):
+                        continue
+                except OSError:
+                    continue
+                reason = zone_reason(child)
+                if reason:
+                    skip(child, reason)
+                elif entry.is_symlink() or is_link(child):
+                    skip(child, "link")
+                elif entry.name.lower() in DOCTOR_PRUNE_SILENT:
+                    continue
+                elif _is_excluded(rel + (entry.name,), include_cache):
+                    skip(child, "excluded")
+                elif len(rel) + 1 > DOCTOR_MAX_DEPTH:
+                    skip(child, "limit")
+                else:
+                    stack.append((child, rel + (entry.name,)))
+    return sorted(skills, key=lambda p: os.path.normcase(str(p))), skipped
+
+
+def _skill_identity(skill: Path, target: str) -> tuple[str, str]:
+    """(name, 'en'|'vi') from SKILL.md: frontmatter name (folder name when unreadable) and the body language."""
+    manifest = skill / "SKILL.md"
+    try:
+        text = manifest.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return skill.name, "en"
+    meta, _, body_start = parse_frontmatter(text, manifest, CLAUDE_CODE_KEYS if target == "claude-code" else frozenset())
+    name = meta.get("name") if isinstance(meta.get("name"), str) and meta["name"] else skill.name
+    return name, detect_lang("\n".join(text.splitlines()[body_start:]))
+
+
+def _code_counts(report: dict) -> dict:
+    """{(skill path, code): times} over ERROR and WARN findings (a NOTE is information, never "new")."""
+    counts: dict = {}
+    for skill in report.get("skills", []):
+        for item in skill.get("codes", []):
+            if item.get("level") in ("ERROR", "WARN"):
+                key = (skill.get("path"), item.get("code"))
+                counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def diff_baseline(current: dict, baseline: dict) -> list[dict]:
+    """The (skill, code) pairs that occur more often in `current` than in `baseline`."""
+    before = _code_counts(baseline)
+    return [{"path": path, "code": code, "before": before.get((path, code), 0), "after": after}
+            for (path, code), after in sorted(_code_counts(current).items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1])))
+            if after > before.get((path, code), 0)]
+
+
+def doctor_run(roots: list, profile: str, target: str, include_cache: bool, baseline: dict | None) -> dict:
+    """The doctor report (SPEC 9.11, schema 1). Reads skills, writes nothing."""
+    skills, skipped = iter_skill_dirs(roots, include_cache)
+    real_roots = []
+    for root in roots:
+        if not zone_reason(root):
+            try:
+                real_roots.append(Path(root).resolve())
+            except OSError:
+                continue
+    entries = []
+    totals = {"skills": 0, "errors": 0, "warnings": 0, "notes": 0}
+    for skill in skills:
+        under = next((r for r in real_roots if valid_resolved_under(skill, r)), None)
+        findings = validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under)
+        codes = []
+        for f in findings:
+            path = Path(f["path"])
+            try:
+                shown = path.relative_to(skill).as_posix()
+            except ValueError:
+                shown = _posix(path)
+            codes.append({"code": f["code"], "level": f["level"], "file": shown, "line": f["line"], "message": f["message"]})
+        name, lang = _skill_identity(skill, target)
+        errors, warnings = sum(c["level"] == "ERROR" for c in codes), sum(c["level"] == "WARN" for c in codes)
+        entries.append({"path": _posix(skill), "name": name, "lang": lang, "errors": errors, "warnings": warnings, "codes": codes})
+        totals["skills"] += 1
+        totals["errors"] += errors
+        totals["warnings"] += warnings
+        totals["notes"] += sum(c["level"] == "NOTE" for c in codes)
+    report = {"schema": DOCTOR_SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "studio_version": VERSION, "roots": [_posix(r) for r in roots], "skills": entries, "skipped": skipped,
+              "totals": totals, "new_vs_baseline": []}
+    if baseline is not None:
+        report["new_vs_baseline"] = diff_baseline(report, baseline)
+    return report
+
+
+def _baseline_problem(obj) -> str | None:
+    if not isinstance(obj, dict) or obj.get("schema") != DOCTOR_SCHEMA or not isinstance(obj.get("skills"), list):
+        return "is not a doctor report (expected JSON with schema %d and a skills list)" % DOCTOR_SCHEMA
+    for skill in obj["skills"]:
+        if not isinstance(skill, dict) or not isinstance(skill.get("codes", []), list) or any(not isinstance(c, dict) for c in skill.get("codes", [])):
+            return "has skills[] entries that are not objects with a codes list"
+    return None
+
+
+def _out_problem(out: Path, roots: list, repo: Path | None) -> str | None:
+    reason = zone_reason(out)
+    if reason:
+        return "--out is inside a %s zone" % reason
+    if not out.parent.is_dir():
+        return "folder of --out does not exist: %s (doctor never creates folders)" % out.parent
+    if out.is_dir() or is_link(out):
+        return "--out must be a plain file path: %s" % out
+    if any(part.lower() == "skills" for part in out.parts[:-1]) or (repo is not None and valid_resolved_under(out, repo / "skills")):
+        return "--out must not be under a skills/ folder: %s" % out
+    if any(not zone_reason(r) and valid_resolved_under(out, r) for r in roots):
+        return "--out must not be inside a scanned root: %s" % out
+    return None
+
+
+def cmd_doctor(args) -> int:
+    """Report-only scan of many skill roots. Exit 0 nothing at the --fail-on level, 1 findings, 2 could not scan."""
+    repo = repo_root(Path(__file__)) or repo_root(Path.cwd())
+    try:
+        roots = parse_roots(args.roots, args.roots_file, repo)
+    except ValueError as exc:
+        print("ERROR: %s" % exc, file=sys.stderr)
+        return 2
+    baseline = None
+    if args.fail_on == "new" and not args.baseline:
+        print("ERROR: --fail-on new needs --baseline <earlier doctor --json report>", file=sys.stderr)
+        return 2
+    if args.baseline:
+        source = Path(os.path.abspath(os.path.expanduser(args.baseline)))
+        problem = "is inside a %s zone; not read" % zone_reason(source) if zone_reason(source) else None
+        if problem is None:
+            try:
+                baseline = json.loads(source.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                problem = "cannot be read as JSON (%s)" % exc
+            else:
+                problem = _baseline_problem(baseline)
+        if problem:
+            print("ERROR: baseline %s %s" % (args.baseline, problem), file=sys.stderr)
+            return 2
+    out = None
+    if args.out:
+        out = Path(os.path.abspath(os.path.expanduser(args.out)))
+        problem = _out_problem(out, roots, repo)
+        if problem:
+            print("ERROR: %s" % problem, file=sys.stderr)
+            return 2
+    report = doctor_run(roots, args.profile, args.target, args.include_cache, baseline)
+    if out is not None:
+        try:
+            with open(out, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        except OSError as exc:
+            print("ERROR: cannot write --out: %s" % exc, file=sys.stderr)
+            return 2
+    totals = report["totals"]
+    if args.json and out is None:
+        try:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        except UnicodeEncodeError:  # a console that cannot show every character
+            print(json.dumps(report, ensure_ascii=True, indent=2))
+    else:
+        print("doctor (profile %s, target %s): %d skills, %d errors, %d warnings, %d notes; %d skipped"
+              % (args.profile, args.target, totals["skills"], totals["errors"], totals["warnings"], totals["notes"], len(report["skipped"])))
+        for skill in report["skills"]:
+            if skill["errors"] or skill["warnings"]:
+                print("  %s: %d errors, %d warnings" % (skill["path"], skill["errors"], skill["warnings"]))
+        for item in report["skipped"]:
+            print("  skipped (%s): %s" % (item["reason"], item["path"]))
+        for item in report["new_vs_baseline"]:
+            print("  new vs baseline: %s %s %d -> %d" % (item["path"], item["code"], item["before"], item["after"]))
+        if out is not None:
+            print("report written to %s" % out)
+    if args.fail_on == "new":
+        found = bool(report["new_vs_baseline"])
+    elif args.fail_on == "warn":
+        found = bool(totals["errors"] or totals["warnings"])
+    else:
+        found = bool(totals["errors"])
+    return 1 if found else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Agent Skill Studio: create, audit, lint, package and install portable skills")
     parser.add_argument("--version", action="version", version=VERSION)
@@ -1127,6 +1512,17 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("sync-template", help="sync source template to packaged Skill asset")
     p.add_argument("--check", action="store_true", help="verify byte-identical mirror without modifications")
     p.set_defaults(func=cmd_sync)
+    p = sub.add_parser("doctor", help="report-only scan of many skill roots (not Claude Code's /skill-doctor); exit 0 clean, 1 findings, 2 cannot scan")
+    p.add_argument("--roots", help="skill roots separated by ';' (default: the repo's skills/; outside the repo --roots or --roots-file is required)")
+    p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment")
+    p.add_argument("--profile", choices=PROFILES, default="portable", help="opcos: a link inside the scanned root is a WARN, provenance keys are WARN, missing metadata.opcos_* is a NOTE")
+    p.add_argument("--target", choices=TARGETS, default="portable")
+    p.add_argument("--include-cache", action="store_true", help="also scan folders whose name contains 'cache'")
+    p.add_argument("--baseline", help="an earlier doctor JSON report; new_vs_baseline lists the (skill, code) pairs that grew")
+    p.add_argument("--json", action="store_true", help="print the JSON report (with --out it goes to the file only)")
+    p.add_argument("--out", help="write the JSON report here; the folder must exist and must not be under skills/ or a scanned root")
+    p.add_argument("--fail-on", choices=DOCTOR_FAIL_ON, default="error", help="what makes the exit code 1 (default error; new needs --baseline)")
+    p.set_defaults(func=cmd_doctor)
     args = parser.parse_args(argv)
     return args.func(args)
 

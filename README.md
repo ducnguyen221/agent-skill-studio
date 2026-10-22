@@ -121,6 +121,12 @@ python3 studio.py package skills/data-quality-audit --out dist
 
 Sau khi tạo Skill mới: cập nhật `registry/catalog.json`, thay hướng dẫn mẫu bằng quy trình thực, bổ sung references/assets theo nhu cầu, tạo ít nhất 3 test prompts có positive/negative, kiểm định. `new` chỉ scaffold, **không có nghĩa Skill mới đã đạt chất lượng production**.
 
+```bash
+python3 studio.py doctor --roots "<dir1>;<dir2>" --json
+```
+
+`python studio.py doctor --roots "<dir1>;<dir2>" --json` — report-only scan of many skill roots; exit 0 clean, 1 findings, 2 cannot scan. Not Claude Code's `/skill-doctor`.
+
 ## Ba agent và cách cài
 
 **Cài như plugin (Claude Code, Codex):** repo có manifest plugin ở `.claude-plugin/` và `.codex-plugin/`. Với Claude Code:
