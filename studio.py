@@ -66,6 +66,9 @@ LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 FRONT_KEY_RE = re.compile(r"^([a-zA-Z][\w-]*):(?:\s+(.*))?$")
 META_KEY_RE = re.compile(r"^\s{2,}([\w.-]+):(?:\s+(.*))?$")
 SKIP_DIRS = {"__pycache__", ".git", ".venv", "evals", "tests", ".pytest_cache", ".mypy_cache"}
+EXPORT_FORMATS = ("agentskills",)
+EXPORT_DEFAULT_OUT = "dist/agentskills"
+EXPORT_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REJECT_NAMES = {".env", ".env.local", "id_rsa", "id_ed25519", "credentials.json", "secrets.json"}
 REJECT_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
 TEMPLATE_LANGS = ("en", "vi")
@@ -251,6 +254,97 @@ def check_evals(folder: Path) -> list[dict]:
     if not (folder / "rubric.md").is_file():
         results.append(emit("WARN", "EV6", folder, 0, "rubric.md missing; expected behavior may lack independent grading"))
     return results
+
+
+def export_skills_dirs(eval_dir: Path) -> list[Path]:
+    """Every `skills/` directory an export must never write into: this repo's, the cwd repo's, the one this script is packaged under, and the sibling of the evals root."""
+    here = Path(__file__).resolve()
+    found = [root / "skills" for root in (repo_root(here), repo_root(Path.cwd())) if root]
+    found += [parent for parent in here.parents if parent.name == "skills"]
+    found.append(eval_dir.resolve().parent.parent / "skills")
+    return found
+
+
+def export_fixture_source(eval_dir: Path, relative: str) -> tuple[Path | None, list[str], str]:
+    """Resolve a fixture path from cases.json to (source, export-name parts, problem). Only plain relative paths inside eval_dir, no links."""
+    posix = relative.replace("\\", "/")
+    parts = [x for x in posix.split("/")]
+    if not posix or posix.startswith("/") or re.match(r"^[A-Za-z]:", posix) or any(x in ("", ".", "..") for x in parts):
+        return None, [], "unsafe fixture path '%s' (must be a plain relative path inside the eval folder)" % relative
+    current = eval_dir
+    for part in parts:
+        current = current / part
+        if is_link(current):
+            return None, [], "fixture '%s' goes through a symlink or junction; refusing to copy it" % relative
+    if not current.is_file() or not valid_resolved_under(current, eval_dir):
+        return None, [], "missing/outside eval fixture '%s'" % relative
+    return current, (parts[1:] if parts[0] == "fixtures" and len(parts) > 1 else parts), ""
+
+
+def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: bool = False) -> tuple[int, list[dict], dict]:
+    """Write <out_root>/<skill_name>/evals/evals.json (agentskills schema, SPEC 9.6) plus evals/files/ from evals/<skill>/cases.json.
+
+    Returns (exit code, findings, {"exported", "excluded_negative", "path"}). 1 = refused (nothing written), 2 = bad destination.
+    Only the positive cases (should_trigger true) are exported; nothing is deleted, and --force only overwrites the files this function generates."""
+    eval_dir, out_root = Path(eval_dir), Path(out_root)
+    stats = {"exported": 0, "excluded_negative": 0, "path": ""}
+
+    def refuse(code: int, ident: str, message: str, path: Path = eval_dir):
+        return code, [emit("ERROR", ident, path, 0, message)], stats
+
+    dest = out_root / skill_name
+    if any(valid_resolved_under(dest, skills) for skills in export_skills_dirs(eval_dir)):
+        return refuse(2, "EX1", "export destination must not be under skills/ (it would ship test data inside the skill): %s" % out_root, out_root)
+    if not EXPORT_NAME_RE.match(skill_name or ""):
+        return refuse(1, "EX2", "skill name '%s' is not a plain lowercase-hyphen name" % skill_name)
+    problems = [x for x in check_evals(eval_dir) if x["level"] == "ERROR"]
+    if problems:
+        return 1, problems, stats
+    try:
+        data = json.loads((eval_dir / "cases.json").read_text(encoding="utf-8"))
+    except (ValueError, OSError) as exc:
+        return refuse(1, "EV1", "cannot read evals JSON: %s" % exc, eval_dir / "cases.json")
+    cases = data["cases"]
+    if data.get("status") == "draft" or any("STUDIO-DRAFT" in "%s %s" % (c.get("prompt", ""), " ".join(map(str, c.get("expected_behaviors", [])))) for c in cases):
+        return refuse(1, "EX3", "eval is still a draft (status 'draft' or STUDIO-DRAFT text); write real cases before exporting", eval_dir / "cases.json")
+    positive = [c for c in cases if c["should_trigger"]]
+    sources: dict[str, Path] = {}
+    evals = []
+    for number, case in enumerate(positive, 1):
+        names = []
+        for relative in case.get("fixtures", []):
+            source, parts, problem = export_fixture_source(eval_dir, relative)
+            if source is None:
+                return refuse(1, "EX4", problem, eval_dir / "cases.json")
+            name = "/".join(parts)
+            if name in sources and sources[name] != source:
+                return refuse(1, "EX7", "fixture names collide after export: '%s' is both %s and %s" % (name, sources[name], source), eval_dir / "cases.json")
+            sources[name] = source
+            names.append("evals/files/" + name)
+        evals.append({"id": number, "prompt": case["prompt"], "expected_output": "; ".join(case["expected_behaviors"]), "files": names, "assertions": list(case["expected_behaviors"])})
+    evals_dir = dest / "evals"
+    target = evals_dir / "evals.json"
+    copies = {evals_dir / "files" / Path(*name.split("/")): source for name, source in sources.items()}
+    for owned in [dest, evals_dir, evals_dir / "files"] + [t.parent for t in copies] + [target] + list(copies):
+        if is_link(owned):
+            return refuse(1, "EX6", "export destination goes through a symlink or junction: %s" % owned, owned)
+    for t, source in copies.items():
+        if t.exists() and source.exists() and os.path.samefile(t, source):
+            return refuse(1, "EX6", "export destination is the source fixture itself: %s" % t, t)
+    clash = [x for x in [target] + list(copies) if x.exists()]
+    if clash and not force:
+        return refuse(1, "EX5", "export file exists: %s; choose another --out or explicitly --force" % clash[0], clash[0])
+    try:
+        for t, source in copies.items():
+            t.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, t)
+        evals_dir.mkdir(parents=True, exist_ok=True)
+        with open(target, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n")
+    except OSError as exc:
+        return refuse(1, "EX8", "cannot write export: %s" % exc, out_root)
+    stats.update({"exported": len(evals), "excluded_negative": len(cases) - len(positive), "path": str(target)})
+    return 0, [], stats
 
 
 def frontmatter_extra_len(lines: list, body_start: int) -> int:
@@ -782,11 +876,35 @@ def cmd_check(args, audit: bool = False) -> int:
     return 1 if any(f["level"] == "ERROR" for x in reports for f in x["findings"]) else 0
 
 
+def cmd_evals_export(args, paths: list[Path]) -> int:
+    out_root = Path(args.out or EXPORT_DEFAULT_OUT).expanduser()
+    reports, worst = [], 0
+    for path in paths:
+        code, findings, stats = export_agentskills(path, path.name, out_root, force=args.force)
+        worst = 2 if code == 2 or worst == 2 else max(worst, code)
+        reports.append({"skill": path.name, "exit": code, "findings": findings, "stats": stats})
+    if args.json:
+        print(json.dumps({"reports": reports, "model_runs_performed": 0}, ensure_ascii=False, indent=2))
+        return worst
+    for item in reports:
+        for f in item["findings"]:
+            print("ERROR: %s %s: %s" % (item["skill"], f["code"], f["message"]), file=sys.stderr)
+        if item["exit"] == 0:
+            stats = item["stats"]
+            print("exported %d, excluded %d" % (stats["exported"], stats["excluded_negative"]))
+            print("  excluded cases are should_trigger: false; agentskills evals have no negative-case field")
+            print("  wrote %s" % stats["path"])
+    return worst
+
+
 def cmd_evals(args) -> int:
     root = repo_root(Path(__file__)) or repo_root(Path.cwd())
     eval_root = Path(args.eval_root) if args.eval_root else (root / "evals" if root else None)
     if eval_root is None:
         print("ERROR: provide --eval-root for non-Studio repository", file=sys.stderr)
+        return 2
+    if not args.export and (args.out is not None or args.force):
+        print("ERROR: --out and --force only apply together with --export agentskills", file=sys.stderr)
         return 2
     if args.all:
         paths = sorted(p for p in eval_root.iterdir() if p.is_dir() and any((p / m).exists() for m in ("cases.json", "rubric.md", "fixtures", "baselines", "expected"))) if eval_root.is_dir() else []
@@ -795,6 +913,8 @@ def cmd_evals(args) -> int:
     else:
         print("ERROR: specify --all or skill name", file=sys.stderr)
         return 2
+    if args.export:
+        return cmd_evals_export(args, paths)
     reports = []
     for path in paths:
         findings = check_evals(path)
@@ -962,10 +1082,13 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--target", choices=TARGETS, default="portable", help="portable (default) or claude-code (also accepts Claude Code only keys as FM6 warnings)")
         p.add_argument("--json", action="store_true")
         p.set_defaults(func=lambda args, audit=(action == "audit"): cmd_check(args, audit))
-    p = sub.add_parser("evals", help="validate eval manifest schemas only; no model calls")
+    p = sub.add_parser("evals", help="validate eval manifest schemas (no model calls); with --export agentskills also write evals.json")
     p.add_argument("skill", nargs="?", help="Skill name")
     p.add_argument("--all", action="store_true")
     p.add_argument("--eval-root")
+    p.add_argument("--export", choices=EXPORT_FORMATS, help="write the positive cases as <out>/<skill>/evals/evals.json in this format")
+    p.add_argument("--out", help="export destination (default %s); must not be under skills/" % EXPORT_DEFAULT_OUT)
+    p.add_argument("--force", action="store_true", help="overwrite existing exported files")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_evals)
     p = sub.add_parser("package", help="produce portable runtime-only Skill ZIP")
