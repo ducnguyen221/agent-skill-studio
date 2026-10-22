@@ -261,16 +261,24 @@ def export_skills_dirs(eval_dir: Path) -> list[Path]:
     here = Path(__file__).resolve()
     found = [root / "skills" for root in (repo_root(here), repo_root(Path.cwd())) if root]
     found += [parent for parent in here.parents if parent.name == "skills"]
+    if here.parent.name == "scripts" and (here.parent.parent / "SKILL.md").is_file():
+        found.append(here.parent.parent)  # a packaged skill copied somewhere that is not called skills/
     found.append(eval_dir.resolve().parent.parent / "skills")
     return found
+
+
+def export_eval_dirs(eval_dir: Path) -> list[Path]:
+    """Every evals root an export must never write into (frozen test data): the root holding this eval, and the evals/ of this repo and of the cwd repo."""
+    here = Path(__file__).resolve()
+    return [eval_dir.resolve().parent] + [root / "evals" for root in (repo_root(here), repo_root(Path.cwd())) if root]
 
 
 def export_fixture_source(eval_dir: Path, relative: str) -> tuple[Path | None, list[str], str]:
     """Resolve a fixture path from cases.json to (source, export-name parts, problem). Only plain relative paths inside eval_dir, no links."""
     posix = relative.replace("\\", "/")
     parts = [x for x in posix.split("/")]
-    if not posix or posix.startswith("/") or re.match(r"^[A-Za-z]:", posix) or any(x in ("", ".", "..") for x in parts):
-        return None, [], "unsafe fixture path '%s' (must be a plain relative path inside the eval folder)" % relative
+    if not posix or posix.startswith("/") or ":" in posix or any(x in ("", ".", "..") for x in parts):  # ':' also covers drive letters and NTFS streams (a.csv:hid)
+        return None, [], "unsafe fixture path '%s' (must be a plain relative path inside the eval folder, without ':')" % relative
     current = eval_dir
     for part in parts:
         current = current / part
@@ -284,8 +292,10 @@ def export_fixture_source(eval_dir: Path, relative: str) -> tuple[Path | None, l
 def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: bool = False) -> tuple[int, list[dict], dict]:
     """Write <out_root>/<skill_name>/evals/evals.json (agentskills schema, SPEC 9.6) plus evals/files/ from evals/<skill>/cases.json.
 
-    Returns (exit code, findings, {"exported", "excluded_negative", "path"}). 1 = refused (nothing written), 2 = bad destination.
-    Only the positive cases (should_trigger true) are exported; nothing is deleted, and --force only overwrites the files this function generates."""
+    Returns (exit code, findings, {"exported", "excluded_negative", "path"}). 2 = destination under skills/ or an evals root (EX1);
+    1 = refused before any write (EV*, EX2-EX7) or a write error (EX8). On EX8 the files this run created are removed again (empty folders may remain);
+    a file replaced under --force is not restored. Only the positive cases (should_trigger true) are exported; nothing else is deleted,
+    and --force only overwrites the files this function generates."""
     eval_dir, out_root = Path(eval_dir), Path(out_root)
     stats = {"exported": 0, "excluded_negative": 0, "path": ""}
 
@@ -295,6 +305,8 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     dest = out_root / skill_name
     if any(valid_resolved_under(dest, skills) for skills in export_skills_dirs(eval_dir)):
         return refuse(2, "EX1", "export destination must not be under skills/ (it would ship test data inside the skill): %s" % out_root, out_root)
+    if any(valid_resolved_under(dest, frozen) for frozen in export_eval_dirs(eval_dir)):
+        return refuse(2, "EX1", "export destination must not be under evals/ (frozen test data; the export would change the eval it came from): %s" % out_root, out_root)
     if not EXPORT_NAME_RE.match(skill_name or ""):
         return refuse(1, "EX2", "skill name '%s' is not a plain lowercase-hyphen name" % skill_name)
     problems = [x for x in check_evals(eval_dir) if x["level"] == "ERROR"]
@@ -308,7 +320,7 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     if data.get("status") == "draft" or any("STUDIO-DRAFT" in "%s %s" % (c.get("prompt", ""), " ".join(map(str, c.get("expected_behaviors", [])))) for c in cases):
         return refuse(1, "EX3", "eval is still a draft (status 'draft' or STUDIO-DRAFT text); write real cases before exporting", eval_dir / "cases.json")
     positive = [c for c in cases if c["should_trigger"]]
-    sources: dict[str, Path] = {}
+    sources: dict[str, tuple[str, Path]] = {}  # NFC-casefolded name -> (name as exported, source file)
     evals = []
     for number, case in enumerate(positive, 1):
         names = []
@@ -317,14 +329,16 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
             if source is None:
                 return refuse(1, "EX4", problem, eval_dir / "cases.json")
             name = "/".join(parts)
-            if name in sources and sources[name] != source:
-                return refuse(1, "EX7", "fixture names collide after export: '%s' is both %s and %s" % (name, sources[name], source), eval_dir / "cases.json")
-            sources[name] = source
+            key = unicodedata.normalize("NFC", name).casefold()  # a.csv and A.csv are one file on Windows/macOS disks
+            seen = sources.get(key)
+            if seen and (seen[0] != name or seen[1] != source):
+                return refuse(1, "EX7", "fixture names collide after export (compared ignoring case and Unicode form): '%s' is %s but '%s' is %s" % (seen[0], seen[1], name, source), eval_dir / "cases.json")
+            sources[key] = (name, source)
             names.append("evals/files/" + name)
         evals.append({"id": number, "prompt": case["prompt"], "expected_output": "; ".join(case["expected_behaviors"]), "files": names, "assertions": list(case["expected_behaviors"])})
     evals_dir = dest / "evals"
     target = evals_dir / "evals.json"
-    copies = {evals_dir / "files" / Path(*name.split("/")): source for name, source in sources.items()}
+    copies = {evals_dir / "files" / Path(*name.split("/")): source for name, source in sources.values()}
     for owned in [dest, evals_dir, evals_dir / "files"] + [t.parent for t in copies] + [target] + list(copies):
         if is_link(owned):
             return refuse(1, "EX6", "export destination goes through a symlink or junction: %s" % owned, owned)
@@ -334,6 +348,7 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     clash = [x for x in [target] + list(copies) if x.exists()]
     if clash and not force:
         return refuse(1, "EX5", "export file exists: %s; choose another --out or explicitly --force" % clash[0], clash[0])
+    fresh = [x for x in [target] + list(copies) if not x.exists()]
     try:
         for t, source in copies.items():
             t.parent.mkdir(parents=True, exist_ok=True)
@@ -342,7 +357,12 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
         with open(target, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n")
     except OSError as exc:
-        return refuse(1, "EX8", "cannot write export: %s" % exc, out_root)
+        for leftover in fresh:  # a half-written export must not look like a finished one
+            try:
+                leftover.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return refuse(1, "EX8", "cannot write export: %s (files created by this run were removed)" % exc, out_root)
     stats.update({"exported": len(evals), "excluded_negative": len(cases) - len(positive), "path": str(target)})
     return 0, [], stats
 
@@ -1087,7 +1107,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--all", action="store_true")
     p.add_argument("--eval-root")
     p.add_argument("--export", choices=EXPORT_FORMATS, help="write the positive cases as <out>/<skill>/evals/evals.json in this format")
-    p.add_argument("--out", help="export destination (default %s); must not be under skills/" % EXPORT_DEFAULT_OUT)
+    p.add_argument("--out", help="export destination (default %s); must not be under skills/ or evals/" % EXPORT_DEFAULT_OUT)
     p.add_argument("--force", action="store_true", help="overwrite existing exported files")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_evals)

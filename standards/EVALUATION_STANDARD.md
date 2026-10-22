@@ -84,7 +84,7 @@ Chưa chạy model: xem [Không pass giả](#không-pass-giả-not_run). Không 
 
 ## Xuất sang agentskills
 
-`studio.py evals <skill> --export agentskills` ghi `evals/<skill>/cases.json` sang định dạng agentskills theo ánh xạ SPEC mục 9.6 của SPR-33 (`system/docs/plans/2026-10-22-skill-studio-standard-v1/SPEC.md` trong repo OpcOS). Cú pháp đầy đủ: `studio.py evals <skill>|--all --export agentskills [--out DIR] [--force] [--json]`. Chỉ ca `should_trigger: true` được xuất (ca âm bị loại và được đếm trong dòng `exported N, excluded M`). `--out` mặc định `dist/agentskills` và không được nằm dưới `skills/` (thoát 2). Eval nháp hoặc `cases.json` hỏng thoát 1 mà không ghi file; file đích đã có mà thiếu `--force` cũng thoát 1.
+`studio.py evals <skill> --export agentskills` ghi `evals/<skill>/cases.json` sang định dạng agentskills theo ánh xạ SPEC mục 9.6 của SPR-33 (`system/docs/plans/2026-10-22-skill-studio-standard-v1/SPEC.md` trong repo OpcOS). Cú pháp đầy đủ: `studio.py evals <skill>|--all --export agentskills [--out DIR] [--force] [--json]`. Chỉ ca `should_trigger: true` được xuất (ca âm bị loại và được đếm trong dòng `exported N, excluded M`). `--out` mặc định `dist/agentskills` và không được nằm dưới `skills/` hay dưới thư mục eval (`evals/`, đang đóng băng) (thoát 2). Eval nháp hoặc `cases.json` hỏng thoát 1 mà không ghi file; file đích đã có mà thiếu `--force` cũng thoát 1. Tên fixture chứa `:` bị từ chối, hai tên chỉ khác hoa/thường hay dạng Unicode coi là trùng (thoát 1). Lỗi ghi giữa chừng thì file do lượt chạy đó tạo ra được xoá lại.
 
 ## Cách reviewer đánh giá
 

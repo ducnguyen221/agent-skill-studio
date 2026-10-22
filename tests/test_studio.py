@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -940,6 +941,7 @@ class AgentskillsExportTests(unittest.TestCase):
             raw = target.read_text(encoding="utf-8")
             self.assertTrue(raw.endswith("}\n"))
             data = json.loads(raw)
+            self.assertEqual(json.dumps(data, ensure_ascii=False, indent=2) + "\n", raw)
             self.assertEqual({"skill_name", "evals"}, set(data))
             self.assertEqual("data-quality-audit", data["skill_name"])
             self.assertEqual(list(range(1, 6)), [e["id"] for e in data["evals"]])
@@ -1007,7 +1009,10 @@ class AgentskillsExportTests(unittest.TestCase):
             self.assertEqual("demo-skill", json.loads(target.read_text(encoding="utf-8"))["skill_name"])
 
     def test_export_refuses_out_under_skills(self):
-        target = ROOT / "skills" / "x-export-guard"
+        skills = ROOT / "skills"
+        before = sorted(x.name for x in skills.iterdir())
+        target = skills / "x-export-guard"
+        self.addCleanup(shutil.rmtree, target, ignore_errors=True)  # a broken guard must not leave test data in the real skills/ tree
         code, out, err = self.call("evals", "data-quality-audit", "--export", "agentskills", "--out", target)
         self.assertEqual((2, True, False), (code, "must not be under skills/" in err, target.exists()))
         p = subprocess.run([sys.executable, str(ROOT / "studio.py"), "evals", "data-quality-audit", "--export", "agentskills", "--out", "skills/x-export-guard"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1017,6 +1022,7 @@ class AgentskillsExportTests(unittest.TestCase):
             (Path(t) / "skills").mkdir()
             code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "skills" / "demo-skill")
             self.assertEqual((2, False), (code, (Path(t) / "skills" / "demo-skill" / "evals").exists()))
+        self.assertEqual(before, sorted(x.name for x in skills.iterdir()))
 
     def test_x_unsafe_fixture_names_refused(self):
         for bad in ("../cases.json", "fixtures/../cases.json", "fixtures/../../outside.txt"):
@@ -1150,6 +1156,225 @@ class AgentskillsExportTests(unittest.TestCase):
             code, findings, _ = studio.export_agentskills(folder, "..", Path(t) / "out")
             self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
             self.assertTrue(findings)
+
+    def refused(self, folder, base, name="demo-skill"):
+        code, findings, stats = studio.export_agentskills(folder, name, Path(base) / "out")
+        self.assertFalse((Path(base) / "out").exists(), findings)
+        return code, findings, stats
+
+    def test_x_evals_json_bytes_exact(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual(0, code)
+            expected = {"skill_name": "demo-skill", "evals": [
+                {"id": 1, "prompt": "Audit a.csv, tiếng Việt ok", "expected_output": "Reads a.csv; Reports rows", "files": ["evals/files/a.csv"], "assertions": ["Reads a.csv", "Reports rows"]},
+                {"id": 2, "prompt": "Audit b.csv", "expected_output": "Handles UTF-8", "files": ["evals/files/a.csv", "evals/files/b.csv"], "assertions": ["Handles UTF-8"]},
+            ]}
+            raw = Path(stats["path"]).read_bytes()
+            self.assertEqual((json.dumps(expected, ensure_ascii=False, indent=2) + "\n").encode("utf-8"), raw)
+            self.assertIn("tiếng Việt".encode("utf-8"), raw)
+            self.assertNotIn(b"\r", raw)
+
+    def test_x_draft_gate_each_half_refuses(self):
+        def cases(prompt="Audit a.csv", behavior="Reads a.csv"):
+            return [
+                {"id": "c1", "kind": "typical", "prompt": prompt, "should_trigger": True, "fixtures": ["fixtures/a.csv"], "expected_behaviors": [behavior]},
+                {"id": "c2", "kind": "edge", "prompt": "Audit b.csv", "should_trigger": True, "fixtures": ["fixtures/b.csv"], "expected_behaviors": ["Handles UTF-8"]},
+                {"id": "c3", "kind": "near-miss", "prompt": "Explain CALCULATE", "should_trigger": False, "fixtures": [], "expected_behaviors": ["Does not trigger"]},
+            ]
+        variants = {
+            "status draft only": dict(status="draft", cases=cases()),
+            "marker text in prompt only": dict(status="frozen", cases=cases(prompt="<!-- STUDIO-DRAFT --> Audit a.csv")),
+            "marker text in behaviors only": dict(status="frozen", cases=cases(behavior="STUDIO-DRAFT replace me")),
+        }
+        for label, kwargs in variants.items():
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.make_eval(t, **kwargs)
+                code, findings, stats = self.refused(folder, t)
+                self.assertEqual((1, ["EX3"], 0), (code, [f["code"] for f in findings], stats["exported"]), label)
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(0, studio.export_agentskills(self.make_eval(t, status="frozen", cases=cases()), "demo-skill", Path(t) / "out")[0])
+
+    def test_x_all_reports_worst_exit_whatever_the_order(self):
+        for first, second in (("aaa-broken", "zzz-good"), ("aaa-good", "zzz-broken")):
+            with tempfile.TemporaryDirectory() as t:
+                for name in (first, second):
+                    folder = self.make_eval(t, name=name)
+                    if "broken" in name:
+                        (folder / "cases.json").write_text("{not json", encoding="utf-8")
+                common = ("evals", "--all", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", Path(t) / "o")
+                code, out, err = self.call(*common)
+                self.assertEqual(1, code, (first, out, err))
+                self.assertIn("broken", err)
+                good = "aaa-good" if "good" in first else "zzz-good"
+                self.assertTrue((Path(t) / "o" / good / "evals" / "evals.json").is_file())
+                self.assertEqual(1, self.call(*common, "--json", "--force")[0])
+
+    def test_x_cases_missing_keys_refused(self):
+        def trio(*drop):
+            rows = [
+                {"id": "c1", "kind": "typical", "prompt": "Audit a.csv", "should_trigger": True, "fixtures": ["fixtures/a.csv"], "expected_behaviors": ["Reads a.csv"]},
+                {"id": "c2", "kind": "edge", "prompt": "Audit b.csv", "should_trigger": True, "fixtures": ["fixtures/b.csv"], "expected_behaviors": ["Handles UTF-8"]},
+                {"id": "c3", "kind": "near-miss", "prompt": "Explain CALCULATE", "should_trigger": False, "fixtures": [], "expected_behaviors": ["Does not trigger"]},
+            ]
+            for key in drop:
+                del rows[0][key]
+            return rows
+        payloads = {
+            "no cases key": {"skill_name": "demo-skill", "status": "frozen"},
+            "case without expected_behaviors": {"skill_name": "demo-skill", "cases": trio("expected_behaviors")},
+            "case without should_trigger": {"skill_name": "demo-skill", "cases": trio("should_trigger")},
+            "case without prompt": {"skill_name": "demo-skill", "cases": trio("prompt")},
+        }
+        for label, payload in payloads.items():
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.make_eval(t)
+                (folder / "cases.json").write_text(json.dumps(payload), encoding="utf-8")
+                code, findings, stats = self.refused(folder, t)
+                self.assertEqual((1, 0, True), (code, stats["exported"], bool(findings)), label)
+                self.assertEqual(1, self.call("evals", "demo-skill", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", Path(t) / "out")[0], label)
+                self.assertFalse((Path(t) / "out").exists(), label)
+
+    def test_x_prompt_and_behavior_whitespace_preserved(self):
+        prompt, behavior = "  Audit a.csv\n\t", " Reads a.csv "
+        cases = [
+            {"id": "c1", "kind": "typical", "prompt": prompt, "should_trigger": True, "fixtures": ["fixtures/a.csv"], "expected_behaviors": [behavior, "Reports rows"]},
+            {"id": "c2", "kind": "edge", "prompt": "Audit b.csv", "should_trigger": True, "fixtures": ["fixtures/b.csv"], "expected_behaviors": ["Handles UTF-8"]},
+            {"id": "c3", "kind": "near-miss", "prompt": "Explain CALCULATE", "should_trigger": False, "fixtures": [], "expected_behaviors": ["Does not trigger"]},
+        ]
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t, cases=cases)
+            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual(0, code)
+            first = json.loads(Path(stats["path"]).read_text(encoding="utf-8"))["evals"][0]
+            self.assertEqual((prompt, " Reads a.csv ; Reports rows", [behavior, "Reports rows"]), (first["prompt"], first["expected_output"], first["assertions"]))
+
+    def test_x_fixture_names_differing_only_in_case_or_unicode_form_collide(self):
+        composed, decomposed = unicodedata.normalize("NFC", "é.csv"), unicodedata.normalize("NFD", "é.csv")
+        pairs = {"case": ("a.csv", "A.csv"), "unicode form": (composed, decomposed), "case and form": (composed, unicodedata.normalize("NFD", "É.csv"))}
+        for label, (inside, outside) in pairs.items():
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.make_eval(t, fixtures={inside: b"1"})
+                (folder / outside).write_bytes(b"2")  # a different file one level up, so a case-insensitive disk still holds both
+                data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+                data["cases"][0]["fixtures"] = ["fixtures/" + inside, outside]
+                data["cases"][1]["fixtures"] = []
+                (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+                code, findings, _ = self.refused(folder, t)
+                self.assertEqual((1, True), (code, any("collide" in f["message"] for f in findings)), label)
+
+    def test_x_one_file_spelled_in_two_cases_with_different_case_collides(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t, fixtures={"a.csv": b"1"})
+            if not (folder / "fixtures" / "A.csv").exists():
+                self.skipTest("case-sensitive disk: A.csv is a different file here")
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][0]["fixtures"] = ["fixtures/a.csv"]
+            data["cases"][1]["fixtures"] = ["fixtures/A.csv"]  # same file on this disk, two exported names
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            code, findings, _ = self.refused(folder, t)
+            self.assertEqual((1, True), (code, any("collide" in f["message"] for f in findings)))
+
+    def test_x_out_under_eval_root_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            snapshot = sorted(str(x) for x in Path(t).rglob("*"))
+            for out in (Path(t) / "evals", Path(t) / "evals" / "x", folder, folder / "sub"):
+                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out)
+                self.assertEqual((2, True), (code, any("must not be under evals/" in f["message"] for f in findings)), str(out))
+            self.assertEqual(snapshot, sorted(str(x) for x in Path(t).rglob("*")))
+            old = os.getcwd()
+            try:
+                os.chdir(t)
+                code, out, err = self.call("evals", "demo-skill", "--eval-root", "evals", "--export", "agentskills", "--out", "evals")
+                self.assertEqual((2, True), (code, "must not be under evals/" in err), out + err)
+                self.assertEqual(snapshot, sorted(str(x) for x in Path(t).rglob("*")))
+                self.assertEqual(0, self.call("evals", "demo-skill", "--eval-root", "evals", "--export", "agentskills", "--out", "o")[0])
+            finally:
+                os.chdir(old)
+            self.assertTrue((Path(t) / "o" / "demo-skill" / "evals" / "evals.json").is_file())
+
+    def test_x_out_under_repo_evals_dir_refused_for_a_foreign_eval_root(self):
+        with tempfile.TemporaryDirectory() as t:
+            repo = Path(t) / "repo"
+            (repo / "standards").mkdir(parents=True)
+            (repo / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("x", encoding="utf-8")
+            (repo / "templates" / "skill-template").mkdir(parents=True)
+            (repo / "templates" / "skill-template" / "SKILL.md").write_text("x", encoding="utf-8")
+            (repo / "evals").mkdir()
+            other = Path(t) / "other"
+            other.mkdir()
+            self.make_eval(other)
+            old = os.getcwd()
+            try:
+                os.chdir(repo)
+                code, out, err = self.call("evals", "demo-skill", "--eval-root", other / "evals", "--export", "agentskills", "--out", "evals/x")
+                self.assertEqual((2, True, []), (code, "must not be under evals/" in err, list((repo / "evals").iterdir())), out + err)
+            finally:
+                os.chdir(old)
+
+    def test_x_packaged_copy_refuses_out_inside_its_own_skill_dir(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.make_eval(t)
+            pkg = Path(t) / "pkg" / "skill-creator-studio"  # a copy whose parent is not named skills/
+            shutil.copytree(ROOT / "skills" / "skill-creator-studio", pkg, ignore=shutil.ignore_patterns("__pycache__"))
+
+            def run(out):
+                return subprocess.run([sys.executable, "-X", "utf8", str(pkg / "scripts" / "studio.py"), "evals", "demo-skill", "--eval-root", str(Path(t) / "evals"), "--export", "agentskills", "--out", str(out)],
+                                      cwd=t, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            bad = run(pkg / "dist")
+            self.assertEqual((2, True, False), (bad.returncode, "must not be under skills/" in bad.stderr, (pkg / "dist").exists()), bad.stderr)
+            good = run(Path(t) / "out")
+            self.assertEqual((0, True), (good.returncode, (Path(t) / "out" / "demo-skill" / "evals" / "evals.json").is_file()), good.stderr)
+
+    def test_x_colon_in_fixture_name_refused(self):
+        for bad in ("fixtures/a:b.csv", "fixtures/a.csv:hid", "C:fixtures/a.csv", "fixtures/dir:/a.csv"):
+            source, parts, problem = studio.export_fixture_source(Path("."), bad)
+            self.assertEqual((None, [], True), (source, parts, "unsafe fixture path" in problem), bad)
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t, fixtures={"a.csv": b"1", "b.csv": b"2"})
+            try:
+                with open(str(folder / "fixtures" / "a.csv") + ":hid", "wb") as handle:  # an NTFS alternate data stream on Windows
+                    handle.write(b"hidden")
+            except OSError:
+                self.skipTest("cannot create a colon-named fixture here")
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][0]["fixtures"] = ["fixtures/a.csv:hid"]
+            data["cases"][1]["fixtures"] = []
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            code, findings, _ = self.refused(folder, t)
+            self.assertEqual((1, True), (code, any(f["code"] == "EX4" for f in findings)), findings)
+
+    def test_x_failed_write_removes_files_this_run_created(self):
+        from unittest import mock
+        real = shutil.copyfile
+        for label in ("second fixture fails", "evals.json fails"):
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.make_eval(t)
+                out = Path(t) / "out"
+                files = out / "demo-skill" / "evals" / "files"
+                self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+                survivor = files / "b.csv"
+                survivor.write_bytes(b"old")
+                (files / "a.csv").unlink()
+                (out / "demo-skill" / "evals" / "evals.json").unlink()
+                calls = []
+
+                def flaky(src, dst):
+                    calls.append(dst)
+                    if label.startswith("second") and len(calls) == 2:
+                        raise OSError("disk full")
+                    return real(src, dst)
+                with mock.patch.object(studio.shutil, "copyfile", side_effect=flaky):
+                    if label.startswith("evals"):
+                        with mock.patch.object(studio, "open", create=True, side_effect=OSError("denied")):
+                            code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                    else:
+                        code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                self.assertEqual((1, "EX8", 0), (code, findings[0]["code"], stats["exported"]), label)
+                self.assertEqual(["b.csv"], sorted(x.name for x in out.rglob("*") if x.is_file()), label)  # only the file that existed before the run
+                self.assertTrue(survivor.is_file(), label)
 
 
 if __name__ == "__main__":
