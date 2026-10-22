@@ -1055,5 +1055,112 @@ class DoctorRound3Tests(unittest.TestCase):
                 self.assertIn("secret-looking", studio.input_file_problem(plain))
 
 
+class DoctorRound4Tests(unittest.TestCase):
+    """SPR-33 TK9 round 4 (RF-A, RF-B): every name/zone/cloud check on --out comes before any stat or open; device namespaces are not roots."""
+
+    def _touched(self, calls, names):
+        return [(n, p) for n, p, _ in calls if n in ("open", "stat", "lstat", "access", "scandir", "listdir") and os.path.basename(p).lower() in names]
+
+    def test_doctor_out_checks_names_and_zones_before_touching_the_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            home = tmp / "home"
+            secret = home / ".secret"
+            secret.mkdir(parents=True)
+            cloud = tmp / "OneDrive - Fake"
+            cloud.mkdir()
+            door_secret, door_cloud = tmp / "door-secret", tmp / "door-cloud"
+            make_dir_link(self, door_secret, secret)
+            make_dir_link(self, door_cloud, cloud)
+            cases = [(door_secret / "canary.json", "canary.json", secret / "canary.json"),
+                     (door_cloud / "report.json", "report.json", cloud / "report.json")]
+            short = short_name(secret)
+            if short is not None:
+                cases.append((short / "canary.json", "canary.json", secret / "canary.json"))
+            contents = (b"", b'{"schema": 1, "skills": []}', b"CANARY-OUT plain text", b'{"token": "CANARY-OUT"}')
+            with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
+                for out, name, real in cases:
+                    messages = set()
+                    for content in contents:
+                        real.write_bytes(content)
+                        with watching() as calls:
+                            code, stdout, err = run("--roots", CLEAN_ROOTS, "--out", str(out))
+                        self.assertEqual(code, 2, (str(out), err))
+                        self.assertEqual(real.read_bytes(), content, "the file behind the link was changed")
+                        self.assertNotIn("CANARY", stdout + err)
+                        self.assertEqual(self._touched(calls, {name}), [], ("the target was touched before the zone check", str(out), content))
+                        messages.add(err)
+                    self.assertEqual(len(messages), 1, ("the refusal depends on the file content", messages))
+
+    def test_doctor_out_cloud_placeholder_is_refused_before_it_is_opened(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            old = tmp / "old.json"
+            old.write_bytes(b'{"schema": 1, "skills": []}')
+            for flagged in (old, tmp):
+                with mock.patch.object(studio, "path_is_cloud", lambda p, flagged=flagged: norm(p) == norm(flagged)), watching() as calls:
+                    code, _, err = run("--roots", CLEAN_ROOTS, "--out", str(old))
+                self.assertEqual(code, 2, (str(flagged), err))
+                self.assertIn("cloud", err)
+                self.assertEqual([x for x in self._touched(calls, {"old.json"}) if x[0] == "open"], [], str(flagged))
+            self.assertEqual(old.read_bytes(), b'{"schema": 1, "skills": []}')
+
+    def test_doctor_out_still_replaces_its_own_old_report_and_empty_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            for content in (b"", b'{"schema": 1, "skills": []}', b'  \n{"schema":1}'):
+                target = tmp / "r.json"
+                target.write_bytes(content)
+                code, _, err = run("--roots", CLEAN_ROOTS, "--out", str(target))
+                self.assertEqual(code, 0, (content, err))
+                self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["schema"], 1)
+
+    def test_root_too_broad_refuses_device_namespaces_and_admin_shares(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            home = tmp / "people" / "a-rather-long-home-folder-name"
+            make_skill(home / "proj", "fine-skill")
+            drive, rest = os.path.splitdrive(str(home))
+            drive = drive or "C:"
+            guid = "{12345678-1234-1234-1234-123456789abc}"
+            hostile = ["\\\\.\\" + str(home), "\\\\.\\" + drive, "\\\\localhost\\C$" + rest, "\\\\localhost\\C$", "\\\\127.0.0.1\\D$\\Users",
+                       "\\\\?\\UNC\\localhost\\C$" + rest, "\\\\?\\UNC\\server\\ADMIN$",
+                       "\\\\?\\GLOBALROOT\\Device\\HarddiskVolume3" + rest, "\\\\?\\Volume" + guid + "\\", "\\\\?\\Volume" + guid + rest,
+                       "//./" + drive + rest.replace("\\", "/"), "//?/Volume" + guid + "/", "\\\\?\\x"]
+            scans = []
+            real_scandir = os.scandir
+
+            def spy(path):
+                scans.append(os.fspath(path))
+                return real_scandir(path)
+
+            with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}), mock.patch.object(os, "scandir", spy):
+                for text in hostile:
+                    self.assertTrue(studio.root_too_broad(text), text)
+                    code, _, err = run("--roots", text, "--json")
+                    self.assertEqual(code, 2, (text, err))
+                self.assertEqual(scans, [], "a refused run must not list anything")
+                self.assertFalse(studio.root_too_broad("\\\\server\\share\\skills"), "an ordinary share is not refused by name")
+                self.assertFalse(studio.root_too_broad("\\\\?\\UNC\\server\\share\\skills"))
+                self.assertEqual(run("--roots", str(home / "proj"))[0], 0)
+                if os.name == "nt":
+                    self.assertEqual(run("--roots", "\\\\?\\" + str(home / "proj"))[0], 0, "a drive-letter extended path is still accepted")
+
+    def test_input_file_problem_checks_cloud_on_the_real_path_and_all_secret_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            real = tmp / "real"
+            real.mkdir()
+            (real / "notes.txt").write_text("x", encoding="utf-8")
+            alias = tmp / "alias"
+            make_dir_link(self, alias, real)
+            with mock.patch.object(studio, "path_is_cloud", lambda p: norm(p) == norm(real / "notes.txt")):
+                self.assertIn("cloud", studio.input_file_problem(alias / "notes.txt") or "")
+            self.assertIsNone(studio.input_file_problem(alias / "notes.txt"))
+            for name in ("secrets.json", "Credentials.json", "id_rsa", "id_ed25519", ".env", "x.pem"):
+                self.assertIn("secret-looking", studio.input_file_problem(tmp / name) or "", name)
+            self.assertIsNone(studio.input_file_problem(tmp / "roots.txt"))
+
+
 if __name__ == "__main__":
     unittest.main()

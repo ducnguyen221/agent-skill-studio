@@ -291,10 +291,33 @@ def _broad_by_name(text: str, homes: list) -> bool:
     return False
 
 
+def namespace_refused(path) -> bool:
+    """True for a root spelled in a Windows device namespace (\\\\.\\..., \\??\\..., and \\\\?\\ followed by anything but a drive letter or UNC\\:
+    GLOBALROOT, Volume{GUID}...) or on an administrative share (\\\\host\\C$, \\\\?\\UNC\\host\\C$). Judged on the spelling alone: such a
+    path can name the home folder or a whole drive in a way the other checks do not recognise, so it is never a root."""
+    text = os.fspath(path).replace("/", "\\")
+    if text[:4] in ("\\\\.\\", "\\??\\") or text in ("\\\\.", "\\??"):
+        return True
+    if text.startswith("\\\\?\\"):
+        rest = text[4:]
+        if re.match(r"[A-Za-z]:(\\|$)", rest):
+            return False
+        if rest[:4].upper() != "UNC\\":
+            return True
+        text = "\\\\" + rest[4:]
+    if text.startswith("\\\\"):
+        parts = [x for x in text[2:].split("\\") if x]
+        return len(parts) >= 2 and parts[1].endswith("$")
+    return False
+
+
 def root_too_broad(path, markers=CLOUD_MARKERS) -> bool:
     """True for a drive or filesystem root, the home folder, or any folder above it, judged on the spelling given, on the normalised
     spelling (no \\\\?\\ prefix) and on the real path (a junction or symlink into the home, an 8.3 name). The real path is looked up only
-    for a local path outside the cloud and secret zones; a UNC path is never resolved."""
+    for a local path outside the cloud and secret zones; a UNC path is never resolved. A device namespace or an administrative share
+    is always too broad (namespace_refused)."""
+    if namespace_refused(path):
+        return True
     given = _plain_path(path)
     homes = []
     try:
@@ -322,7 +345,7 @@ def input_file_problem(source: Path, markers=CLOUD_MARKERS) -> str | None:
     text = os.fspath(source)
     if os.name == "nt" and ":" in os.path.splitdrive(text)[1]:
         return "names an NTFS data stream; not read"
-    if is_sensitive_name(source.name):
+    if secret_file_name(source.name):
         return "has a secret-looking file name; not read"
     reason = zone_reason(source, markers)
     if not reason:
@@ -332,9 +355,11 @@ def input_file_problem(source: Path, markers=CLOUD_MARKERS) -> str | None:
             real = source.resolve()
         except (OSError, RuntimeError):
             return "cannot be resolved; not read"
-        if is_sensitive_name(real.name):
+        if secret_file_name(real.name):
             return "is a link to a file with a secret-looking name; not read"
         reason = zone_reason(real, markers)
+        if not reason and path_is_cloud(real):
+            return "is a cloud placeholder; not read"
     return "is inside a %s zone; not read" % reason if reason else None
 
 
@@ -455,6 +480,12 @@ def is_sensitive_name(name: str) -> bool:
     """File names doctor never opens, even inside a skill: .env*, *.credentials.json, auth.json, *.pem, *.key."""
     low = name.lower()
     return low.startswith(".env") or low.endswith(".credentials.json") or low == "auth.json" or low.endswith((".pem", ".key"))
+
+
+def secret_file_name(name: str) -> bool:
+    """is_sensitive_name plus the names the packager refuses to ship (REJECT_NAMES: secrets.json, credentials.json, id_rsa...): the names of
+    files doctor is handed (--roots-file, --baseline, --out) and must not open."""
+    return is_sensitive_name(name) or name.lower() in REJECT_NAMES
 
 
 def zone_named(name: str, markers=CLOUD_MARKERS) -> bool:
@@ -1676,36 +1707,29 @@ def _out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), i
     """Why `out` may not be written, else None. The report may not land in what the scan reads: not in a zone, not under skills/, not in a
     scanned skill, and not in a scanned root unless the folder in between (.tmp, .worktrees, a cache...) is one the scan leaves out.
     It may not carry a secret-looking name or an NTFS stream, and an existing file is overwritten only when it is empty or already a doctor
-    report (a .json file that starts with {"schema")."""
+    report (a .json file that starts with {"schema"). Order matters: every decision by name, zone or cloud attributes on the spelling given
+    and on the real folder comes first; the file itself is stat-ed and its first bytes read last, only once it is known to be a plain
+    local path (so a link into ~/.secret or a cloud folder is refused without one call on the file, and with the same message whatever it holds)."""
     markers = CLOUD_MARKERS + tuple(skip_markers)
     reason = zone_reason(out, markers)
     if reason:
         return "--out is inside a %s zone" % reason
     if os.name == "nt" and ":" in os.path.splitdrive(os.fspath(out))[1]:
         return "--out names an NTFS data stream: %s" % out.name
-    if is_sensitive_name(out.name):
+    if secret_file_name(out.name):
         return "--out has a secret-looking file name: %s" % out.name
-    if not out.parent.is_dir():
-        return "folder of --out does not exist: %s (doctor never creates folders)" % out.parent
-    if out.is_dir() or is_link(out):
-        return "--out must be a plain file path: %s" % out
-    if out.exists():
-        if out.suffix.lower() != ".json":
-            return "--out would overwrite an existing file that is not a .json report: %s" % out
-        try:
-            with open(out, "rb") as handle:
-                head = handle.read(64)
-        except OSError:
-            return "--out exists and cannot be checked: %s" % out
-        if head.strip() and not DOCTOR_REPORT_HEAD.match(head):
-            return "--out would overwrite an existing file that is not a doctor report (it must start with {\"schema\"): %s" % out
     try:
-        real = out.parent.resolve() / out.name
+        real_parent = out.parent.resolve()
     except (OSError, RuntimeError):
         return "--out cannot be resolved: %s" % out
+    real = real_parent / out.name
     reason = zone_reason(real, markers)
     if reason:
         return "--out is inside a %s zone (through a link)" % reason
+    if path_is_cloud(real_parent) or path_is_cloud(out.parent):
+        return "--out is inside a cloud placeholder folder: %s" % out.parent
+    if path_is_cloud(real) or path_is_cloud(out):
+        return "--out is a cloud placeholder: %s" % out
     if any(part.lower() == "skills" for part in out.parts[:-1]) or (repo is not None and valid_resolved_under(real, repo / "skills")):
         return "--out must not be under a skills/ folder: %s" % out
     if any(valid_resolved_under(real, skill) for skill in skills):
@@ -1719,6 +1743,20 @@ def _out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), i
             continue
         if not any(_is_excluded(below[:n], include_cache) for n in range(1, len(below) + 1)):
             return "--out must not be inside a scanned root (a folder the scan skips, such as .tmp, is fine): %s" % out
+    if not real_parent.is_dir():
+        return "folder of --out does not exist: %s (doctor never creates folders)" % out.parent
+    if out.is_dir() or is_link(out):
+        return "--out must be a plain file path: %s" % out
+    if out.exists():
+        if out.suffix.lower() != ".json":
+            return "--out would overwrite an existing file that is not a .json report: %s" % out
+        try:
+            with open(out, "rb") as handle:
+                head = handle.read(64)
+        except OSError:
+            return "--out exists and cannot be checked: %s" % out
+        if head.strip() and not DOCTOR_REPORT_HEAD.match(head):
+            return "--out would overwrite an existing file that is not a doctor report (it must start with {\"schema\"): %s" % out
     return None
 
 
