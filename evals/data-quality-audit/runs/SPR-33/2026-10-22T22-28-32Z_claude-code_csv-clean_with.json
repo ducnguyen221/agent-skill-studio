@@ -1,0 +1,55 @@
+{
+  "case_id": "csv-clean",
+  "pair_id": "data-quality-audit/csv-clean/claude-code",
+  "timestamp": "2026-10-22T22:28:32.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "typical",
+  "should_trigger": true,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "workspaces/spr-33-eval/plugin (git archive 6d47a330224b7e01a54a330f08a24f9c5cc51729, autocrlf=false)",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 30,
+        "tool": "Skill",
+        "via": "Skill",
+        "match": "agent-skill-studio:data-quality-audit"
+      }
+    ],
+    "scripts": [
+      {
+        "line": 49,
+        "tool": "Bash",
+        "match": "python -I \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/data-quality-audit/scripts/validate_csv.py\" --help"
+      },
+      {
+        "line": 62,
+        "tool": "Bash",
+        "match": "python -I \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/data-quality-audit/scripts/validate_csv.py\" --file \"C:/Users/DucNguyen/OpcOS/workspaces"
+      }
+    ],
+    "count_on_filtered_copy_equal": true,
+    "transcript_sha256_full": "a58e85d028a17af0183a85574d4a2be08b503a47e91c6c28c4cf0ee042c568b5",
+    "transcript_sha256_filtered": "0abc979d0fd174f0487234c0c496440562fd13632033efc5f37f31f0e878d729",
+    "line_numbers_refer_to": "original transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr33\\transcripts\\2026-10-22T22-28-32Z_claude-code_csv-clean_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-22-skill-studio-standard-v1/evidence/transcripts/2026-10-22T22-28-32Z_claude-code_csv-clean_with.jsonl (OpcOS repo; redacted copy)",
+  "output_excerpt": "`fixtures/clean.csv` passes all three checks, so it's ready to import into Power BI. This is the only CSV in the workspace, and you didn't give a path, so I assumed it's the file you meant. If you meant a different file, give me its path and I'll run the audit on that one.\n\nI ran the skill's validator script (`validate_csv.py`) with `id` and `amount` as required, `id` as the unique key, and `amount` as numeric. The script is read-only, so the file is unchanged. It returned `status: pass` with no issues.\n\n| Check | Result |\n|---|---|\n| Required fields `id`, `amount` present and non-empty | Pass",
+  "cwd": "~/OpcOS/workspaces/spr-33-eval/claude-code/2026-10-22T22-28-32Z_csv-clean_with",
+  "skill_sha256_loaded": "d4325c8152b383dcf080c1b6716b706c6f7518dbd7bea7c21e34159439b40dc8",
+  "skill_sha256_repo": "d4325c8152b383dcf080c1b6716b706c6f7518dbd7bea7c21e34159439b40dc8",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "27482d23-c1c1-42c8-b33b-a97064ec652d",
+  "ledger_id": "27482d23-c1c1-42c8-b33b-a97064ec652d",
+  "wall_seconds": 35.1,
+  "timeout_s": 300,
+  "status": "ran",
+  "batch": "SPR-33-TK12-20261023",
+  "cost_usd": 0.40187130000000004
+}

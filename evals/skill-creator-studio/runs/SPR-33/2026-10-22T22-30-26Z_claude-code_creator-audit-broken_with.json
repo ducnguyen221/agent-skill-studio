@@ -1,0 +1,44 @@
+{
+  "case_id": "creator-audit-broken",
+  "pair_id": "skill-creator-studio/creator-audit-broken/claude-code",
+  "timestamp": "2026-10-22T22:30:26.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "typical",
+  "should_trigger": true,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "workspaces/spr-33-eval/plugin (git archive 6d47a330224b7e01a54a330f08a24f9c5cc51729, autocrlf=false)",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 46,
+        "tool": "Skill",
+        "via": "Skill",
+        "match": "agent-skill-studio:skill-creator-studio"
+      }
+    ],
+    "scripts": [],
+    "count_on_filtered_copy_equal": true,
+    "transcript_sha256_full": "85fe0578309be00ee86cea66f7b9d9524d0974fcdd6bc4bb2b9b199fb9ac11f5",
+    "transcript_sha256_filtered": "aefbfe43e99f97d94f558e46da7453d513c47e3547851909b2d09090357100a7",
+    "line_numbers_refer_to": "original transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr33\\transcripts\\2026-10-22T22-30-26Z_claude-code_creator-audit-broken_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-22-skill-studio-standard-v1/evidence/transcripts/2026-10-22T22-30-26Z_claude-code_creator-audit-broken_with.jsonl (OpcOS repo; redacted copy)",
+  "output_excerpt": "**Kết quả: `fixtures/broken-skill` không đạt (FAIL).** Tôi chưa sửa file nào. Script `studio.py audit` bị chặn chờ duyệt quyền nên chưa chạy. Báo cáo dưới đây là kiểm thủ công theo `AUDIT_CHECKLIST.md`, dựa trên 9 dòng của `SKILL.md`.\n\nSkill: `broken-skill` | Runtime: portable | Ngày: 2026-10-23\n\n| Quy tắc | Kết quả | Vị trí | Bằng chứng | Đề xuất sửa | Rủi ro |\n|---|---|---|---|---|---|\n| SK-00 | FAIL | `SKILL.md:2` | `name: BROKEN_BadName` có chữ hoa và dấu `_`. Tên không khớp quy tắc đặt tên và không khớp tên thư mục `broken-skill`. | Đổi thành `broken-skill`. | Cao |\n| SK-00 | FAIL | `SKIL",
+  "cwd": "~/OpcOS/workspaces/spr-33-eval/claude-code/2026-10-22T22-30-26Z_creator-audit-broken_with",
+  "skill_sha256_loaded": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6",
+  "skill_sha256_repo": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "c44b4f13-1e8f-4a96-8b87-a82e4cd344b9",
+  "ledger_id": "c44b4f13-1e8f-4a96-8b87-a82e4cd344b9",
+  "wall_seconds": 34.4,
+  "timeout_s": 300,
+  "status": "ran",
+  "batch": "SPR-33-TK12-20261023",
+  "cost_usd": 0.29692280000000004
+}

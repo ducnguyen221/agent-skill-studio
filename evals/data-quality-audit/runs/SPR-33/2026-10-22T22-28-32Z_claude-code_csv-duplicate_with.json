@@ -1,0 +1,50 @@
+{
+  "case_id": "csv-duplicate",
+  "pair_id": "data-quality-audit/csv-duplicate/claude-code",
+  "timestamp": "2026-10-22T22:28:32.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "typical",
+  "should_trigger": true,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "workspaces/spr-33-eval/plugin (git archive 6d47a330224b7e01a54a330f08a24f9c5cc51729, autocrlf=false)",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 40,
+        "tool": "Skill",
+        "via": "Skill",
+        "match": "agent-skill-studio:data-quality-audit"
+      }
+    ],
+    "scripts": [
+      {
+        "line": 55,
+        "tool": "Bash",
+        "match": "python -I \"C:/Users/DucNguyen/OpcOS/workspaces/spr-33-eval/plugin/skills/data-quality-audit/scripts/validate_csv.py\" --file \"C:/Users/DucNguyen/OpcOS/workspaces"
+      }
+    ],
+    "count_on_filtered_copy_equal": true,
+    "transcript_sha256_full": "0194adb49d8197299d7605d268790feb8f0903c5325611d0ebec8b3688299faa",
+    "transcript_sha256_filtered": "b6da99a73825e730efa9da6152824ee23bc4ea42471a43795ee15a809258772a",
+    "line_numbers_refer_to": "original transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr33\\transcripts\\2026-10-22T22-28-32Z_claude-code_csv-duplicate_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-22-skill-studio-standard-v1/evidence/transcripts/2026-10-22T22-28-32Z_claude-code_csv-duplicate_with.jsonl (OpcOS repo; redacted copy)",
+  "output_excerpt": "`fixtures/duplicates.csv` fails validation with two issues. The script ran with exit code 1 and checked 3 data rows. Row numbers below are CSV line numbers, where the header is line 1.\n\n| Line | Failure | Detail |\n|---|---|---|\n| 3 | Missing amount | `amount` is empty for `id=2` (`2,`). |\n| 4 | Duplicate transaction ID | `id=1` also appears on line 2. The amounts differ (`150.0` on line 2, `90.0` on line 4). |\n\n**Assumptions:** The file has only `id` and `amount` columns. I treated `id` as the unique transaction ID, `amount` as required, and `amount` as numeric. If the real grain is different,",
+  "cwd": "~/OpcOS/workspaces/spr-33-eval/claude-code/2026-10-22T22-28-32Z_csv-duplicate_with",
+  "skill_sha256_loaded": "d4325c8152b383dcf080c1b6716b706c6f7518dbd7bea7c21e34159439b40dc8",
+  "skill_sha256_repo": "d4325c8152b383dcf080c1b6716b706c6f7518dbd7bea7c21e34159439b40dc8",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "790c0295-742a-43a7-8e32-62555decdb99",
+  "ledger_id": "790c0295-742a-43a7-8e32-62555decdb99",
+  "wall_seconds": 25.8,
+  "timeout_s": 300,
+  "status": "ran",
+  "batch": "SPR-33-TK12-20261023",
+  "cost_usd": 0.39511380000000007
+}

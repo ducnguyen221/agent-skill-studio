@@ -1,0 +1,21 @@
+{
+  "frozen_at": "2026-10-22T22:27:22Z",
+  "files": {
+    "cases.json": "534397ba0d614ff6492b2ed824c296cd49d241d477eb52dfc9a4c1d3fea54435",
+    "rubric.md": "f3cc25f24cf3de2ac4e67203b21de837762fb10c5efbfb1863e66e7568836127",
+    "expected/creator-audit-broken.json": "dc63ed59748ceb8734c2c608dca22b3a4ea23ad14ad81f8d7bc7c25acabd6365",
+    "expected/creator-edge-2.json": "a9b5698d9dff52b21e715fae6f24dd1d4ad318c53ae343e9c2dd30af7694ab75",
+    "expected/creator-input-error.json": "34eecec1d7f1c10ead1487e4af46b1da9d87075254fbf0e3e6bdef094a8c70de",
+    "expected/creator-near-miss-install.json": "c65dd400d710b525adaddf99bfa51c0fe34857fd9c6b3045c71ff8b18dff1dc5",
+    "expected/creator-near-miss-list.json": "11f2f97d60c1d038648c3e9aa434c75c7c3f1a88e78c0418649f6a9f751eb316",
+    "expected/creator-negative-task.json": "55db7a002c7d3dd6b1d04e338fd7cc24761d94eb1472f940d5bfaa21d6eafebf",
+    "expected/creator-new-skill.json": "3c92c703793d0edf9cb45f4f507af7c3f445848fdf9822fd70a790c030a4b9e4",
+    "expected/creator-refine-no-regression.json": "2193e272e0991143251f54694dc1184d0a68d45ce186aed026d577ea2ec99858",
+    "fixtures/broken-skill/SKILL.md": "69480e1fe36e1f5986ff35a30dc8b8e79de466b13d5bd71f95841174a5499d0a",
+    "fixtures/skills-dir/alpha-notes/SKILL.md": "cfc0bdc045b30754abf920ea488770badb59ea6c1a44a56808e012c43babcb57",
+    "fixtures/skills-dir/beta-notes/SKILL.md": "6697277710d98fe39147f0d63b9eecc735202890406624545fa549b02b019b5d"
+  },
+  "skill_sha256_repo": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6",
+  "skill_sha256_claude_cache": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6",
+  "skill_sha256_worktree": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6"
+}

@@ -1,0 +1,44 @@
+{
+  "case_id": "creator-refine-no-regression",
+  "pair_id": "skill-creator-studio/creator-refine-no-regression/claude-code",
+  "timestamp": "2026-10-22T22:31:01.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "edge",
+  "should_trigger": true,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "workspaces/spr-33-eval/plugin (git archive 6d47a330224b7e01a54a330f08a24f9c5cc51729, autocrlf=false)",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 61,
+        "tool": "Read",
+        "via": "read-SKILL.md",
+        "match": "C:\\Users\\DucNguyen\\OpcOS\\workspaces\\spr-33-eval\\plugin\\skills\\skill-creator-studio\\SKILL.md"
+      }
+    ],
+    "scripts": [],
+    "count_on_filtered_copy_equal": true,
+    "transcript_sha256_full": "4f85881eb6bea441cc6f4795faa927c756093e1c7f7ac00f5d6ac09b1fe0471b",
+    "transcript_sha256_filtered": "bd207bde93743b7c8f63ede6242c7916654c4108648c8d88db64f0ded27b7e29",
+    "line_numbers_refer_to": "original transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr33\\transcripts\\2026-10-22T22-31-01Z_claude-code_creator-refine-no-regression_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-22-skill-studio-standard-v1/evidence/transcripts/2026-10-22T22-31-01Z_claude-code_creator-refine-no-regression_with.jsonl (OpcOS repo; redacted copy)",
+  "output_excerpt": "I haven't changed anything. I couldn't tell which skill \"our reporting skill\" is, so I assumed `weekly-sales-reconciliation`, the closest report-producing skill in `spr-33-eval`. It has the same gap in step 6. If you meant another skill, or if you can share a transcript of a skipped run, tell me and I'll redo this. The REFINE workflow (`references/REFINE_WORKFLOW.md`) asks for that failure evidence first, and I don't have it yet.\n\n## Minimal fix (additive only, nothing removed)\n\nStep 6, \"Report\", doesn't depend on the earlier checks having run. Steps 2 and 5 each say \"Done when…\", but nothing ",
+  "cwd": "~/OpcOS/workspaces/spr-33-eval/claude-code/2026-10-22T22-31-01Z_creator-refine-no-regression_with",
+  "skill_sha256_loaded": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6",
+  "skill_sha256_repo": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "ff0f6a70-4fe0-40ba-9516-7e300efca512",
+  "ledger_id": "ff0f6a70-4fe0-40ba-9516-7e300efca512",
+  "wall_seconds": 40.8,
+  "timeout_s": 300,
+  "status": "ran",
+  "batch": "SPR-33-TK12-20261023",
+  "cost_usd": 0.33562250000000005
+}
