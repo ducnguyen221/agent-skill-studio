@@ -34,7 +34,13 @@ CLAUDE_CODE_RESERVED_NAMES = frozenset({"synced"})
 FORCE_RE = re.compile(r"\b(MUST|NEVER|ALWAYS|CRITICAL)\b")
 REASON_RE = re.compile(r"\b(because|since|so that|otherwise|to avoid|in order to|vì|để|nếu không)\b", re.IGNORECASE)
 STRICT_OPEN, STRICT_CLOSE = "<!-- studio:strict -->", "<!-- /studio:strict -->"
-CONTENTS_RE = re.compile(r"^##\s+(Contents|Mục lục)\s*$")
+CONTENTS_RE = re.compile(r"^##\s+(Table of Contents|Contents|Mục lục)\s*$", re.IGNORECASE)
+MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")  # [text](target) -> text
+FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+CODE_SPAN_RE = re.compile(r"(`+).+?\1")
+URL_RE = re.compile(r"https?://\S+")
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->")
+LIST_ITEM_RE = re.compile(r"^\s*([-*+]|\d+[.)])\s")
 CONTENTS_MAX = 12
 CONTENTS_WINDOW = 25  # Contents must start within the first 25 lines of the reference / body
 REF_TOC_LINES = 100
@@ -244,30 +250,57 @@ def estimate_tokens(body: str) -> int:
 
 def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
     """SK-14 / CT10: an all-caps MUST/NEVER/ALWAYS/CRITICAL line needs a reason on the same line.
-    Skips fenced code (``` or ~~~) and <!-- studio:strict --> ... <!-- /studio:strict --> blocks."""
+    Not prose, so skipped: fenced code (a fence closes only on the same character and at least the opening length),
+    indented code blocks (after a blank line, outside lists), table rows, inline code, link text, URLs, one-line HTML
+    comments, and <!-- studio:strict --> ... <!-- /studio:strict --> blocks. A strict block left open is itself a CT10."""
     findings: list[dict] = []
-    fence, strict = None, False
+    fence, strict, strict_line = None, False, 0
+    prev_blank, in_indented, list_context = True, False, False
     for offset, line in enumerate(body.splitlines()):
         text = unicodedata.normalize("NFC", line)
         stripped = text.strip()
+        lineno = body_start + offset + 1
         if fence:
-            if stripped.startswith(fence):
+            if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), stripped):
                 fence = None
             continue
-        if stripped.startswith(("```", "~~~")):
-            fence = stripped[:3]
+        opened = FENCE_OPEN_RE.match(text)
+        if opened:
+            fence = opened.group(1)
+            prev_blank = False
             continue
         if STRICT_OPEN in text:
-            strict = True
+            strict, strict_line = True, lineno
         if strict:
             if STRICT_CLOSE in text:
                 strict = False
             continue
-        match = FORCE_RE.search(text)
+        if not stripped:
+            prev_blank = True
+            continue
+        indented = text.startswith(("    ", "\t"))
+        if indented and (in_indented or (prev_blank and not list_context)):
+            in_indented, prev_blank = True, False
+            continue
+        in_indented = False
+        if not indented:
+            list_context = bool(LIST_ITEM_RE.match(text))
+        prev_blank = False
+        if stripped.startswith("|"):
+            continue
+        prose = HTML_COMMENT_RE.sub(" ", text)
+        prose = CODE_SPAN_RE.sub(" ", prose)
+        prose = MD_LINK_RE.sub(" ", prose)
+        prose = URL_RE.sub(" ", prose)
+        match = FORCE_RE.search(prose)
         if match and not REASON_RE.search(text):
-            findings.append(emit("WARN", "CT10", manifest, body_start + offset + 1,
+            findings.append(emit("WARN", "CT10", manifest, lineno,
                                  "'%s' without a reason on the same line (SK-14); state why, or mark a deliberately strict step with %s ... %s"
                                  % (match.group(1), STRICT_OPEN, STRICT_CLOSE)))
+    if strict:
+        findings.append(emit("WARN", "CT10", manifest, strict_line,
+                             "strict block not closed: %s has no matching %s, so the rest of the body was not linted (SK-14)"
+                             % (STRICT_OPEN, STRICT_CLOSE)))
     return findings
 
 
@@ -301,7 +334,7 @@ def lint_contents(path: Path, lines: list, kind: str, offset: int = 0) -> list:
         if s.startswith("#"):
             break
         if s.startswith(("- ", "* ")):
-            entries.append((i, s[2:].split(" — ")[0].strip()))
+            entries.append((i, MD_LINK_RE.sub(r"\1", s[2:]).split(" — ")[0].strip()))
     if len(entries) > CONTENTS_MAX:
         findings.append(emit("WARN", code, path, offset + start + 1, "Contents has %d entries; keep it to %d or fewer" % (len(entries), CONTENTS_MAX)))
     for i, name in entries:

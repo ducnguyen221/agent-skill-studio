@@ -196,6 +196,67 @@ class ForcingWordsTest(StudioCase):
         found, text = self.ct10(body)
         self.assertEqual([f["line"] for f in found], [text.index("ALWAYS check.") + 1])
 
+    def test_ct10_skips_inline_code(self):
+        self.assertEqual(self.ct10("# Skill\n\nPass the `MUST` flag.\nUse `NEVER` and `ALWAYS` options.")[0], [])
+        found, text = self.ct10("# Skill\n\nUse `x` and then MUST run.")
+        self.assertEqual([f["line"] for f in found], [text.index("Use `x` and then MUST run.") + 1])
+
+    def test_ct10_skips_link_text_and_url(self):
+        body = "# Skill\n\nSee [ALWAYS](https://example.com/NEVER) here.\nVisit https://example.com/MUST/path now."
+        self.assertEqual(self.ct10(body)[0], [])
+        found, text = self.ct10("# Skill\n\nSee [docs](x.md) and MUST run.")
+        self.assertEqual([f["line"] for f in found], [text.index("See [docs](x.md) and MUST run.") + 1])
+
+    def test_ct10_skips_table_rows(self):
+        body = "# Skill\n\n| Word | Meaning |\n|---|---|\n| MUST | required |\n  | NEVER | forbidden |"
+        self.assertEqual(self.ct10(body)[0], [])
+        found, text = self.ct10("# Skill\n\nChoose a | MUST here")
+        self.assertEqual([f["line"] for f in found], [text.index("Choose a | MUST here") + 1])
+
+    def test_ct10_skips_html_comment(self):
+        self.assertEqual(self.ct10("# Skill\n\n<!-- MUST review later -->\nfine.")[0], [])
+        found, text = self.ct10("# Skill\n\n<!-- note --> MUST run it")
+        self.assertEqual([f["line"] for f in found], [text.index("<!-- note --> MUST run it") + 1])
+
+    def test_ct10_skips_indented_code_block(self):
+        body = "# Skill\n\nExample:\n\n    You MUST run this\n    NEVER vary\n\nBack to text."
+        self.assertEqual(self.ct10(body)[0], [])
+        tabbed = "# Skill\n\nExample:\n\n\tNEVER vary\n\nBack."
+        self.assertEqual(self.ct10(tabbed, "tab-skill")[0], [])
+
+    def test_ct10_indented_line_is_not_code_without_blank_or_inside_list(self):
+        found, text = self.ct10("# Skill\n\nText line\n    MUST continue")
+        self.assertEqual([f["line"] for f in found], [text.index("    MUST continue") + 1])
+        found, text = self.ct10("# Skill\n\n- item\n\n    MUST continue it", "list-skill")
+        self.assertEqual([f["line"] for f in found], [text.index("    MUST continue it") + 1])
+
+    def test_ct10_fence_closes_only_on_matching_fence(self):
+        # a ```python inside an open fence does not close it; the bare ``` does
+        body = "# Skill\n\n```python\nYou MUST x\n```python\nNEVER y\n```\nALWAYS z"
+        found, text = self.ct10(body)
+        self.assertEqual([f["line"] for f in found], [text.index("ALWAYS z") + 1])
+        # a longer opening fence is not closed by a shorter one
+        body = "# Skill\n\n````\nMUST a\n```\nMUST b\n````\nNEVER c"
+        found, text = self.ct10(body, "long-fence")
+        self.assertEqual([f["line"] for f in found], [text.index("NEVER c") + 1])
+        # a ~~~ fence is not closed by ```
+        body = "# Skill\n\n~~~\nMUST a\n```\nMUST b\n~~~\nNEVER c"
+        found, text = self.ct10(body, "tilde-fence")
+        self.assertEqual([f["line"] for f in found], [text.index("NEVER c") + 1])
+
+    def test_ct10_unclosed_strict_block_warns(self):
+        found, text = self.ct10("# Skill\n\n<!-- studio:strict -->\nYou MUST run this exact step.\nmore text")
+        self.assertEqual([f["level"] for f in found], ["WARN"])
+        self.assertIn("strict block not closed", found[0]["message"])
+        self.assertEqual(found[0]["line"], text.index("<!-- studio:strict -->") + 1)
+        closed, _ = self.ct10("# Skill\n\n<!-- studio:strict -->\nYou MUST run this.\n<!-- /studio:strict -->\nok", "closed-strict")
+        self.assertEqual(closed, [])
+
+    def test_ct10_heading_is_prose_and_flagged(self):
+        # Verdict: a heading is prose, so '## MUST read' is flagged like any other line.
+        found, text = self.ct10("# Skill\n\n## MUST read first")
+        self.assertEqual([f["line"] for f in found], [text.index("## MUST read first") + 1])
+
     def test_ct10_ignores_lowercase_and_substrings(self):
         self.assertEqual(self.ct10("# Skill\n\nYou must run it. MUSTARD and ALWAYSON are words.")[0], [])
 
@@ -289,8 +350,32 @@ class ContentsTest(StudioCase):
         self.assertEqual(of(self.ref_findings(toc_file(ok, ok, 101), "twelve-ref"), "ST5"), [])
 
     def test_st5_ignores_headings_inside_code_fence(self):
-        content = toc_file(["Real"], ["Real"], 101) + "\n```\n## Fake\n```"
-        self.assertEqual(of(self.ref_findings(content), "ST5"), [])
+        # 'Fake' exists only as a heading inside a code fence, so the Contents entry must not match it
+        content = toc_file(["Real", "Fake"], ["Real"], 101) + "\n```\n## Fake\n```"
+        found = of(self.ref_findings(content), "ST5")
+        self.assertEqual([f["level"] for f in found], ["WARN"])
+        self.assertIn("'Fake'", found[0]["message"])
+
+    def test_st5_accepts_table_of_contents_and_lowercase_heading(self):
+        for i, heading in enumerate(("## Table of Contents", "## contents", "## TABLE OF CONTENTS", "## MỤC LỤC")):
+            content = toc_file(["Usage"], ["Usage"], 101, heading=heading)
+            self.assertEqual(of(self.ref_findings(content, "toc-ref-%d" % i), "ST5"), [], heading)
+
+    def test_st5_contents_heading_must_be_level_two(self):
+        for i, heading in enumerate(("### Contents", "# Contents")):
+            content = toc_file(["Usage"], ["Usage"], 101, heading=heading)
+            self.assertEqual([f["level"] for f in of(self.ref_findings(content, "lvl-ref-%d" % i), "ST5")], ["ERROR"], heading)
+
+    def test_st5_link_style_entries_match_headings(self):
+        for i, entry in enumerate(("[Real](#real)", "[Real](REF.md#real)")):
+            content = toc_file([entry], ["Real"], 101)
+            self.assertEqual(of(self.ref_findings(content, "link-ref-%d" % i), "ST5"), [], entry)
+
+    def test_st5_link_entry_to_missing_heading_still_warns(self):
+        content = toc_file(["[Ghost](#ghost)", "[Real](#real)"], ["Real"], 101)
+        found = of(self.ref_findings(content), "ST5")
+        self.assertEqual([f["level"] for f in found], ["WARN"])
+        self.assertIn("'Ghost'", found[0]["message"])
 
     def body_findings(self, body, name="body-skill"):
         return self.validate(make_skill(self.tmp, name, front(name), body))
@@ -299,6 +384,13 @@ class ContentsTest(StudioCase):
         found = of(self.body_findings("\n".join(["# Skill"] + ["line"] * 100)), "ST7")
         self.assertEqual([f["level"] for f in found], ["WARN"])
         self.assertEqual(found[0]["line"], 5)
+
+    def test_st7_link_style_entries(self):
+        ok = of(self.body_findings(toc_file(["[Real](#real)"], ["Real"], 40), "linkok-skill"), "ST7")
+        self.assertEqual(ok, [])
+        bad = of(self.body_findings(toc_file(["[Ghost](#ghost)"], ["Real"], 40), "linkbad-skill"), "ST7")
+        self.assertEqual([f["level"] for f in bad], ["WARN"])
+        self.assertIn("'Ghost'", bad[0]["message"])
 
     def test_st7_body_100_ok(self):
         self.assertEqual(of(self.body_findings("\n".join(["# Skill"] + ["line"] * 99)), "ST7"), [])
