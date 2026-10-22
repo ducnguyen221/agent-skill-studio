@@ -1,0 +1,49 @@
+{
+  "case_id": "csv-clean",
+  "pair_id": "data-quality-audit/csv-clean/claude-code",
+  "timestamp": "2026-10-22T23:36:11.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "typical",
+  "should_trigger": true,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "<local>/opcos/spr33/plugin-b85329d (git archive b85329dc60fdad2032eb94111a62133bd8454670, autocrlf=false)",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 31,
+        "tool": "Skill",
+        "via": "Skill",
+        "match": "agent-skill-studio:data-quality-audit"
+      }
+    ],
+    "scripts": [
+      {
+        "line": 60,
+        "tool": "Bash",
+        "match": "python -I \"~/AppData/Local/opcos/spr33/plugin-b85329d/skills/data-quality-audit/scripts/validate_csv.py\" --file \"~/OpcOS/works"
+      }
+    ],
+    "count_on_filtered_copy_equal": true,
+    "transcript_sha256_full": "8330a3cb594e2abb29da860d4998255c150944118a414f75795bbdb0443a61da",
+    "transcript_sha256_filtered": "63ff48ef4163f8dca390c6beb2c68904fe935a4bb7dae5942126642d05f1600a",
+    "line_numbers_refer_to": "original transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr33\\transcripts\\2026-10-22T23-36-11Z_claude-code_csv-clean_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-22-skill-studio-standard-v1/evidence/transcripts/2026-10-22T23-36-11Z_claude-code_csv-clean_with.jsonl (OpcOS repo; redacted copy)",
+  "output_excerpt": "**`fixtures/clean.csv` đạt cả bốn kiểm tra:** script trả `status: pass`, `issues: []`, nên có thể nhập vào Power BI.\n\n- **Phạm vi:** 3 dòng dữ liệu, 2 cột (`id`, `amount`). Tôi dùng file CSV duy nhất trong thư mục làm việc. Nếu bạn muốn kiểm file khác, hãy cho tôi đường dẫn.\n- **Cột bắt buộc:** `id` và `amount` đều có trong header và không dòng nào để trống.\n- **`id` duy nhất:** giá trị 1, 2, 3, không trùng.\n- **`amount` là số:** 120.5, 50, 80.25 đều đọc được thành số.\n\n**Giả định:** tôi coi `id` là khóa của mỗi dòng. Nếu thực tế một `id` có thể lặp lại, chẳng hạn mỗi dòng là một dòng hàng của",
+  "cwd": "~/OpcOS/workspaces/spr-33-eval/claude-code\\2026-10-22T23-36-11Z_csv-clean_with",
+  "skill_sha256_loaded": "d4325c8152b383dcf080c1b6716b706c6f7518dbd7bea7c21e34159439b40dc8",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "4d1ffa1b-4dca-4dbf-aa69-5b60107190d8",
+  "ledger_id": "4d1ffa1b-4dca-4dbf-aa69-5b60107190d8",
+  "wall_seconds": 31.4,
+  "timeout_s": 300,
+  "status": "ran",
+  "batch": "SPR-33-TK12-20261023-b85329d",
+  "cost_usd": 0.28887159999999995
+}

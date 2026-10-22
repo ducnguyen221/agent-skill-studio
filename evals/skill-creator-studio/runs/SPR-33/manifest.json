@@ -1,5 +1,5 @@
 {
-  "frozen_at": "2026-10-22T22:27:22Z",
+  "frozen_at": "2026-10-22T23:35:21Z",
   "files": {
     "cases.json": "534397ba0d614ff6492b2ed824c296cd49d241d477eb52dfc9a4c1d3fea54435",
     "rubric.md": "f3cc25f24cf3de2ac4e67203b21de837762fb10c5efbfb1863e66e7568836127",
@@ -15,7 +15,7 @@
     "fixtures/skills-dir/alpha-notes/SKILL.md": "cfc0bdc045b30754abf920ea488770badb59ea6c1a44a56808e012c43babcb57",
     "fixtures/skills-dir/beta-notes/SKILL.md": "6697277710d98fe39147f0d63b9eecc735202890406624545fa549b02b019b5d"
   },
-  "skill_sha256_repo": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6",
-  "skill_sha256_claude_cache": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6",
-  "skill_sha256_worktree": "e6ea55a32ff5b7337a0ae2d4719394c0388cee1a81b18c63010e8e50a63ac3d6"
+  "skill_sha256_repo": "afd85d67bd5bbf6766b6690afe8fd70bfe4c509af848a7197fcfa458dcd77897",
+  "skill_sha256_claude_cache": "afd85d67bd5bbf6766b6690afe8fd70bfe4c509af848a7197fcfa458dcd77897",
+  "skill_sha256_worktree": "afd85d67bd5bbf6766b6690afe8fd70bfe4c509af848a7197fcfa458dcd77897"
 }
