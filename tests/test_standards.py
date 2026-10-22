@@ -170,6 +170,40 @@ class StandardsTest(unittest.TestCase):
         self.assertIn("two levels", text, "AUDIT_CHECKLIST needs the three cutting questions")
         self.assertNotIn("hai tầng", text, "AUDIT_CHECKLIST is an English file")
 
+    def test_vi_standard_shape(self):
+        p = STANDARDS_DIR / "VIETNAMESE_SKILL_WRITING.md"
+        self.assertTrue(p.exists(), "standards/VIETNAMESE_SKILL_WRITING.md is missing")
+        text = read_std("VIETNAMESE_SKILL_WRITING.md")
+        lines = text.splitlines()
+        self.assertLessEqual(len(lines), 80)
+        rules = {}
+        for ln in lines:
+            m = re.match(r"^- \*\*(V\d\d)\*\*", ln)
+            if m:
+                rules.setdefault(m.group(1), []).append(ln)
+        self.assertEqual(sorted(rules), ["V%02d" % n for n in range(1, 15)], "need V01..V14")
+        for code, found in rules.items():
+            self.assertEqual(len(found), 1, "%s must appear once as a rule line" % code)
+            self.assertTrue("[máy: VI" in found[0] or "[review]" in found[0], "%s has no check label" % code)
+        machine = {"V03": "VI3", "V09": "VI1", "V11": "VI2", "V13": "VI4", "V14": "VI5"}
+        for code, line in ((c, r[0]) for c, r in rules.items()):
+            if code in machine:
+                self.assertIn("[máy: %s]" % machine[code], line, "%s must map to %s" % (code, machine[code]))
+            else:
+                self.assertIn("[review]", line, "%s is review-only" % code)
+        start = lines.index("## Thuật ngữ")
+        table = []
+        for ln in lines[start + 1:]:
+            if ln.startswith("#"):
+                break
+            if ln.startswith("|"):
+                table.append(ln)
+        rows = [ln for ln in table if not re.match(r"^\|\s*(Thuật ngữ|-+)", ln)]
+        self.assertTrue(rows, "glossary table is empty")
+        self.assertLessEqual(len(rows), 20)
+        self.assertIn("multilingual-support", text)
+        self.assertIn("SKILL_AUTHORING_STANDARD.md", text)
+
     def test_no_fake_pass_defined_once(self):
         md_files = [
             f for f in ROOT_DIR.rglob("*.md")

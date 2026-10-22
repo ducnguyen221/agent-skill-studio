@@ -50,6 +50,15 @@ LISTING_MAX = 1536  # Claude Code skill listing: description + when_to_use
 TRIGGER_LATEST = 500  # the trigger phrase should begin inside the first 500 description characters
 BODY_TOKEN_MAX = 5000
 VI_CHARS = frozenset("ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ")
+VI_ACCENT_RATIO = 0.03  # FR16: at least this share of prose letters with a Vietnamese diacritic -> Vietnamese body
+VI_SENTENCE_MAX = 40  # VI3 ceiling in words; 25 is advice only (VIETNAMESE_SKILL_WRITING.md V03)
+VI5_SECTION_MIN_LETTERS = 80
+VI5_ACCENT_MIN = 0.01
+NON_ISO_DATE_RE = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b")
+VI_TRIGGER_RE = re.compile(r"(?i)\buse (this skill )?when\b")
+VI_OK_MARK = "<!-- studio:vi-ok -->"
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+")
+SENTENCE_ABBREV_RE = re.compile(r"\b(e\.g|i\.e)\.")
 TRIGGER_RE = re.compile(r"(?i)\b(use when|when to use|used when|for tasks involving)\b")
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
@@ -304,6 +313,163 @@ def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
     return findings
 
 
+def prose_lines(body: str) -> list[tuple[int, str]]:
+    """Prose lines of a Markdown body as (1-based line number inside `body`, text); file line = body_start + number.
+    Left out: blank lines, fenced and indented code, table rows, and lines marked <!-- studio:vi-ok -->.
+    In the text, inline code, link targets, URLs and HTML comments are blanked; the text is not normalized, so VI1 can see NFD."""
+    found: list[tuple[int, str]] = []
+    fence, prev_blank, in_indented, list_context = None, True, False, False
+    for offset, text in enumerate(body.splitlines()):
+        stripped = text.strip()
+        if fence:
+            if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), stripped):
+                fence = None
+            continue
+        opened = FENCE_OPEN_RE.match(text)
+        if opened:
+            fence, prev_blank = opened.group(1), False
+            continue
+        if not stripped:
+            prev_blank = True
+            continue
+        indented = text.startswith(("    ", "\t"))
+        if indented and (in_indented or (prev_blank and not list_context)):
+            in_indented, prev_blank = True, False
+            continue
+        in_indented = False
+        if not indented:
+            list_context = bool(LIST_ITEM_RE.match(text))
+        prev_blank = False
+        if stripped.startswith("|") or VI_OK_MARK in text:
+            continue
+        prose = HTML_COMMENT_RE.sub(" ", text)
+        prose = CODE_SPAN_RE.sub(" ", prose)
+        prose = MD_LINK_RE.sub(r"\1", prose)
+        prose = URL_RE.sub(" ", prose)
+        if prose.strip():
+            found.append((offset + 1, prose))
+    return found
+
+
+def _vi_counts(text: str) -> tuple[int, int]:
+    """(letters, letters with a Vietnamese diacritic), counted on the NFC form so an NFD body is still recognised."""
+    letters = [c for c in unicodedata.normalize("NFC", text).lower() if c.isalpha()]
+    return len(letters), sum(c in VI_CHARS for c in letters)
+
+
+def _vi_lang(lines: list[tuple[int, str]]) -> str:
+    letters = accents = 0
+    for _, text in lines:
+        count, accented = _vi_counts(text)
+        letters, accents = letters + count, accents + accented
+    return "vi" if letters and accents / letters >= VI_ACCENT_RATIO else "en"
+
+
+def detect_lang(body: str) -> str:
+    """'vi' when letters with a Vietnamese diacritic are at least VI_ACCENT_RATIO of the prose letters, else 'en'
+    (code, table rows, inline code, vi-ok lines and the frontmatter do not count)."""
+    return _vi_lang(prose_lines(body))
+
+
+def _vi_sentences(lines: list[tuple[int, str]]) -> list[tuple[int, int]]:
+    """(line where the sentence starts, word count). A sentence ends at . ! ? or ; followed by a space, and a list item,
+    heading or blank line also ends one, so 'v1.0', '3.5', 'e.g.' and paths are not split. A word is a whitespace-separated token."""
+    sentences: list[tuple[int, int]] = []
+    buf: list[tuple[int, str]] = []
+
+    def flush() -> None:
+        if not buf:
+            return
+        starts, pos, parts = [], 0, []
+        for rel, text in buf:
+            starts.append((pos, rel))
+            parts.append(text)
+            pos += len(text) + 1
+        joined = SENTENCE_ABBREV_RE.sub(lambda m: m.group(1) + "․", " ".join(parts))
+        start = 0
+        for cut in list(SENTENCE_SPLIT_RE.finditer(joined)) + [None]:
+            end = cut.start() if cut else len(joined)
+            if joined[start:end].split():
+                sentences.append(([rel for at, rel in starts if at <= start][-1], len(joined[start:end].split())))
+            if cut:
+                start = cut.end()
+        buf.clear()
+
+    prev = -1
+    for rel, text in lines:
+        item = bool(LIST_ITEM_RE.match(text))
+        heading = text.lstrip().startswith("#")
+        if buf and (rel != prev + 1 or item or heading):
+            flush()
+        buf.append((rel, re.sub(r"^\s*(#+|>+|[-*+]|\d+[.)])\s+", "", text.strip())))
+        prev = rel
+        if heading:
+            flush()
+    flush()
+    return sentences
+
+
+def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path) -> list:
+    """FR16 / SPEC 9.10: VI1-VI5, all WARN, only when the body is Vietnamese (detect_lang). Line numbers are file lines.
+    VI1 body not NFC (first deviating line) · VI2 d/m/yyyy date · VI3 sentence over VI_SENTENCE_MAX words ·
+    VI4 frontmatter outside `description` holds Vietnamese letters, or `description` does but has no 'Use when' ·
+    VI5 a '## ' section of at least VI5_SECTION_MIN_LETTERS letters with under VI5_ACCENT_MIN diacritics."""
+    lines = prose_lines(body)
+    if _vi_lang(lines) != "vi":
+        return []
+    findings: list[dict] = []
+    for rel, text in lines:
+        if unicodedata.normalize("NFC", text) != text:
+            findings.append(emit("WARN", "VI1", manifest, body_start + rel,
+                                 "body is not Unicode NFC (first deviating line; later lines may be too); re-save the text in NFC (V09)"))
+            break
+    for rel, text in lines:
+        date = NON_ISO_DATE_RE.search(text)
+        if date:
+            findings.append(emit("WARN", "VI2", manifest, body_start + rel, "date '%s' is not ISO; write yyyy-mm-dd (V11)" % date.group(0)))
+    for rel, words in _vi_sentences(lines):
+        if words > VI_SENTENCE_MAX:
+            findings.append(emit("WARN", "VI3", manifest, body_start + rel,
+                                 "sentence has %d words (>%d); split it, aim for 25 or fewer (V03)" % (words, VI_SENTENCE_MAX)))
+    try:
+        front = manifest.read_text(encoding="utf-8").splitlines()[:body_start]
+    except (OSError, UnicodeError):
+        front = []
+
+    def front_line(label: str, default: int) -> int:
+        key = label.rsplit(".", 1)[-1]
+        return next((i + 1 for i, x in enumerate(front) if x.lstrip().startswith(key + ":")), default)
+
+    def accented(value) -> bool:
+        return isinstance(value, str) and _vi_counts(value)[1] > 0
+
+    pairs: list[tuple[str, object]] = []
+    for key, value in meta.items():
+        if key != "description":
+            pairs += [("%s.%s" % (key, k), v) for k, v in value.items()] if isinstance(value, dict) else [(key, value)]
+    for label, value in pairs:
+        at = front_line(label, 2)
+        if accented(value) and not (at <= len(front) and VI_OK_MARK in front[at - 1]):
+            findings.append(emit("WARN", "VI4", manifest, at, "frontmatter '%s' has Vietnamese letters; keep frontmatter values English (V13)" % label))
+    desc = meta.get("description")
+    at = front_line("description", 3)
+    if accented(desc) and not VI_TRIGGER_RE.search(desc) and not (at <= len(front) and VI_OK_MARK in front[at - 1]):
+        findings.append(emit("WARN", "VI4", manifest, at,
+                             "description has Vietnamese letters but no 'Use when' trigger phrase; write it in English and add Vietnamese only as extra trigger words (V13)"))
+    section = None
+    for rel, text in lines + [(0, "# end")]:
+        if re.match(r"^#{1,2}\s+\S", text):
+            if section and section[1] >= VI5_SECTION_MIN_LETTERS and section[2] / section[1] < VI5_ACCENT_MIN:
+                findings.append(emit("WARN", "VI5", manifest, body_start + section[0],
+                                     "section '%s' has %d letters and almost no Vietnamese diacritics; one language per skill, write it in Vietnamese (V14)"
+                                     % (section[3], section[1])))
+            section = [rel, 0, 0, text.strip("# ").strip()] if re.match(r"^##\s", text) else None
+        elif section:
+            count, with_accent = _vi_counts(text)
+            section[1], section[2] = section[1] + count, section[2] + with_accent
+    return findings
+
+
 def lint_contents(path: Path, lines: list, kind: str, offset: int = 0) -> list:
     """FR15: Contents rules. kind 'reference' -> ST5, 'skill_body' -> ST7; `offset` = lines before lines[0]."""
     code = "ST5" if kind == "reference" else "ST7"
@@ -404,6 +570,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
         findings.append(emit("WARN", "ST2", manifest, body_start + 1, "Skill body is about %d tokens (estimate, not a tokenizer); keep it under %d and move detail to references" % (tokens, BODY_TOKEN_MAX)))
     findings.extend(lint_forcing_words(body, body_start, manifest))
     findings.extend(lint_contents(manifest, body.splitlines(), "skill_body", body_start))
+    findings.extend(lint_vietnamese(meta, body, body_start, manifest))
     if re.search(r"<!--\s*STUDIO-DRAFT|\[FILL:|\bTODO\b|\bFIXME\b", body, re.IGNORECASE):
         findings.append(emit("WARN", "CT9", manifest, body_start + 1, "draft marker/TODO/FIXME remains; do not ship unreviewed scaffold"))
     if re.search(r"(?i)(show|write out|transcribe|echo)\s+(your\s+)?(private\s+)?(chain.of.thought|internal reasoning|hidden reasoning)", body):

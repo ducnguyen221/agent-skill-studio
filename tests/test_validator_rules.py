@@ -404,6 +404,163 @@ class ContentsTest(StudioCase):
         self.assertEqual(self.body_findings(toc_file(["Real"], ["Real"], 120), "good-skill") and of(self.body_findings(toc_file(["Real"], ["Real"], 120), "good2-skill"), "ST7"), [])
 
 
+VI_BODY_LINE = "Việc này giúp người dùng kiểm tra dữ liệu trước khi báo cáo."
+
+
+def vi_body(*extra: str) -> str:
+    """A Vietnamese body (title, blank, one clean sentence = body lines 1-3) followed by `extra` lines."""
+    return "\n".join(["# Kiểm dữ liệu", "", VI_BODY_LINE, *extra])
+
+
+class VietnameseLintTest(StudioCase):
+    """SPR-33 TK4: VI1-VI5 (FR16, SPEC 9.10). All WARN, Vietnamese bodies only.
+    With a two-key frontmatter the body starts at file line 5, so body line r is file line 4 + r."""
+
+    def vi(self, body, name="vi-skill", desc=GOOD_DESC, extra=()):
+        folder = make_skill(self.tmp, name, front(name, *extra, desc=desc), body)
+        return self.validate(folder)
+
+    def test_vi_detect_lang_threshold(self):
+        def ratio_body(accented, total=1000):
+            return "a" * (total - accented) + "ế" * accented
+        self.assertEqual(studio.detect_lang(ratio_body(29)), "en")  # 2.9 %
+        self.assertEqual(studio.detect_lang(ratio_body(30)), "vi")  # 3.0 %
+        self.assertEqual(studio.detect_lang(""), "en")
+        nfd = unicodedata.normalize("NFD", ratio_body(30))
+        self.assertNotEqual(nfd, ratio_body(30))
+        self.assertEqual(studio.detect_lang(nfd), "vi", "an NFD body must still be recognised as Vietnamese")
+        padded = "```\n" + "ế" * 500 + "\n```\n| " + "ế" * 500 + " |\n`" + "ế" * 500 + "` " + "a" * 100
+        self.assertEqual(studio.detect_lang(padded), "en", "code, table rows and backtick spans are not counted")
+
+    def test_vi_lint_nfd_flags_vi1(self):
+        nfd_line = unicodedata.normalize("NFD", "Việc kiểm dữ liệu cần làm trước khi gửi.")
+        found = of(self.vi(vi_body("", nfd_line)), "VI1")
+        self.assertEqual([f["level"] for f in found], ["WARN"])
+        self.assertEqual(found[0]["line"], 9)  # body line 5
+        later = unicodedata.normalize("NFD", "Dòng thứ hai cũng lệch.")
+        self.assertEqual([f["line"] for f in of(self.vi(vi_body("", nfd_line, later), "vi-two"), "VI1")], [9], "only the first deviating line")
+        nfc = unicodedata.normalize("NFC", nfd_line)
+        self.assertEqual(of(self.vi(vi_body("", nfc), "vi-nfc"), "VI1"), [])
+
+    def test_vi_lint_non_iso_date_vi2(self):
+        found = of(self.vi(vi_body("", "Sprint đóng vào ngày 22/10/2026 theo kế hoạch.")), "VI2")
+        self.assertEqual([f["level"] for f in found], ["WARN"])
+        self.assertEqual(found[0]["line"], 9)
+        iso = self.vi(vi_body("", "Sprint đóng vào ngày 2026-10-22 theo kế hoạch."), "vi-iso")
+        self.assertEqual(of(iso, "VI2"), [])
+        version = self.vi(vi_body("", "Bản v1.0 và mục 3.5 chưa đổi, xem standards/README.md."), "vi-ver")
+        self.assertEqual(of(version, "VI2"), [])
+
+    def test_vi_lint_sentence_41_words_vi3(self):
+        sentence = " ".join(["việc"] * 41) + "."
+        found = of(self.vi(vi_body("", sentence)), "VI3")
+        self.assertEqual([f["level"] for f in found], ["WARN"])
+        self.assertEqual(found[0]["line"], 9)
+        self.assertIn("41", found[0]["message"])
+
+    def test_vi_lint_sentence_40_words_ok(self):
+        sentence = " ".join(["việc"] * 40) + "."
+        self.assertEqual(of(self.vi(vi_body("", sentence)), "VI3"), [])
+        two = " ".join(["việc"] * 30) + ". " + " ".join(["việc"] * 30) + "."
+        self.assertEqual(of(self.vi(vi_body("", two), "vi-two"), "VI3"), [], "sentences are counted separately")
+        long = " ".join(["việc"] * 41) + "."  # control: one word more is reported, at its own line only
+        self.assertEqual([f["line"] for f in of(self.vi(vi_body("", sentence, long), "vi-ctl"), "VI3")], [10])
+
+    def test_vi_lint_frontmatter_diacritics_vi4(self):
+        found = of(self.vi(vi_body(), extra=("metadata:", '  author: "Đức"')), "VI4")
+        self.assertEqual([f["level"] for f in found], ["WARN"])
+        self.assertEqual(found[0]["line"], 5)  # the 'author' line
+        self.assertIn("metadata.author", found[0]["message"])
+        # a plain-ASCII value is clean; an English body never reaches VI4
+        self.assertEqual(of(self.vi(vi_body(), "vi-clean", extra=("metadata:", '  author: "Duc"')), "VI4"), [])
+        en = self.vi("# Audit\n\nChecks the data.", "en-front", extra=("metadata:", '  author: "Đức"'))
+        self.assertEqual(of(en, "VI4"), [])
+
+    def test_vi_lint_description_vietnamese_primary_vi4(self):
+        found = of(self.vi(vi_body(), desc="Kiểm tra"), "VI4")
+        self.assertEqual([f["level"] for f in found], ["WARN"])
+        self.assertEqual(found[0]["line"], 3)
+        self.assertIn("Use when", found[0]["message"])
+
+    def test_vi_lint_description_en_with_vi_phrase_ok(self):
+        desc = "Checks CSV. Use when validating a file; kiểm dữ liệu CSV"
+        self.assertEqual(of(self.vi(vi_body(), desc=desc), "VI4"), [])
+        self.assertEqual(of(self.vi(vi_body(), "vi-this", desc="Kiểm CSV. Use this skill when kiểm dữ liệu."), "VI4"), [])
+        self.assertEqual(len(of(self.vi(vi_body(), "vi-ctl", desc="Checks CSV; kiểm dữ liệu CSV"), "VI4")), 1, "control: no trigger phrase")
+
+    def test_vi_lint_mixed_section_vi5(self):
+        english = ("This section explains in plain English how the report is assembled from the raw data "
+                   "and which checks run before the final numbers are published to the team.")
+        body = vi_body("", "## Mục tiêu", "Việc kiểm dữ liệu giúp báo cáo đúng hơn.", "", "## Quy trình", english)
+        found = of(self.vi(body), "VI5")
+        self.assertEqual([f["level"] for f in found], ["WARN"])
+        self.assertEqual(found[0]["line"], 12)  # the '## Quy trình' heading = body line 8
+        self.assertEqual(of(self.vi(vi_body("", "## Quy trình", english[:60]), "vi-short"), "VI5"), [], "<80 letters: no VI5")
+        vietnamese = vi_body("", "## Quy trình", "Việc này mô tả cách ráp báo cáo từ dữ liệu thô và những bước kiểm trước khi công bố số liệu cuối cùng cho cả nhóm.")
+        self.assertEqual(of(self.vi(vietnamese, "vi-whole"), "VI5"), [])
+
+    def test_vi_lint_english_body_no_vi_codes(self):
+        body = ("# Audit\n\nThe date 22/10/2026 is in the body. " + " ".join(["word"] * 60) + ".\n\n## Steps\n"
+                + "Run the check and read the result carefully before you report anything to the team lead.")
+        findings = self.vi(body, "en-skill", desc="Kiểm tra")  # even a Vietnamese description: the body decides
+        self.assertEqual([c for c in codes(findings) if c.startswith("VI")], [])
+        control = self.vi(vi_body("", "Ngày 22/10/2026 theo kế hoạch."), "vi-ctl")  # the same date in a Vietnamese body is reported
+        self.assertEqual(len(of(control, "VI2")), 1)
+        # 'ë' and 'ï' are not Vietnamese letters, so an NFD English body stays English
+        nfd_body = unicodedata.normalize("NFD", "# Zoë\n\nA short English note about naïve users.")
+        folder = make_skill(self.tmp, "en-nfd", front("en-nfd"), nfd_body)
+        self.assertEqual([c for c in codes(self.validate(folder)) if c.startswith("VI")], [])
+
+    def test_vi_lint_skips_code_table_and_vi_ok(self):
+        long_line = " ".join(["việc"] * 50) + "."
+        nfd = unicodedata.normalize("NFD", "Việc cũ giữ nguyên.")
+        body = vi_body(
+            "", "```", long_line, "22/10/2026 " + nfd, "```",
+            "| ngày | giá trị |", "| 22/10/2026 | " + long_line + " |",
+            "Mã `22/10/2026` và `" + long_line + "` nằm trong backtick.",
+            long_line + " <!-- studio:vi-ok -->",
+            "Ngày 22/10/2026 đã miễn. <!-- studio:vi-ok -->",
+            nfd + " <!-- studio:vi-ok -->",
+        )
+        findings = self.vi(body)
+        self.assertEqual([c for c in codes(findings) if c.startswith("VI")], [])
+        # control: the same text without the exemption is reported
+        bare = self.vi(vi_body("", long_line, "Ngày 22/10/2026 đã miễn.", nfd), "vi-bare")
+        self.assertEqual({"VI1", "VI2", "VI3"}, {c for c in codes(bare) if c.startswith("VI")})
+
+    # Extra checks on the helpers (names avoid the 'test_vi_' selector so the TK4 gate stays at 12 tests).
+    def test_lint_vi_wrapped_sentence_and_list_items(self):
+        wrapped = vi_body("", " ".join(["việc"] * 20), " ".join(["việc"] * 21) + ".")
+        self.assertEqual([f["line"] for f in of(self.vi(wrapped), "VI3")], [9], "41 words over two lines: one hit at the first line")
+        item = "- " + " ".join(["việc"] * 30) + "."
+        items = vi_body("", item, item, "## " + " ".join(["việc"] * 30), " ".join(["việc"] * 30) + ".")
+        self.assertEqual(of(self.vi(items, "vi-items"), "VI3"), [], "list items and headings end a sentence")
+
+    def test_lint_vi_abbreviations_decimals_and_paths_stay_whole(self):
+        text = "Bản v1.0 và e.g. mục 3.5 " + " ".join(["việc"] * 35) + " xong."
+        self.assertEqual(studio._vi_sentences(studio.prose_lines(text)), [(1, 42)], "'e.g.', 'v1.0' and '3.5' do not split")
+        paths = "Xem standards/README.md. Rồi chạy studio.py validate. Hết."
+        self.assertEqual([w for _, w in studio._vi_sentences(studio.prose_lines(paths))], [2, 4, 1])
+
+    def test_lint_vi_indented_code_and_link_targets_skipped(self):
+        body = vi_body("", "    22/10/2026 " + " ".join(["việc"] * 45) + ".", "", "Xem [tài liệu](docs/22/10/2026) để biết thêm.")
+        self.assertEqual([c for c in codes(self.vi(body)) if c.startswith("VI")], [])
+        self.assertEqual(studio.prose_lines("a\n\n```\nb\n```\nc\n| t |\n\n    d\n    e"), [(1, "a"), (6, "c")])
+
+    def test_lint_vi_missing_manifest_uses_default_lines(self):
+        meta = {"name": "x", "description": "Kiểm tra", "metadata": {"author": "Đức"}}
+        found = studio.lint_vietnamese(meta, vi_body(), 4, self.tmp / "none" / "SKILL.md")
+        self.assertEqual(sorted((f["code"], f["line"]) for f in found), [("VI4", 2), ("VI4", 3)])
+
+    def test_lint_vi_frontmatter_vi_ok_and_cli_exit_zero(self):
+        body = vi_body("", " ".join(["việc"] * 41) + ".")
+        folder = make_skill(self.tmp, "vi-cli", front("vi-cli", "metadata:", "  author: Đức <!-- studio:vi-ok -->"), body)
+        self.assertEqual(of(self.validate(folder), "VI4"), [], "a vi-ok mark exempts that frontmatter line")
+        run = self.run_cli("validate", folder)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)  # VI* are WARN only
+        self.assertIn("VI3", run.stdout)
+
+
 class RepoStaysCleanTest(StudioCase):
     def test_validate_all_has_no_errors_or_warnings(self):
         for folder in studio.skill_dirs(ROOT):
