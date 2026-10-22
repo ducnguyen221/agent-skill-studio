@@ -5,7 +5,7 @@ updated: 2026-10-23
 ---
 # Templates
 
-Hai template là **scaffold** cho Skill mới, không phải Skill sản xuất. Lệnh `python3 studio.py new <name> ...` copy template, đổi `name`/`description` thành hợp lệ và để lại `STUDIO-DRAFT` để cảnh báo cần cá nhân hóa; `package` từ chối Skill còn dấu này.
+Hai template (`skill-template/` và `skill-template-full/`) là **scaffold** cho Skill mới, không phải Skill sản xuất. Lệnh `python3 studio.py new <name> ...` copy template, đổi `name`/`description` thành hợp lệ và để lại `STUDIO-DRAFT` để cảnh báo cần cá nhân hóa; `package` từ chối Skill còn dấu này.
 
 | Template | Chọn bằng | Nội dung |
 |---|---|---|
@@ -22,4 +22,4 @@ Trong bản đầy đủ:
 
 `evals/` chủ đích **không nằm trong template skill runtime**. Lệnh `new` tạo `evals/<name>/cases.json` riêng, rỗng có chủ đích. Phải viết 3 test thật mới đủ điều kiện release.
 
-Cả hai template được đồng bộ sang `skills/skill-creator-studio/assets/skill-template/` và `assets/skill-template-full/` để Skill factory chạy độc lập ngoài repo. Sau khi sửa template gốc, chạy `python3 studio.py sync-template`, rồi `python3 studio.py sync-template --check` (so từng file hai chiều; file thừa ở bản sao cũng là lệch).
+Kiểm trình bày sau khi sửa tài liệu này: `python3 studio.py fmt --check templates/README.md`. Cả hai template được đồng bộ sang `skills/skill-creator-studio/assets/skill-template/` và `assets/skill-template-full/` để Skill factory chạy độc lập ngoài repo. Sau khi sửa template gốc, chạy `python3 studio.py sync-template`, rồi `python3 studio.py sync-template --check` (so từng file hai chiều; file thừa ở bản sao cũng là lệch).

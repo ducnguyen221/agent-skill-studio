@@ -2,9 +2,9 @@
 
 **Bộ tiêu chuẩn và công cụ tạo, audit, cải tiến, kiểm thử và phân phối Agent Skills cho Claude Code, OpenAI Codex và Google Antigravity.**
 
-- Phiên bản: **0.1.0** (starter repository có kiểm thử cấu trúc thực tế).
-- Ngày đối chiếu nguồn: **2026-10-12**.
-- Ngôn ngữ: tài liệu quản trị tiếng Việt; instruction trong Skill dùng tiếng Anh để dễ di chuyển giữa runtime.
+- Phiên bản: **0.1.0** (thay đổi chưa phát hành: [CHANGELOG.md](CHANGELOG.md); số đo lần kiểm cuối: [QA_REPORT.md](QA_REPORT.md)).
+- Ngày đối chiếu nguồn: **2026-10-23** (mỗi adapter ghi nguồn đã mở lại).
+- Ngôn ngữ: tài liệu quản trị tiếng Việt; frontmatter của Skill luôn tiếng Anh để dễ di chuyển giữa runtime, thân Skill tiếng Anh hoặc tiếng Việt (`new --lang vi`).
 - Thiết kế: **một nguồn quy tắc chung + các adapter riêng + factory Skill + evaluation độc lập**.
 
 > **Quyết định kiến trúc**: `evals/<skill-name>/` đặt **ngoài** `skills/<skill-name>/` để bộ test và đáp án không bị phát hành cùng runtime. Đây là **quy ước của Agent Skill Studio**, không phải yêu cầu bắt buộc của Agent Skills Specification. Có thể dùng colocated evals cho một dự án độc lập, nhưng phải loại chúng khi đóng gói.
@@ -15,11 +15,13 @@
 2. [Cấu trúc](#cấu-trúc)
 3. [Khởi động trong 5 phút](#khởi-động-trong-5-phút)
 4. [Ba agent và cách cài](#ba-agent-và-cách-cài)
-5. [Skill Factory: NEW / AUDIT / REFINE](#skill-factory-new--audit--refine)
-6. [Quality gates](#quality-gates)
-7. [Đọc tài liệu theo nhiệm vụ](#đọc-tài-liệu-theo-nhiệm-vụ)
-8. [Nguồn và giới hạn](#nguồn-và-giới-hạn)
-9. [ACD Ecosystem Integration](#-acd-ecosystem-integration)
+5. [Using from Codex / Antigravity](#using-from-codex--antigravity)
+6. [Skill Factory: NEW / AUDIT / REFINE](#skill-factory-new--audit--refine)
+7. [Quality gates](#quality-gates)
+8. [Phát hành](#phát-hành)
+9. [Đọc tài liệu theo nhiệm vụ](#đọc-tài-liệu-theo-nhiệm-vụ)
+10. [Nguồn và giới hạn](#nguồn-và-giới-hạn)
+11. [ACD Ecosystem Integration](#-acd-ecosystem-integration)
 
 ## Repo này giải quyết vấn đề gì?
 
@@ -39,53 +41,75 @@ Nhiều file Markdown không đồng nghĩa một Skill tốt. Khó nhất là t
 ```text
 Agent Skill Studio/
 ├── README.md                    # Tổng quan, cài đặt, lộ trình
+├── CHANGELOG.md                 # Lịch sử thay đổi (chỉ thêm)
+├── QA_REPORT.md                 # Số đo lần kiểm cuối
 ├── LICENSE                      # MIT (chủ sở hữu: Nguyễn Quang Đức)
 ├── LICENSE_POLICY.md            # Quyết định giấy phép và quy tắc truy vết nguồn
+├── ECOSYSTEM.md                 # Khai báo vai trò trong hệ ACD
 ├── AGENTS.md                    # Chỉ dẫn repo chung cho Codex/Antigravity
 ├── CLAUDE.md                    # Claude Code: import AGENTS.md và thêm adapter
 ├── GEMINI.md                    # Antigravity-specific notes, không sao chép rule chung
-├── studio.py                    # CLI chung: new / validate / audit / evals / package / install
+├── studio.py                    # CLI: new / validate / audit / evals / package / install / sync-template / doctor / fmt
+├── .claude-plugin/              # Manifest plugin Claude Code (plugin.json, marketplace.json)
+├── .codex-plugin/               # Manifest plugin Codex (plugin.json)
 ├── standards/
+│   ├── README.md                # Chỉ mục chuẩn
 │   ├── CORE_STANDARD.md         # Scope, MUST/SHOULD/MAY, thiết kế không phụ thuộc vendor
-│   ├── SKILL_AUTHORING_STANDARD.md # 13 quy tắc SK-01..SK-13 + chuẩn manifest SK-00
+│   ├── SKILL_AUTHORING_STANDARD.md # 15 quy tắc SK-01..SK-15 + chuẩn manifest SK-00
+│   ├── VIETNAMESE_SKILL_WRITING.md # Chuẩn viết thân tiếng Việt + lint VI1-VI5
+│   ├── MEMO-SKILL-V0.md         # Memo chuẩn tạm (v0), giữ làm nguồn tham chiếu
 │   ├── RULES_AND_PRECEDENCE.md  # Quy tắc nằm ở đâu, tránh conflict/duplication
 │   ├── SECURITY_AND_PERMISSIONS.md # Bảo mật supply chain, hành động có side effect
 │   ├── EVALUATION_STANDARD.md   # Cách kiểm thử activation, kết quả, regression
 │   ├── SKILL_LIFECYCLE.md       # Design -> audit -> ship -> maintain
 │   ├── SOURCE_TRACEABILITY.md   # PDF, video, official docs; confidence, caveat
 │   └── ROBONUGGETS_46_RULE_MAP.md # Mapping 46 checks community vào chuẩn chung
+├── content/                     # Ví dụ để chép và sửa, ngoài skills/ nên không vào gói phát hành
+│   ├── README.md
+│   ├── descriptions.md          # Bảy cặp description tốt/xấu
+│   ├── eval-cases.md            # Ba case eval mẫu
+│   ├── exemplar/                # Skill mẫu tiếng Anh
+│   └── exemplar-vi/             # Skill mẫu thân tiếng Việt
 ├── adapters/
+│   ├── README.md
 │   ├── CLAUDE_CODE_ADAPTER.md
 │   ├── CODEX_ADAPTER.md
 │   ├── ANTIGRAVITY_ADAPTER.md
 │   └── CAPABILITY_MATRIX.md
 ├── templates/
+│   ├── README.md                # Hai template và khi nào dùng
 │   ├── project/                 # Mẫu AGENTS.md, CLAUDE.md, GEMINI.md
-│   └── skill-template/          # Mẫu skill: SKILL.md, references/, scripts/, assets/
+│   ├── skill-template/          # Mặc định tối giản: SKILL.md (en) và SKILL.vi.md (vi)
+│   └── skill-template-full/     # --full: SKILL.md, references/, scripts/, assets/, agents/
 ├── skills/
 │   ├── skill-creator-studio/    # Skill meta-factory: NEW / AUDIT / REFINE
 │   │   ├── SKILL.md
 │   │   ├── references/
 │   │   ├── scripts/studio.py    # CLI có thể chạy cả khi Skill được copy sang repo khác
-│   │   └── assets/skill-template/ # Bản template phân phối, được CI đồng bộ
+│   │   └── assets/              # skill-template/ và skill-template-full/: bản phân phối, được CI đồng bộ
 │   └── data-quality-audit/     # Skill ví dụ có script xử lý CSV thật
 ├── evals/                      # KHÔNG được mang vào package Skill
 │   ├── RUNBOOK.md
+│   ├── tools/                  # activation.py, oracle.py, redact.py
 │   ├── skill-creator-studio/
 │   │   ├── cases.json
 │   │   ├── rubric.md
+│   │   ├── expected/, fixtures/, runs/
 │   │   └── baselines/BASELINE.md
 │   └── data-quality-audit/
 │       ├── cases.json
 │       ├── rubric.md
-│       ├── fixtures/
+│       ├── expected/, fixtures/, runs/
 │       └── baselines/BASELINE.md
 ├── registry/
+│   ├── README.md
 │   ├── SKILL_CATALOG.md
 │   └── catalog.json
 ├── tests/                      # Unit tests kiểm tra CLI và cấu trúc offline
 └── .github/workflows/ci.yml    # Validation + unit tests + packaging smoke test
 ```
+
+> **Ghi chú cây đích:** cây trên là hiện trạng của repo. Sprint áp dụng kế tiếp (SPEC 9.15 của SPR-33) mới dời: `adapters/*` thành `docs/adapters.md`; xoá `registry/SKILL_CATALOG.md` (giữ `catalog.json`); `QA_REPORT.md`, `ECOSYSTEM.md`, `standards/ROBONUGGETS_46_RULE_MAP.md` vào `docs/`; `templates/project/` thành `templates/starter-project/`; `CLAUDE.md` gốc còn một dòng. Các đường API cứng (`studio.py`, `skills/*`, `standards/SKILL_AUTHORING_STANDARD.md`, `templates/skill-template/SKILL.md`, tên repo) đứng yên. Tới lúc đó, đường dẫn trong tài liệu này vẫn đúng như đã ghi.
 
 ### `references/`, `scripts/`, `assets/`, `evals/` khác nhau ra sao?
 
@@ -111,8 +135,10 @@ python3 studio.py validate --all --require-evals
 python3 studio.py evals --all
 # kiểm thử script và cấu trúc
 python3 -m unittest discover -s tests -v
-# tạo một skill mới từ mẫu, dùng alias duy nhất
+# tạo một skill mới từ mẫu (thân tiếng Anh mặc định; --lang vi cho thân tiếng Việt; --full cho template đầy đủ)
 python3 studio.py new powerbi-reporting --output skills --description "Builds and validates Power BI reports. Use when creating Power BI semantic models, DAX measures, or dashboard reports." 
+# kiểm kiểu trình bày Markdown của vài tài liệu (mặc định chỉ báo cáo, không ghi file)
+python3 studio.py fmt --check standards/README.md templates/README.md
 # tạo bản package chỉ gồm các file runtime, không kèm evals
 python3 studio.py package skills/data-quality-audit --out dist
 ```
@@ -120,6 +146,12 @@ python3 studio.py package skills/data-quality-audit --out dist
 `new` tạo thêm `evals/<name>/cases.json` nếu --output là `skills` ở root repo. Mẫu evals vẫn phải được người viết điền đủ ca kiểm thử thực tế trước production; CLI không tự bịa kết quả model.
 
 Sau khi tạo Skill mới: cập nhật `registry/catalog.json`, thay hướng dẫn mẫu bằng quy trình thực, bổ sung references/assets theo nhu cầu, tạo ít nhất 3 test prompts có positive/negative, kiểm định. `new` chỉ scaffold, **không có nghĩa Skill mới đã đạt chất lượng production**.
+
+**`new`.** `new <name> --description "..."` nhận thêm `--lang {en,vi}` (mặc định `en`; `vi` viết thân tiếng Việt, frontmatter vẫn tiếng Anh), `--full` (template đầy đủ `references/`, `scripts/`, `assets/`, `agents/`, chỉ tiếng Anh; `--full --lang vi` thoát 2) và `--eval-root` (nơi tạo `evals/<name>/`). Hai template còn dấu `STUDIO-DRAFT` nên `package` từ chối đến khi viết thật. Chi tiết: [templates/README.md](templates/README.md); chuẩn viết thân tiếng Việt: [VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md).
+
+**`fmt`.** `python3 studio.py fmt --check <đường>` (mặc định) liệt kê lỗi trình bày Markdown (kết thúc dòng, thứ tự khoá, metadata có dấu nháy) và không ghi gì; không bao giờ sửa chữ trong thân. `--fix` áp dụng phần sửa được và trước đó chép từng file đổi sang `<file>.bak-<ISO>` cạnh nó (`.gitignore` đã bỏ qua `*.bak-*`). `--no-backup` bỏ bản sao: trong repo git hãy dùng `--no-backup` vì git đã giữ bản cũ. `--all` quét mọi `*.md` của repo, chỉ báo cáo (không đi cùng `--fix`).
+
+**`evals --export`.** `python3 studio.py evals <skill> --export agentskills --out dist/agentskills` ghi các ca positive thành `<out>/<skill>/evals/evals.json`; `--force` ghi đè file đã xuất; `--out` không được nằm dưới `skills/` hay `evals/`. Lệnh này không gọi model.
 
 ```bash
 python3 studio.py doctor --roots "<dir1>;<dir2>" --json
@@ -140,9 +172,10 @@ python3 studio.py doctor --roots "<dir1>;<dir2>" --json
 
 Plugin chỉ chứa thư mục `skills/`; `evals/` và `tests/` không nằm trong gói.
 
-**Lệnh install sao chép có kiểm tra, không sửa hoặc ghi đè mục tiêu sẵn có nếu không có `--force`.**
+**Lệnh install sao chép có kiểm tra, không sửa hoặc ghi đè mục tiêu sẵn có nếu không có `--force`** (`--force` sao lưu bản cũ sang `<tên>.backup-<UTC>` rồi thay).
 
 ```bash
+# Thư mục --workspace phải có sẵn (thiếu thì thoát 2)
 # Claude Code workspace: .claude/skills/<skill-name>/
 python3 studio.py install skills/skill-creator-studio --agent claude --workspace .
 # Codex hoặc Google Antigravity: .agents/skills/<skill-name>/
@@ -150,13 +183,24 @@ python3 studio.py install skills/skill-creator-studio --agent codex --workspace 
 # Nếu đã cài vào .agents/skills, Antigravity có thể dùng cùng bản đó;
 # lệnh tiếp theo sẽ từ chối overwrite nếu folder tồn tại.
 python3 studio.py install skills/skill-creator-studio --agent antigravity --workspace .
+# Cấp người dùng (chỉ codex và antigravity)
+python3 studio.py install skills/skill-creator-studio --agent codex --user
+python3 studio.py install skills/skill-creator-studio --agent antigravity --user
 ```
 
-- **Claude Code:** `.claude/skills/<name>` (user scope `~/.claude/skills/`). Xem [Claude adapter](adapters/CLAUDE_CODE_ADAPTER.md).
-- **Codex:** `.agents/skills/<name>` (user scope `~/.agents/skills/`). Xem [Codex adapter](adapters/CODEX_ADAPTER.md).
-- **Google Antigravity** (không phải “AntiCraft”): `.agents/skills/<name>`, user `~/.gemini/config/skills/<name>` theo docs. Xem [Antigravity adapter](adapters/ANTIGRAVITY_ADAPTER.md).
+- **Claude Code:** `.claude/skills/<name>`. `--user` **không hỗ trợ** (thoát 2); muốn cài cấp người dùng thì tự chép vào `~/.claude/skills/`. Xem [Claude adapter](adapters/CLAUDE_CODE_ADAPTER.md).
+- **Codex:** `.agents/skills/<name>`; `--user` chép vào `~/.agents/skills/<name>`. Xem [Codex adapter](adapters/CODEX_ADAPTER.md).
+- **Google Antigravity** (không phải “AntiCraft”): `.agents/skills/<name>`; `--user` chép vào `~/.gemini/config/skills/<name>` (App/IDE). Xem [Antigravity adapter](adapters/ANTIGRAVITY_ADAPTER.md).
 
-**Lưu ý:** cùng một folder `.agents/skills` có thể được cả Codex và Antigravity phát hiện, nhưng invocation UI và chính sách sandbox là khác nhau. Không coi tính năng riêng của Claude (ví dụ `hooks:`) là một phần của chuẩn portable. Script `install` hiện chỉ hỗ trợ project/workspace scope để tránh thay đổi cấu hình toàn máy.
+`--user` không bao giờ tạo thư mục cha: nếu `~/.agents` hoặc `~/.gemini/config` chưa có thì thoát 2 (`nothing was created`); `--user` đi cùng `--workspace` cũng thoát 2.
+
+**Lưu ý:** cùng một folder `.agents/skills` có thể được cả Codex và Antigravity phát hiện, nhưng invocation UI và chính sách sandbox là khác nhau. Không coi tính năng riêng của Claude (ví dụ `hooks:`) là một phần của chuẩn portable; khoá riêng Claude Code (14 khoá) chỉ qua `validate --target claude-code`.
+
+## Using from Codex / Antigravity
+
+- **Codex.** Cài bằng `install --agent codex --workspace <dự án>` (hoặc `--user`), rồi gọi `$skill-name` hay `/skills`. Danh sách skill nạp ban đầu bị giới hạn (docs: ≤2 % ngữ cảnh hoặc 8 000 ký tự; `[codex 0.147, mã]` 1 024 ký tự mỗi `description` và 8 000 byte thân). Máy kiểm chạy `codex-cli 0.163.0` nên hai con số mã chưa đọc lại ở bản đó. `agents/openai.yaml` là tuỳ chọn, chỉ Codex đọc, có sẵn trong template `--full`. Xem [CODEX_ADAPTER.md](adapters/CODEX_ADAPTER.md).
+- **Antigravity.** Cài bằng `install --agent antigravity --workspace <dự án>` (hoặc `--user` cho App/IDE). Tài liệu Antigravity nêu `scripts/`, `examples/`, `resources/`; Studio giữ thêm `references/` và `assets/`, chưa chạy thật để biết agent có đọc không. CLI của Antigravity dùng thư mục toàn cục khác với App/IDE. Xem [ANTIGRAVITY_ADAPTER.md](adapters/ANTIGRAVITY_ADAPTER.md).
+- **Giới hạn.** Studio không gọi Codex hay Antigravity; chạy thật theo [evals/RUNBOOK.md](evals/RUNBOOK.md) và ghi log. Chưa có log thì ghi `not_run`. So sánh ba đích: [CAPABILITY_MATRIX.md](adapters/CAPABILITY_MATRIX.md).
 
 ## Skill Factory: NEW / AUDIT / REFINE
 
@@ -174,6 +218,12 @@ Hướng dẫn agent sử dụng Skill factory: [skills/skill-creator-studio/SKI
 4. `evals/<name>/cases.json` hợp lệ, có ít nhất 3 ca và có positive/negative. `studio.py evals` chỉ test **schema**, không chấm được model.
 5. Chạy unit tests / CI, test thật với agent mục tiêu theo [evals/RUNBOOK.md](evals/RUNBOOK.md). Định nghĩa: [Không pass giả](standards/EVALUATION_STANDARD.md#không-pass-giả-not_run).
 6. Với Skill nguy hiểm, policy gate/permissions độc lập phải chạy thành công; chỉ nhắc trong Markdown **không đủ**.
+7. `validate` kiểm cả chuẩn viết (SK-14, SK-15 và các mã như `FM5`, `FM6`, `CT10`, `DS4`, `DS5`, `ST2`, `ST3`, `ST5`, `ST7`, `ST8`, `SZ1`, `SZ2`); thân tiếng Việt còn qua lint `VI1`–`VI5` ([VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md)). Đa số là WARN, chỉ lỗi cấu trúc mới chặn.
+8. `python3 studio.py fmt --check` và `python3 studio.py doctor` là hai lệnh chỉ báo cáo, chạy được bất cứ lúc nào.
+
+## Phát hành
+
+Trước khi phát hành: `python studio.py doctor` / `fmt --check` before release, rồi `validate --all --require-evals`, `evals --all`, `sync-template --check` và `python3 -m unittest discover -s tests`. Ghi số đo vào [QA_REPORT.md](QA_REPORT.md), thêm mục vào [CHANGELOG.md](CHANGELOG.md) (chỉ thêm, không ghi đè), rồi mới tăng version. `model_evaluated` giữ `false` cho đến khi `registry/catalog.json` có đủ bằng chứng đếm lại được.
 
 ## Đọc tài liệu theo nhiệm vụ
 
@@ -183,6 +233,9 @@ Hướng dẫn agent sử dụng Skill factory: [skills/skill-creator-studio/SKI
 | Biết vì sao phải làm một rule | [SOURCE_TRACEABILITY.md](standards/SOURCE_TRACEABILITY.md) |
 | Kiểm tra 46 rule community | [ROBONUGGETS_46_RULE_MAP.md](standards/ROBONUGGETS_46_RULE_MAP.md) |
 | Triển khai cùng Claude/Codex/AGY | [adapters/](adapters/CAPABILITY_MATRIX.md) |
+| Viết thân Skill bằng tiếng Việt | [VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md), skill mẫu trong [content/](content/README.md) |
+| Chép mẫu `description`, case eval, skill mẫu | [content/README.md](content/README.md) |
+| Chọn template khi tạo Skill | [templates/README.md](templates/README.md) |
 | Viết test/baseline | [EVALUATION_STANDARD.md](standards/EVALUATION_STANDARD.md), [evals/RUNBOOK.md](evals/RUNBOOK.md) |
 | Kiểm soát permission hoặc hooks | [SECURITY_AND_PERMISSIONS.md](standards/SECURITY_AND_PERMISSIONS.md) |
 | Muốn tạo Skill mới | `python3 studio.py new ...`, sau đó dùng [Skill factory](skills/skill-creator-studio/SKILL.md) |
@@ -191,7 +244,7 @@ Hướng dẫn agent sử dụng Skill factory: [skills/skill-creator-studio/SKI
 
 Tham khảo trực tiếp: [Agent Skills Specification](https://agentskills.io/specification), [Claude Skills](https://code.claude.com/docs/en/skills), [Anthropic Best Practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices), [OpenAI Build Skills](https://learn.chatgpt.com/docs/build-skills), [Google Antigravity Skills](https://www.antigravity.google/docs/skills), [robonuggets/skill-creator-plus](https://github.com/robonuggets/skill-creator-plus), video [VQyYzLJ6xos](https://www.youtube.com/watch?v=VQyYzLJ6xos) và PDF người dùng cung cấp *The 10 SKILL Rules* (trang 3–10). Xem [source traceability](standards/SOURCE_TRACEABILITY.md) trước khi diễn đạt bất kỳ đề xuất nội bộ nào như một chuẩn chính thức.
 
-Giấy phép: **MIT** ([LICENSE](LICENSE), quyết định 12/10/2026, xem [LICENSE_POLICY.md](LICENSE_POLICY.md)). Repo này **không sao chép mã nguồn của RoboNuggets**; các scripts ở đây được tự triển khai theo tiêu chí kiểm tra công khai. Nội dung public có thể thay đổi sau 12/10/2026; kiểm tra lại trước khi nâng bản lớn. Không có xác nhận đã chạy Claude/Codex/Antigravity thật trong bản phân phối offline này.
+Giấy phép: **MIT** ([LICENSE](LICENSE), quyết định 12/10/2026, xem [LICENSE_POLICY.md](LICENSE_POLICY.md)). Repo này **không sao chép mã nguồn của RoboNuggets**; các scripts ở đây được tự triển khai theo tiêu chí kiểm tra công khai. Nội dung public có thể thay đổi sau 12/10/2026; kiểm tra lại trước khi nâng bản lớn. Bản phân phối này không tự gọi agent. Lô kích hoạt đã ghi (SPR-18, SPR-33) chạy trên Claude Code, SPR-18 thêm Codex; Antigravity `not_run`; `model_evaluated` giữ `false`. Số đo và giới hạn: [QA_REPORT.md](QA_REPORT.md).
 
 ## 🤝 ACD Ecosystem Integration
 
