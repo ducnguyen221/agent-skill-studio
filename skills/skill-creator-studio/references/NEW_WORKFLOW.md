@@ -18,6 +18,8 @@ Each test identifies trigger expectation, file inputs, observed outputs and hard
 
 High freedom for varied writing, medium for templates and standard practices, low for destructive or deterministic operations. Permission control lives in the runtime, not prose alone.
 
+`studio.py new` scaffolds the minimal template by default: one `SKILL.md` with a `## Gotchas` section, enough for a single file. `--lang {en,vi}` picks the language of the body (default `en`; the frontmatter stays English). `--full` scaffolds the full template (`references/`, `scripts/`, `assets/`, `agents/`) for a bundle; it is English-only, so `--full --lang vi` exits 2. `--output` sets the parent folder and `--eval-root` the external evals folder.
+
 ## 4. Write portable manifest
 
 Six Agent Skills fields are recognized: `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`; the first two are required. Place version under `metadata`, not top-level. `description`: first state job, then "Use when ..." with real trigger vocabulary.

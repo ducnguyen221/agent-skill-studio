@@ -24,16 +24,10 @@ For CSV data quality checks prior to ETL, Power BI, report generation or import.
 
 1. Inspect CSV path, encoding expectation, delimiter and business grain. Done when required columns and keys are known.
 2. Read [references/CHECKS_AND_ASSUMPTIONS.md](references/CHECKS_AND_ASSUMPTIONS.md) if data constraints or duplicate semantics are unclear.
-3. **Run** `scripts/validate_csv.py --file <path> --required <comma-separated-cols> --keys <comma-separated-cols>`; use `--numeric` only for known numeric columns. Python 3.9+ standard library, no packages to install. Script is read-only. Done when JSON result and exit code are available.
+3. **Run** `scripts/validate_csv.py --file <path> --required <comma-separated-cols> --keys <comma-separated-cols>`; use `--numeric` only for known numeric columns. Python 3.9+ standard library, no packages to install. Script is read-only; `--help` documents every flag. To see a normal run first, use `assets/sample-data/orders_valid.csv`: synthetic, not an eval oracle and not customer data. Done when JSON result and exit code are available.
 4. Review issues, categorize blockers/warnings and recommend specific source/model changes, not ungrounded repairs.
 5. If validation failed, correct the **dataset or check parameters after authorization**, then rerun step 3. Never overwrite original files automatically.
 6. Report row count, columns inspected, issue types, file/sample and open assumptions. Done when report cites actual script output.
-
-## Resources
-
-- [references/CHECKS_AND_ASSUMPTIONS.md](references/CHECKS_AND_ASSUMPTIONS.md): Read when deciding business grain, missingness and numeric constraints.
-- `scripts/validate_csv.py`: **Run** for deterministic CSV validation. `--help` documents flags; standard library only.
-- `assets/sample-data/orders_valid.csv`: Synthetic sample to demonstrate normal execution; not an eval oracle and not customer data.
 
 ## Definition of Done
 
