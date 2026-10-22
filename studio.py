@@ -67,6 +67,9 @@ META_KEY_RE = re.compile(r"^\s{2,}([\w.-]+):(?:\s+(.*))?$")
 SKIP_DIRS = {"__pycache__", ".git", ".venv", "evals", "tests", ".pytest_cache", ".mypy_cache"}
 REJECT_NAMES = {".env", ".env.local", "id_rsa", "id_ed25519", "credentials.json", "secrets.json"}
 REJECT_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
+TEMPLATE_LANGS = ("en", "vi")
+# (source dir under templates/, mirror dir under skills/skill-creator-studio/assets/)
+TEMPLATE_PAIRS = (("skill-template", "skill-template"), ("skill-template-full", "skill-template-full"))
 
 
 def emit(level: str, code: str, path: Path, line: int, message: str) -> dict:
@@ -651,11 +654,34 @@ def print_findings(folder: Path, findings: list[dict]) -> None:
         print("  %-5s %-4s %s — %s" % (item["level"], item["code"], location, item["message"]))
 
 
-def get_template() -> Path:
+def get_template(full: bool = False, lang: str = "en") -> Path:
+    """Minimal template: the SKILL.md / SKILL.vi.md file. Full template: the skill-template-full directory."""
     root = repo_root(Path(__file__).resolve())
-    if root is not None:
-        return root / "templates" / "skill-template"
-    return Path(__file__).resolve().parents[1] / "assets" / "skill-template"
+    base = root / "templates" if root is not None else Path(__file__).resolve().parents[1] / "assets"
+    if full:
+        return base / "skill-template-full"
+    return base / "skill-template" / ("SKILL.vi.md" if lang == "vi" else "SKILL.md")
+
+
+def mirror_diff(src: Path, dst: Path) -> list:
+    """Relative paths that are missing from dst, differ in bytes, or exist only in dst (an extra file is drift too)."""
+    def files(base: Path) -> dict:
+        if not base.is_dir():
+            return {}
+        return {p.relative_to(base).as_posix(): p for p in base.rglob("*")
+                if p.is_file() and "__pycache__" not in p.relative_to(base).parts}
+    left, right = files(src), files(dst)
+    diff = {rel for rel, p in left.items() if rel not in right or p.read_bytes() != right[rel].read_bytes()}
+    return sorted(diff | (set(right) - set(left)))
+
+
+def user_skill_root(agent: str) -> Path:
+    """Per-user skill directory of an agent (FR19.1). Claude Code has none here: use --workspace."""
+    if agent == "antigravity":
+        return Path.home() / ".gemini" / "config" / "skills"
+    if agent == "codex":
+        return Path.home() / ".agents" / "skills"
+    raise ValueError("--user is not supported for %s; use --workspace" % agent)
 
 
 def cmd_new(args) -> int:
@@ -666,18 +692,25 @@ def cmd_new(args) -> int:
     if not args.description or len(args.description) > 1024 or "\n" in args.description:
         print("ERROR: --description is required, single line and <=1024 characters", file=sys.stderr)
         return 2
+    if args.full and args.lang != "en":
+        print("ERROR: full template is English-only; drop --full or use --lang en", file=sys.stderr)
+        return 2
     root = repo_root(Path(__file__))
     output = Path(args.output).expanduser() if args.output else (root / "skills" if root else Path.cwd() / "skills")
     target = (output / name).resolve()
     if target.exists():
         print("ERROR: refusing to overwrite existing %s" % target, file=sys.stderr)
         return 1
-    template = get_template()
-    if not (template / "SKILL.md").is_file():
+    template = get_template(args.full, args.lang)
+    if not ((template / "SKILL.md") if args.full else template).is_file():
         print("ERROR: bundled template missing at %s" % template, file=sys.stderr)
         return 2
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(template, target)
+    if args.full:
+        shutil.copytree(template, target)
+    else:
+        target.mkdir()
+        shutil.copyfile(template, target / "SKILL.md")
     p = target / "SKILL.md"
     content = p.read_text(encoding="utf-8")
     content = content.replace("name: skill-template", "name: " + name, 1)
@@ -825,16 +858,27 @@ def cmd_install(args) -> int:
     if not folder.is_dir():
         print("ERROR: skill folder not found", file=sys.stderr)
         return 2
+    if args.user:
+        try:
+            skill_root = user_skill_root(args.agent)
+        except ValueError as exc:
+            print("ERROR: %s" % exc, file=sys.stderr)
+            return 2
+        if not skill_root.parent.is_dir():
+            print("ERROR: parent directory not found: %s; nothing was created" % skill_root.parent, file=sys.stderr)
+            return 2
     files, findings = ensure_distributable(folder)
     if any(f["level"] == "ERROR" for f in findings):
         print_findings(folder, findings)
         return 1
-    rel = Path(".claude") / "skills" if args.agent == "claude" else Path(".agents") / "skills"
-    workspace = Path(args.workspace).expanduser().resolve()
-    if not workspace.is_dir():
-        print("ERROR: workspace directory not found: %s" % workspace, file=sys.stderr)
-        return 2
-    dest = workspace / rel / folder.name
+    if not args.user:
+        rel = Path(".claude") / "skills" if args.agent == "claude" else Path(".agents") / "skills"
+        workspace = Path(args.workspace or ".").expanduser().resolve()
+        if not workspace.is_dir():
+            print("ERROR: workspace directory not found: %s" % workspace, file=sys.stderr)
+            return 2
+        skill_root = workspace / rel
+    dest = skill_root / folder.name
     if dest.resolve() == folder or valid_resolved_under(dest, folder):
         print("ERROR: destination is the source Skill or nested under it; refusing self-overwrite", file=sys.stderr)
         return 1
@@ -854,7 +898,7 @@ def cmd_install(args) -> int:
             return 1
         dest.rename(backup)
         print("Existing installation backed up to %s" % backup)
-    dest.mkdir(parents=True, exist_ok=False)
+    dest.mkdir(parents=True, exist_ok=False)  # creates skill_root itself, never the agent's config parent
     for source in files:
         destination = dest / source.relative_to(folder)
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -868,21 +912,21 @@ def cmd_sync(args) -> int:
     if root is None:
         print("ERROR: sync-template is for Studio source repository only", file=sys.stderr)
         return 2
-    src = root / "templates" / "skill-template"
-    dst = root / "skills" / "skill-creator-studio" / "assets" / "skill-template"
+    assets = root / "skills" / "skill-creator-studio" / "assets"
+    pairs = [(root / "templates" / a, assets / b) for a, b in TEMPLATE_PAIRS]
     if args.check:
-        for source in src.rglob("*"):
-            if source.is_file():
-                mirror = dst / source.relative_to(src)
-                if not mirror.is_file() or source.read_bytes() != mirror.read_bytes():
-                    print("ERROR: template mirror differs: %s" % source.relative_to(src), file=sys.stderr)
-                    return 1
+        drift = [(src.name, rel) for src, dst in pairs for rel in mirror_diff(src, dst)]
+        for name, rel in drift:
+            print("ERROR: template mirror differs: %s/%s" % (name, rel), file=sys.stderr)
+        if drift:
+            return 1
         print("Template distribution mirror is in sync.")
         return 0
-    if dst.exists():
-        shutil.rmtree(dst)
-    shutil.copytree(src, dst)
-    print("Synced canonical template to bundled skill asset.")
+    for src, dst in pairs:
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+    print("Synced %d canonical templates to bundled skill assets." % len(pairs))
     return 0
 
 
@@ -895,6 +939,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--description", required=True)
     p.add_argument("--output", help="parent directory (default repo skills/)")
     p.add_argument("--eval-root", help="external evals directory (default repo evals/)")
+    p.add_argument("--lang", choices=TEMPLATE_LANGS, default="en", help="language of the template body (default en); frontmatter stays English")
+    p.add_argument("--full", action="store_true", help="scaffold the full English-only template (references/, scripts/, assets/, agents/)")
     p.set_defaults(func=cmd_new)
     for action in ("validate", "audit"):
         p = sub.add_parser(action, help="static %s, never edits files" % action)
@@ -919,7 +965,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("install", help="copy a Skill into a project's runtime discovery folder")
     p.add_argument("skill")
     p.add_argument("--agent", choices=("claude", "codex", "antigravity"), required=True)
-    p.add_argument("--workspace", default=".")
+    where = p.add_mutually_exclusive_group()
+    where.add_argument("--workspace", help="project directory (default .)")
+    where.add_argument("--user", action="store_true", help="install into the per-user skill folder (antigravity, codex; not claude); the agent's config folder must already exist")
     p.add_argument("--force", action="store_true", help="back up and replace existing install")
     p.set_defaults(func=cmd_install)
     p = sub.add_parser("sync-template", help="sync source template to packaged Skill asset")

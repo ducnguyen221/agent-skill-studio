@@ -4,9 +4,12 @@ Run: python3 -m unittest discover -s tests -v
 """
 import importlib.util
 import json
+import os
+import re
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import unittest
 import zipfile
 from pathlib import Path
@@ -315,6 +318,9 @@ class StudioTests(unittest.TestCase):
     def test_template_mirror_matches(self):
         run = self.run_cli("sync-template", "--check")
         self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+        self.assertEqual((("skill-template", "skill-template"), ("skill-template-full", "skill-template-full")), studio.TEMPLATE_PAIRS)
+        for src_name, dst_name in studio.TEMPLATE_PAIRS:
+            self.assertEqual([], studio.mirror_diff(ROOT / "templates" / src_name, ROOT / "skills" / "skill-creator-studio" / "assets" / dst_name), src_name)
 
     def test_registry_matches_skill_folders(self):
         obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
@@ -454,6 +460,303 @@ class StudioTests(unittest.TestCase):
             self.assertTrue(any("codex" in p and "negative_triggered" in p for p in problems), problems)
             with self.assertRaises(AssertionError):
                 self.test_model_evaluated_requires_counted_evidence(catalog_path=path)
+
+
+DESC = "Checks data carefully. Use when testing scaffold generation."
+
+
+def nonblank(path: Path) -> int:
+    return sum(1 for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip())
+
+
+class TemplateTests(unittest.TestCase):
+    """FR10 / FR19: minimal EN/VI template, --full, mirror_diff and install --user (SPR-33 TK6)."""
+
+    def run_cli(self, *args):
+        return self.run_cli_env({}, *args)
+
+    def run_cli_env(self, env, *args):
+        merged = dict(os.environ)
+        merged.update(env)
+        return subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "studio.py"), *map(str, args)], cwd=ROOT, env=merged,
+                              text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def make_home(self, base, *subdirs):
+        home = Path(base) / "home"
+        home.mkdir()
+        for sub in subdirs:
+            (home / sub).mkdir(parents=True)
+        return home, {"HOME": str(home), "USERPROFILE": str(home)}
+
+    def new_skill(self, base, name, *extra):
+        out, evals = Path(base) / "skills", Path(base) / "evals"
+        run = self.run_cli("new", name, "--description", DESC, "--output", out, "--eval-root", evals, *extra)
+        return run, out / name
+
+    def split(self, skill_md):
+        text = skill_md.read_text(encoding="utf-8").replace("\r\n", "\n")
+        _, front, body = text.split("---\n", 2)
+        return front, body
+
+    def test_new_minimal_default(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-min")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            self.assertEqual(["SKILL.md"], sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file()))
+            self.assertLessEqual(nonblank(skill / "SKILL.md"), 20)
+            self.assertIn("STUDIO-DRAFT", (skill / "SKILL.md").read_text(encoding="utf-8"))
+            self.assertEqual([], [f for f in studio.validate_skill(skill) if f["level"] == "ERROR"])
+            pack = self.run_cli("package", skill, "--out", Path(t) / "dist")
+            self.assertEqual(1, pack.returncode, pack.stdout + pack.stderr)
+            self.assertIn("PACK", pack.stdout)
+
+    def test_new_full_flag(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-full", "--full")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            for rel in ("SKILL.md", "references/PROCESS_TEMPLATE.md", "scripts/check_inputs.py", "agents/openai.yaml",
+                        "assets/templates/OUTPUT_TEMPLATE.md", "assets/sample-data/example.json"):
+                self.assertTrue((skill / rel).is_file(), rel)
+            self.assertFalse((skill / "references" / "WORKFLOW_GUIDE.md").exists())
+            self.assertNotIn("WORKFLOW_GUIDE", (skill / "SKILL.md").read_text(encoding="utf-8"))
+            findings = studio.validate_skill(skill)
+            self.assertEqual([], [f for f in findings if f["level"] == "ERROR"])
+            self.assertNotIn("CT10", {f["code"] for f in findings})
+
+    def test_new_lang_vi_body_vietnamese_frontmatter_english(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-vi", "--lang", "vi")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            self.assertEqual(["SKILL.md"], sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file()))
+            front, body = self.split(skill / "SKILL.md")
+            self.assertTrue(front.isascii(), front)
+            self.assertEqual("vi", studio.detect_lang(body))
+            self.assertEqual(body, unicodedata.normalize("NFC", body))
+            self.assertIn("## Gotchas", body)
+            self.assertIn("## References", body)
+            findings = studio.validate_skill(skill)
+            self.assertEqual([], [f for f in findings if f["code"].startswith("VI")])
+            self.assertEqual([], [f for f in findings if f["level"] == "ERROR"])
+
+    def test_new_lang_default_en(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-en")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            front, body = self.split(skill / "SKILL.md")
+            self.assertEqual("en", studio.detect_lang(body))
+            self.assertIn("what an agent would get wrong", body)
+            run2, skill2 = self.new_skill(t, "demo-en2", "--lang", "en")
+            self.assertEqual(0, run2.returncode, run2.stdout + run2.stderr)
+            self.assertEqual(body, self.split(skill2 / "SKILL.md")[1].replace("Demo En2", "Demo En"))
+
+    def test_new_lang_invalid_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-fr", "--lang", "fr")
+            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+            self.assertIn("invalid choice: 'fr'", run.stderr)
+            self.assertFalse(skill.exists())
+
+    def test_new_full_lang_vi_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-fv", "--full", "--lang", "vi")
+            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+            self.assertIn("full template is English-only", run.stderr)
+            self.assertFalse(skill.exists())
+            self.assertFalse((Path(t) / "evals" / "demo-fv").exists())
+
+    def test_minimal_templates_stay_under_20_nonblank_lines(self):
+        """SC4: both default templates stay small; the Vietnamese one mirrors the English headings."""
+        counts = [nonblank(ROOT / "templates" / "skill-template" / f) for f in ("SKILL.md", "SKILL.vi.md")]
+        self.assertEqual([14, 14], counts)
+        en = (ROOT / "templates" / "skill-template" / "SKILL.md").read_text(encoding="utf-8")
+        vi = (ROOT / "templates" / "skill-template" / "SKILL.vi.md").read_text(encoding="utf-8")
+        for heading in ("# Skill Template", "## Gotchas", "## References"):
+            self.assertIn(heading, en)
+            self.assertIn(heading, vi)
+        self.assertNotIn("<", re.search(r"^description: (.*)$", en, re.M).group(1))
+
+    def test_full_has_process_template(self):
+        process = studio.get_template(full=True) / "references" / "PROCESS_TEMPLATE.md"
+        text = process.read_text(encoding="utf-8")
+        for needle in ("# Process Template", "> **Conclusion:**", "## When to use / not", "## Steps", "### Step 1",
+                       "Command:", "Expect:", "Stop if:", "## Gotchas", "## Done when"):
+            self.assertIn(needle, text)
+        self.assertFalse((process.parent / "WORKFLOW_GUIDE.md").exists())
+        self.assertEqual("# Optional, Codex only; delete if unused.", (process.parent.parent / "agents" / "openai.yaml").read_text(encoding="utf-8").splitlines()[0])
+
+    def test_get_template_selects_files(self):
+        base = studio.get_template().parent
+        self.assertEqual(base / "SKILL.md", studio.get_template())
+        self.assertEqual(base / "SKILL.vi.md", studio.get_template(False, "vi"))
+        self.assertEqual(base.parent / "skill-template-full", studio.get_template(True))
+        self.assertEqual(base.parent / "skill-template-full", studio.get_template(full=True, lang="en"))
+
+    def test_mirror_diff_detects_extra_file(self):
+        with tempfile.TemporaryDirectory() as t:
+            src, dst = Path(t) / "src", Path(t) / "dst"
+            for root in (src, dst):
+                (root / "sub").mkdir(parents=True)
+                (root / "same.txt").write_bytes(b"same")
+                (root / "sub" / "keep.txt").write_bytes(b"keep")
+            self.assertEqual([], studio.mirror_diff(src, dst))
+            (dst / "extra.txt").write_bytes(b"x")
+            (dst / "sub" / "keep.txt").write_bytes(b"changed")
+            (src / "missing.txt").write_bytes(b"m")
+            self.assertEqual(["extra.txt", "missing.txt", "sub/keep.txt"], studio.mirror_diff(src, dst))
+            self.assertEqual(["missing.txt", "same.txt", "sub/keep.txt"], studio.mirror_diff(src, Path(t) / "absent"))
+
+    def test_package_includes_agents_dir(self):
+        with tempfile.TemporaryDirectory() as t:
+            skill = Path(t) / "pack-me"
+            (skill / "agents").mkdir(parents=True)
+            (skill / "evals").mkdir()
+            (skill / "tests").mkdir()
+            (skill / "SKILL.md").write_text('---\nname: pack-me\ndescription: "Packs a sample. Use when testing agents directory packaging; not for real work."\n---\n\n# Pack Me\n\nBody.\n', encoding="utf-8")
+            (skill / "agents" / "openai.yaml").write_text("policy:\n  allow_implicit_invocation: true\n", encoding="utf-8")
+            (skill / "evals" / "cases.json").write_text("{}", encoding="utf-8")
+            (skill / "tests" / "t.py").write_text("x = 1\n", encoding="utf-8")
+            run = self.run_cli("package", skill, "--out", Path(t) / "dist")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            with zipfile.ZipFile(Path(t) / "dist" / "pack-me.zip") as zf:
+                names = set(zf.namelist())
+            self.assertIn("pack-me/agents/openai.yaml", names)
+            self.assertIn("pack-me/SKILL.md", names)
+            self.assertFalse([n for n in names if "/evals/" in n or "/tests/" in n], names)
+
+    def test_install_user_antigravity_under_home(self):
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".gemini/config")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "antigravity", "--user")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            dest = home / ".gemini" / "config" / "skills" / "data-quality-audit"
+            self.assertTrue((dest / "SKILL.md").is_file())
+            self.assertTrue(dest.resolve().is_relative_to(Path(t).resolve()))
+            self.assertIn(str(dest), run.stdout)
+
+    def test_install_user_codex_under_home(self):
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "codex", "--user")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            dest = home / ".agents" / "skills" / "data-quality-audit"
+            self.assertTrue((dest / "SKILL.md").is_file())
+            self.assertTrue(dest.resolve().is_relative_to(Path(t).resolve()))
+
+    def test_install_user_claude_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".claude")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "claude", "--user")
+            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+            self.assertIn("not supported for claude", run.stderr)
+            self.assertEqual([], list((home / ".claude").iterdir()))
+
+    def test_install_user_with_workspace_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "codex", "--user", "--workspace", ".")
+            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+            self.assertIn("not allowed with argument", run.stderr)
+            self.assertEqual([], list((home / ".agents").iterdir()))
+
+    def test_install_user_missing_parent_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            for agent, parent in (("antigravity", ".gemini"), ("codex", ".agents")):
+                home, env = self.make_home(Path(tempfile.mkdtemp(dir=t)))
+                run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", agent, "--user")
+                self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+                self.assertIn("parent directory not found", run.stderr)
+                self.assertEqual([], list(home.iterdir()), "must not create anything under HOME")
+                self.assertFalse((home / parent).exists())
+
+    def test_install_user_in_process(self):
+        """Same paths through main() so the changed lines are measured by coverage."""
+        import contextlib
+        import io
+        from unittest import mock
+
+        def call(env, *argv):
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    code = studio.main(list(map(str, argv)))
+                except SystemExit as exc:
+                    code = exc.code
+            return code, out.getvalue(), err.getvalue()
+
+        skill = ROOT / "skills" / "data-quality-audit"
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".gemini/config", ".agents")
+            with mock.patch.dict(os.environ, env):
+                self.assertEqual(home / ".gemini" / "config" / "skills", studio.user_skill_root("antigravity"))
+                self.assertEqual(home / ".agents" / "skills", studio.user_skill_root("codex"))
+                with self.assertRaises(ValueError):
+                    studio.user_skill_root("claude")
+            self.assertEqual(0, call(env, "install", skill, "--agent", "antigravity", "--user")[0])
+            self.assertEqual(0, call(env, "install", skill, "--agent", "codex", "--user")[0])
+            code, _, err = call(env, "install", skill, "--agent", "codex", "--user")
+            self.assertEqual(1, code, err)
+            code, _, err = call(env, "install", skill, "--agent", "claude", "--user")
+            self.assertEqual((2, True), (code, "not supported for claude" in err))
+            code, _, err = call(env, "install", skill, "--agent", "codex", "--user", "--workspace", ".")
+            self.assertEqual((2, True), (code, "not allowed with argument" in err))
+            lone, lone_env = self.make_home(Path(tempfile.mkdtemp(dir=t)))
+            code, _, err = call(lone_env, "install", skill, "--agent", "antigravity", "--user")
+            self.assertEqual((2, True, []), (code, "parent directory not found" in err, list(lone.iterdir())))
+
+    def test_new_and_sync_in_process(self):
+        import contextlib
+        import io
+
+        def call(*argv):
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    code = studio.main(list(map(str, argv)))
+                except SystemExit as exc:
+                    code = exc.code
+            return code, out.getvalue(), err.getvalue()
+
+        with tempfile.TemporaryDirectory() as t:
+            base = Path(t)
+            common = ("--description", DESC, "--output", base / "skills", "--eval-root", base / "evals")
+            self.assertEqual(0, call("new", "ip-min", *common)[0])
+            self.assertEqual(0, call("new", "ip-vi", "--lang", "vi", *common)[0])
+            self.assertEqual(0, call("new", "ip-full", "--full", *common)[0])
+            code, _, err = call("new", "ip-bad", "--full", "--lang", "vi", *common)
+            self.assertEqual((2, True), (code, "English-only" in err))
+            self.assertEqual({"SKILL.md"}, {p.name for p in (base / "skills" / "ip-vi").iterdir()})
+            self.assertTrue((base / "skills" / "ip-full" / "agents" / "openai.yaml").is_file())
+        code, out, err = call("sync-template", "--check")
+        self.assertEqual(0, code, out + err)
+
+    def test_install_workspace_and_sync_branches_in_process(self):
+        """Covers the --workspace path of install and both sync-template modes without touching the repo copies."""
+        import contextlib
+        import io
+        from unittest import mock
+
+        def call(*argv):
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    code = studio.main(list(map(str, argv)))
+                except SystemExit as exc:
+                    code = exc.code
+            return code, out.getvalue(), err.getvalue()
+
+        with tempfile.TemporaryDirectory() as t:
+            ws = Path(t) / "ws"
+            ws.mkdir()
+            self.assertEqual(0, call("install", ROOT / "skills" / "data-quality-audit", "--agent", "claude", "--workspace", ws)[0])
+            self.assertTrue((ws / ".claude" / "skills" / "data-quality-audit" / "SKILL.md").is_file())
+            code, _, err = call("install", ROOT / "skills" / "data-quality-audit", "--agent", "codex", "--workspace", Path(t) / "absent")
+            self.assertEqual((2, True), (code, "workspace directory not found" in err))
+        with mock.patch.object(studio, "mirror_diff", return_value=["SKILL.md"]):
+            code, _, err = call("sync-template", "--check")
+        self.assertEqual((1, True), (code, "template mirror differs: skill-template/SKILL.md" in err))
+        with mock.patch.object(studio.shutil, "rmtree") as rm, mock.patch.object(studio.shutil, "copytree") as cp:
+            code, out, _ = call("sync-template")
+        self.assertEqual((0, 2, 2, True), (code, rm.call_count, cp.call_count, "Synced 2 canonical templates" in out))
 
 
 if __name__ == "__main__":
