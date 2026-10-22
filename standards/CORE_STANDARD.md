@@ -1,3 +1,8 @@
+---
+title: "Core Standard — Nguyên tắc nền tảng của Agent Skill Studio"
+status: active
+updated: 2026-10-23
+---
 # Core Standard — Nguyên tắc nền tảng của Agent Skill Studio
 
 **Phạm vi:** mọi Skill được tác giả/kiểm định/phân phối bằng repository này. **Phiên bản:** 0.1.0 — 2026-10-12.

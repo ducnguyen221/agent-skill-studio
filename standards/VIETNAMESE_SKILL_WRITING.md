@@ -1,3 +1,8 @@
+---
+title: "Chuẩn viết tiếng Việt cho skill"
+status: active
+updated: 2026-10-23
+---
 # Chuẩn viết tiếng Việt cho skill
 
 > **Kết luận:** thân `SKILL.md` dùng đúng một ngôn ngữ, Việt hoặc Anh; frontmatter luôn tiếng Anh. Chuẩn này thêm 14 quy tắc cho thân Việt, trên nền [SKILL_AUTHORING_STANDARD.md](SKILL_AUTHORING_STANDARD.md).
@@ -24,7 +29,7 @@
 - **V08** Tối giản ngữ cảnh: không lịch sử, không lý do dài, không lặp luật đã ở file khác; chỉ link. Vì sao: mỗi dòng thừa tốn token mỗi lần nạp skill. [review] [nội bộ]
 - **V09** Dùng đủ dấu, chữ dựng sẵn NFC; cấm tiếng Việt không dấu và gõ Telex hoặc VNI thô (ngoại lệ: tên file, ID, URL). Vì sao: không dấu gây đồng âm. Máy chỉ kiểm NFC. [máy: VI1] [nguồn: `platform.claude.com/docs/en/build-with-claude/multilingual-support`]
 - **V10** Giữ thuật ngữ kỹ thuật tiếng Anh đã quen, đặt trong backtick nếu là mã; lần đầu ghi "Việt (Anh)" một lần mỗi file. Cấm kiểu "deliver kết quả". Vì sao: Anh hoá câu Việt làm mờ nghĩa. [review] [nội bộ]
-- **V11** Ngày theo ISO `2026-10-22`, không `22/10/2026`; số ngăn nghìn bằng khoảng trắng (`5 000`, chốt theo khuyến nghị Fable 22/10); đơn vị cách số một khoảng trắng (`25 KB`). Vì sao: ngày d/m và m/d dễ lẫn. Máy chỉ kiểm ngày. [máy: VI2] [nội bộ]
+- **V11** Ngày theo ISO `2026-10-22`, không `22/10/2026`; số ngăn nghìn bằng khoảng trắng (`5 000`); đơn vị cách số một khoảng trắng (`25 KB`). Vì sao: ngày d/m và m/d dễ lẫn. Máy chỉ kiểm ngày. [máy: VI2] [nội bộ]
 - **V12** Một dấu một nghĩa: "·" chỉ để liệt kê ngang hàng, "—" tối đa một cặp mỗi câu, số thứ tự cho trình tự. Vì sao: ký hiệu đa nghĩa làm agent đọc nhầm thứ tự. [review] [nội bộ]
 - **V13** Frontmatter (`name`, `description`, khoá YAML) viết tiếng Anh; thân và lý do viết tiếng Việt; lệnh, đường dẫn, mã định danh giữ nguyên. `description` có chữ Việt phải còn cụm `Use when`. Vì sao: harness định tuyến skill bằng frontmatter. [máy: VI4] [nguồn: `ngon-ngu-tai-lieu.md` của kpim-skills]
 - **V14** Mỗi skill chọn một ngôn ngữ cho thân, không trộn theo mục; ví dụ xấu hoặc tốt là ngoại lệ. Vì sao: luật OpcOS chỉ cho tiếng Việt hoặc tiếng Anh. [máy: VI5] [nguồn: `ngon-ngu-tai-lieu.md` của kpim-skills]

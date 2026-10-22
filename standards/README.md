@@ -1,3 +1,8 @@
+---
+title: "Standards Directory"
+status: active
+updated: 2026-10-23
+---
 # Standards Directory
 
 Các quy tắc ở đây áp dụng **khi tạo và quản lý** Skills, không mặc định được chèn toàn bộ vào context một phiên agent. Đọc theo mục tiêu:

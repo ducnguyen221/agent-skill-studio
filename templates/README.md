@@ -1,3 +1,8 @@
+---
+title: "Templates"
+status: active
+updated: 2026-10-23
+---
 # Templates
 
 Hai template là **scaffold** cho Skill mới, không phải Skill sản xuất. Lệnh `python3 studio.py new <name> ...` copy template, đổi `name`/`description` thành hợp lệ và để lại `STUDIO-DRAFT` để cảnh báo cần cá nhân hóa; `package` từ chối Skill còn dấu này.

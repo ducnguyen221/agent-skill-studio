@@ -1,3 +1,8 @@
+---
+title: "Cặp description tốt và xấu"
+status: active
+updated: 2026-10-23
+---
 # Cặp description tốt và xấu
 
 > **Kết luận:** bảy lỗi `description` hay gặp nhất, mỗi lỗi một cặp Bad và Good. Mọi Good qua `validate` không có mã `DS*` và không có `VI4`; test `test_content_kit_counts` canh điều đó.

@@ -1,3 +1,8 @@
+---
+title: "Evaluation Standard — Cách chứng minh Skill hoạt động"
+status: active
+updated: 2026-10-23
+---
 # Evaluation Standard — Cách chứng minh Skill hoạt động
 
 ## Contents

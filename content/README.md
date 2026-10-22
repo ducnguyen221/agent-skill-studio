@@ -1,3 +1,8 @@
+---
+title: "Bộ content mẫu"
+status: active
+updated: 2026-10-23
+---
 # Bộ content mẫu
 
 > **Kết luận:** thư mục này chứa ví dụ để chép và sửa khi viết skill: bảy cặp `description` tốt và xấu, ba case eval, hai skill mẫu. Thư mục nằm ngoài `skills/` nên không bao giờ vào gói phát hành.

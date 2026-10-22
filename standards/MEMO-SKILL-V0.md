@@ -1,3 +1,8 @@
+---
+title: "MEMO-SKILL-V0 — chuẩn viết skill tạm"
+status: active
+updated: 2026-10-23
+---
 # MEMO-SKILL-V0 — chuẩn viết skill tạm
 Date: 2026-10-22
 Trạng thái: v0 tạm; thay bằng chuẩn v1 khi SPR-33 đóng (Cổng 2).

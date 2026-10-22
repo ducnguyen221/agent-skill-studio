@@ -1,3 +1,8 @@
+---
+title: "Mẫu case eval"
+status: active
+updated: 2026-10-23
+---
 # Mẫu case eval
 
 > **Kết luận:** ba case mẫu cho skill `writing-commit-messages` (một typical, một edge, một near-miss), viết đúng dạng `evals/<skill>/cases.json`, kèm bản xuất agentskills viết tay. Đây là mẫu để chép và sửa, không phải eval đã chạy trên model (`not_run`).

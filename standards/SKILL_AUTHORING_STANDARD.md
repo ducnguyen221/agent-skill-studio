@@ -1,6 +1,11 @@
+---
+title: "Authoring Standard"
+status: active
+updated: 2026-10-23
+---
 # Skill Authoring Standard — SK-00…SK-15
 
-**Version:** 0.1.0 · **As-of:** 2026-10-22 · Mức MUST/SHOULD do Studio đặt; nguồn: [SOURCE_TRACEABILITY.md](SOURCE_TRACEABILITY.md).
+**Version:** 0.1.0 · Mức MUST/SHOULD do Studio đặt; nguồn: [SOURCE_TRACEABILITY.md](SOURCE_TRACEABILITY.md).
 
 ### SK-00 — Manifest portable [MUST] · kiểm: `FM1`, `FM2`, `FM4`–`FM6`, `DS1`
 `SKILL.md` mở bằng frontmatter ở dòng 1 với `name` và `description`. `name` ≤64 ký tự, `a-z0-9-`, không mở/đóng/đôi `-`, khớp tên thư mục, không chứa "anthropic"/"claude"; cả hai không có thẻ XML. `description` ≤1 024 ký tự, nêu làm gì + khi nào dùng. Khoá thêm chỉ `license`, `compatibility` (≤500), `metadata` (map chuỗi), `allowed-tools`; khoá riêng Claude Code chỉ qua `--target claude-code`; không `version:` hay `triggers:` top-level.
@@ -21,7 +26,7 @@ Không xoá rule theo trực giác: chạy ≥3 tình huống thật, bật/tắ
 `description` tiếng Anh, ngôi thứ ba, nêu việc + `Use when …` bằng từ người dùng hay nói (thêm cụm Việt ≤40 ký tự được). Claude Code cắt `description` + `when_to_use` ở 1 536 ký tự: để cụm kích hoạt trong ~500 ký tự đầu. Tên dạng gerund, tránh `helper`/`utils`; một thuật ngữ một khái niệm; tránh thông tin hết hạn.
 
 ### SK-06 — Workflow kiểm được [MUST nếu nhiều bước] · kiểm: review
-Nêu từng bước, `Done when`, đường quay lại khi kiểm lỗi; việc phức tạp dùng plan-validate-execute (lập kế hoạch, kiểm bằng script, rồi chạy). Việc nhỏ không cần checklist.
+Nêu từng bước, `Done when`, đường quay lại khi kiểm lỗi; việc phức tạp dùng plan-validate-execute. Việc nhỏ không cần checklist.
 
 ### SK-07 — Vòng phản hồi [MUST nếu quan trọng] · kiểm: review
 Validate, chẩn đoán, sửa, validate lại; giới hạn số lần, báo blocker thay vì lặp vô hạn. Lỗi nêu tên trường, giá trị sai và giá trị hợp lệ. Review văn phong ghi rõ tiêu chí.

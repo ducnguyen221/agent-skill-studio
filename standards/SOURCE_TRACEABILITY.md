@@ -1,3 +1,8 @@
+---
+title: "Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15"
+status: active
+updated: 2026-10-23
+---
 # Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15
 
 **Checked:** 2026-10-22 (A10–A16 mở lại ngày này; A1–A9 giữ mốc 2026-10-12). Tài liệu này phân biệt **nguồn chính thức / tài liệu cộng đồng / quyết định nội bộ**. Không viện dẫn PDF như thể PDF là văn bản chính thức của Anthropic.
@@ -68,6 +73,7 @@
 6. **PDF trang 11 so sánh Anthropic skill-creator (300 lines vs 100)** là lời community, lẫn hai số khác nhau. (a) Thân `SKILL.md` của skill-creator chính thức đo được 485 dòng (đo cục bộ 2026-10-22), dưới mốc 500 của A2. (b) Skill-creator khuyến nghị mục lục cho reference >300 dòng (`skill-creator/SKILL.md:98`; dossier SPR-33 `dossier-skill-docs2.md:37`), còn A2 nêu >100 dòng. Studio chọn 100 dòng cho Contents theo A2 và 500 dòng cho thân.
 7. **Antigravity migration date:** các URL chính thức `antigravity.google` và `www.antigravity.google` từng có thông tin thời hạn workflow khác nhau (October 19 vs November 1 2026 trong kết quả công khai). Không đóng cứng một ngày migration thành quy tắc; cần xác minh bản docs/cấu hình runtime tại thời điểm triển khai.
 8. **Không có automatic evaluation model** trong bộ CLI này. Static validator và model A/B test là hai tầng khác nhau.
+9. **Số ngăn nghìn bằng khoảng trắng (`V11` của `VIETNAMESE_SKILL_WRITING.md`):** quyết định nội bộ theo khuyến nghị của Fable ngày 2026-10-22, không phải quy tắc của nguồn chính thức.
 
 ## Quy trình cập nhật
 
