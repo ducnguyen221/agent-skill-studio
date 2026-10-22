@@ -24,6 +24,7 @@ Creates or improves Agent Skills with evidence, independent checks and no silent
 
 - Claude Code-only frontmatter keys such as `when_to_use` or `hooks` fail `FM4` unless you run `validate --target claude-code`.
 - `package` refuses a `SKILL.md` that still has the `STUDIO-DRAFT` HTML comment marker; delete it once the body is real (`package` does not check evals).
+- `fmt --fix` copies every file it changes to `<file>.bak-<ISO>`; in a git repo pass `--no-backup`, and delete stray `*.bak-*` before `package` or `sync-template --check`.
 
 ## Pick mode
 
