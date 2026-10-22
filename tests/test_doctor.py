@@ -703,6 +703,17 @@ class DoctorHardeningTests(unittest.TestCase):
             self.assertEqual(run("--roots", str(plugins), "--out", str(plugins / "solo" / ".tmp" / "r.json"))[0], 2, "still inside a skill that is scanned")
             self.assertEqual(run("--roots", str(plugins), "--include-cache", "--out", str(plugins / "keep-cache" / "y.json"))[0], 2, "--include-cache scans that folder")
 
+    def test_doctor_out_through_a_link_into_the_secret_zone_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            home = tmp / "home"
+            (home / ".secret").mkdir(parents=True)
+            make_dir_link(self, tmp / "innocent", home / ".secret")
+            with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
+                code, _, err = run("--roots", CLEAN_ROOTS, "--out", str(tmp / "innocent" / "r.json"))
+            self.assertEqual(code, 2, err)
+            self.assertEqual(list((home / ".secret").iterdir()), [], "nothing may be written into the secret folder")
+
     def test_doctor_size_cap_skips_oversized_files(self):
         cap = 2000
         with mock.patch.object(studio, "DOCTOR_MAX_FILE_BYTES", cap), tempfile.TemporaryDirectory() as tmp:
