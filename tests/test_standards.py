@@ -1,4 +1,5 @@
 """Shape checks for the documents under standards/ (SPR-33)."""
+import ast
 import re
 import unittest
 from pathlib import Path
@@ -12,16 +13,16 @@ SOURCE_TAGS: tuple[str, ...] = (
 
 # Cụm then chốt của rule hành vi (SPEC 9.2 "Không được cắt"): thiếu cụm nào là rule đã rơi.
 BEHAVIOR_PHRASES: dict[str, tuple[str, ...]] = {
-    "SK-03": ("tự do", "rủi ro", "approval"),
+    "SK-03": ("tự do", "rủi ro", "approval", "tổn thất"),
     "SK-04": ("A/B", "trực giác", "không kém"),
     "SK-06": ("bước", "plan-validate-execute"),
     "SK-07": ("validate", "giá trị hợp lệ", "văn phong"),
     "SK-08": ("Strict", "Flexible"),
-    "SK-09": ("đường dẫn", "asset nằm trong skill"),
-    "SK-10": ("hook", "`block`", "chỉ chạy sau khi skill được gọi", "policy runtime"),
-    "SK-11": ("baseline",),
-    "SK-12": ("5 000",),
-    "SK-13": ("reasoning_extraction",),
+    "SK-09": ("đường dẫn", "asset nằm trong skill", "không mạng"),
+    "SK-10": ("hook", "`block`", "chỉ chạy sau khi skill được gọi", "policy runtime", "PreToolUse"),
+    "SK-11": ("baseline", "ngoài `skills/`"),
+    "SK-12": ("5 000", "sau frontmatter"),
+    "SK-13": ("reasoning_extraction", "kết luận"),
 }
 
 NEW_SOURCE_URLS: tuple[str, ...] = (
@@ -35,6 +36,25 @@ NEW_SOURCE_URLS: tuple[str, ...] = (
 
 SK_HEAD_RE = re.compile(r"^### (SK-\d\d)\b")
 SK_TITLE_RE = re.compile(r"\[[^\]]+\] · kiểm: \S")
+
+
+def emitted_codes(source: str) -> set:
+    """Check codes a Python source really emits: string constants given as the code argument of `emit(...)`, or assigned
+    to the variable passed there. Comments, docstrings and unrelated strings do not count."""
+    tree = ast.parse(source)
+    assigned: dict = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    assigned.setdefault(target.id, []).append(node.value)
+    codes: set = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "emit" and len(node.args) > 1:
+            arg = node.args[1]
+            parts = assigned.get(arg.id, []) if isinstance(arg, ast.Name) else [arg]
+            codes.update(c.value for part in parts for c in ast.walk(part) if isinstance(c, ast.Constant) and isinstance(c.value, str))
+    return codes
 
 
 def read_std(name: str) -> str:
@@ -120,13 +140,18 @@ class StandardsTest(unittest.TestCase):
 
     def test_authoring_standard_check_codes_exist_in_validator(self):
         text = read_std("SKILL_AUTHORING_STANDARD.md")
-        studio = (ROOT_DIR / "studio.py").read_text(encoding="utf-8")
+        emitted = emitted_codes((ROOT_DIR / "studio.py").read_text(encoding="utf-8"))
         for head in re.findall(r"^### SK-\d\d .*kiểm: (.*)$", text, re.M):
-            codes = set(re.findall(r"`([A-Z]{2}\d+)`", head))
+            codes = set(re.findall(r"`([A-Z]{2}\d+|SEC)`", head))
             for pre, a, b in re.findall(r"`([A-Z]{2})(\d+)`–`[A-Z]{2}(\d+)`", head):
                 codes.update("%s%s" % (pre, i) for i in range(int(a), int(b) + 1))
             for code in codes:
-                self.assertIn('"%s"' % code, studio, "%s is cited as a check but studio.py never emits it" % code)
+                self.assertIn(code, emitted, "%s is cited as a check but studio.py never emits it" % code)
+
+    def test_emitted_codes_ignores_comments_and_docstrings(self):
+        source = ('def f():\n    """Mentions "XX9"."""\n    # "XX8" in a comment\n    note = "XX7"\n'
+                  '    code = "XX5" if note else "XX6"\n    return [emit("WARN", "XX1", p, 1, "m"), emit("ERROR", code, p, 2, "m")]\n')
+        self.assertEqual(emitted_codes(source), {"XX1", "XX5", "XX6"}, "only codes passed to emit() count")
 
     def test_authoring_standard_keeps_behavior_rules(self):
         blocks = sk_blocks(read_std("SKILL_AUTHORING_STANDARD.md"))
@@ -159,7 +184,7 @@ class StandardsTest(unittest.TestCase):
         self.assertIn("measure-skill-budget.py", text)
         self.assertIn("485", text, "skill-creator body measured at 485 lines")
         self.assertIn(">300", text, "skill-creator recommends a TOC for references >300 lines")
-        self.assertIn("100", text, "Studio keeps the 100-line TOC threshold")
+        self.assertIn("Studio chọn 100 dòng", text, "Studio keeps the 100-line TOC threshold")
         for code in ("A10", "A15", "A16", "SK-14", "SK-15"):
             self.assertIn(code, text)
 
