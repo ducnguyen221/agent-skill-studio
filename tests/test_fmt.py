@@ -536,11 +536,158 @@ class FmtGitCleanTests(unittest.TestCase):
                          "the setup: git's own quick check is fooled")
         self.assertFalse(studio.in_git_worktree(path), "compare the bytes with the commit, not only the stored size and time")
 
-    def test_in_git_worktree_true_when_only_line_endings_differ_under_autocrlf(self):
+    def test_in_git_worktree_false_when_the_bytes_on_disk_are_not_the_bytes_of_the_commit_under_autocrlf(self):
+        # Round 4: git is asked for the raw bytes (no filter, no line-ending conversion), because any conversion could run a program the
+        # repository names. A CRLF checkout then differs from the LF blob: no net is assumed and fmt keeps a backup (the safe side).
         repo = make_repo(self.tmp)
         git(repo, "config", "core.autocrlf", "true")
         (repo / "tracked.md").write_bytes(b"# T  \r\n")  # what a Windows checkout looks like
-        self.assertTrue(studio.in_git_worktree(repo / "tracked.md"), "the blob git would restore is the committed one")
+        self.assertFalse(studio.in_git_worktree(repo / "tracked.md"), "raw bytes differ from the blob: keep the bytes in a backup")
+        self.assertEqual(run("--fix", str(repo / "tracked.md"), in_git=None)[0], 0)
+        self.assertEqual(len(backups_of(repo)), 1)
+
+
+def canary_command(canary: Path) -> str:
+    """A harmless command that leaves a mark when a repository's configuration makes git run it."""
+    return 'echo x > "%s"' % canary.as_posix()
+
+
+def make_git_runner(calls):
+    """A subprocess.run stand-in that answers the four questions of in_git_worktree the way a clean tracked file would, and records them."""
+    def fake(argv, **kwargs):
+        calls.append((list(argv), kwargs))
+        out = b""
+        if "--is-inside-work-tree" in argv:
+            out = b"true\n"
+        elif "ls-files" in argv:
+            out = b"H f.md\n"
+        elif "--verify" in argv or "hash-object" in argv:
+            out = b"0123456789abcdef\n"
+        return subprocess.CompletedProcess(argv, 0, stdout=out, stderr=b"")
+    return fake
+
+
+@unittest.skipUnless(shutil.which("git"), "git is needed")
+class FmtRepoConfigTests(unittest.TestCase):
+    """Round 4: the repository decides what its own .git/config says, and a package unpacked with its .git folder could name a program
+    there (core.fsmonitor, filter.<x>.clean). git must be told not to run any, and must never convert the bytes it hashes."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        clean_git_env(self)
+        self.canary = self.tmp / "canary.txt"
+
+    def probe(self, repo: Path, *commands):
+        """The setup check: plain git, no protection, really does run the planted program (else the tests below prove nothing)."""
+        for args in commands:
+            subprocess.run(["git", *args], cwd=repo, capture_output=True, stdin=subprocess.DEVNULL, timeout=60)
+            if self.canary.exists():
+                self.canary.unlink()
+                return True
+        return False
+
+    def test_a_planted_fsmonitor_command_is_not_run(self):
+        repo = make_repo(self.tmp)
+        git(repo, "config", "core.fsmonitor", canary_command(self.canary))
+        self.assertTrue(self.probe(repo, ("ls-files", "-v"), ("diff", "--quiet", "HEAD", "--", "tracked.md"), ("status", "--short")),
+                        "the setup: plain git runs the fsmonitor command of the repository")
+        studio.in_git_worktree(repo / "tracked.md")
+        self.assertFalse(self.canary.exists(), "in_git_worktree ran the program named in .git/config (core.fsmonitor)")
+        self.assertEqual(run("--fix", str(repo / "tracked.md"), in_git=None)[0], 0)
+        self.assertFalse(self.canary.exists(), "fmt --fix ran the program named in .git/config (core.fsmonitor)")
+
+    def test_a_planted_clean_filter_is_not_run(self):
+        repo = make_repo(self.tmp)
+        write(repo / ".gitattributes", "*.md filter=planted\n")
+        git(repo, "config", "filter.planted.clean", canary_command(self.canary) + " && cat")
+        self.assertTrue(self.probe(repo, ("hash-object", "--", "tracked.md"), ("diff", "--quiet", "HEAD", "--", "tracked.md")),
+                        "the setup: plain git runs the clean filter of the repository")
+        studio.in_git_worktree(repo / "tracked.md")
+        self.assertFalse(self.canary.exists(), "in_git_worktree ran the clean filter named in .git/config")
+        self.assertEqual(run("--fix", str(repo / "tracked.md"), in_git=None)[0], 0)
+        self.assertFalse(self.canary.exists(), "fmt --fix ran the clean filter named in .git/config")
+
+    def test_a_file_a_filter_would_make_look_identical_has_no_net(self):
+        repo = make_repo(self.tmp)
+        write(repo / ".gitattributes", "*.md filter=planted\n")
+        git(repo, "config", "filter.planted.clean", "tr -d '\\r' && " + canary_command(self.canary))
+        (repo / "tracked.md").write_bytes(b"# T  \r\n")  # through the filter this is the committed blob; as bytes it is not
+        self.assertFalse(studio.in_git_worktree(repo / "tracked.md"), "bytes that differ from the blob are not on git's side, whatever a filter says")
+        self.assertFalse(self.canary.exists())
+
+    def test_the_environment_of_the_caller_cannot_steer_git(self):
+        repo = make_repo(self.tmp)
+        poisoned = {
+            "GIT_DIR": str(self.tmp / "nowhere"), "GIT_WORK_TREE": str(self.tmp / "nowhere"), "GIT_INDEX_FILE": str(self.tmp / "nowhere" / "i"),
+            "GIT_CONFIG_GLOBAL": str(self.tmp / "nowhere"), "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.fsmonitor",
+            "GIT_CONFIG_VALUE_0": canary_command(self.canary), "GIT_EXTERNAL_DIFF": "echo", "GIT_ASKPASS": "echo",
+            "GIT_SSH": "echo", "GIT_SSH_COMMAND": "echo", "GIT_PAGER": "echo", "PAGER": "echo",
+        }
+        with mock.patch.dict(os.environ, poisoned):
+            self.assertTrue(studio.in_git_worktree(repo / "tracked.md"), "GIT_DIR and the like are not passed on: the repository next to the file is the one asked")
+        self.assertFalse(self.canary.exists())
+
+    def test_every_question_to_git_carries_the_guards(self):
+        good = make_fake_git(self.tmp / "bin")
+        target = write(self.tmp / "work" / "f.md", "# F\n")
+        calls = []
+        with mock.patch.dict(os.environ, {"PATH": str(good.parent)}), mock.patch.object(studio.subprocess, "run", make_git_runner(calls)):
+            self.assertTrue(studio.in_git_worktree(target))
+        known = ("rev-parse", "ls-files", "hash-object", "diff", "cat-file")
+        verbs = [next(a for a in argv[1:] if a in known) for argv, _ in calls]
+        self.assertEqual(verbs, ["rev-parse", "ls-files", "rev-parse", "hash-object"], "no diff: only the raw bytes are compared with the commit")
+        for argv, kwargs in calls:
+            joined = " ".join(argv)
+            for guard in ("core.fsmonitor=false", "core.untrackedCache=false", "protocol.allow=never"):
+                self.assertIn("-c " + guard, joined, "every call needs " + guard)
+            self.assertRegex(joined, r"-c core\.hooksPath=\S+", "hooks are pointed at nothing")
+        self.assertIn("--no-filters", calls[3][0], "the file is hashed as it is, with no filter and no line-ending conversion")
+
+    def test_the_child_environment_is_scrubbed_and_pinned(self):
+        good = make_fake_git(self.tmp / "bin")
+        target = write(self.tmp / "work" / "f.md", "# F\n")
+        poisoned = {"GIT_DIR": "x", "GIT_WORK_TREE": "x", "GIT_INDEX_FILE": "x", "GIT_CONFIG_GLOBAL": "x", "GIT_CONFIG_COUNT": "1",
+                    "GIT_EXTERNAL_DIFF": "x", "GIT_ASKPASS": "x", "GIT_SSH": "x", "GIT_SSH_COMMAND": "x", "GIT_PAGER": "x", "PAGER": "x",
+                    "GIT_OPTIONAL_LOCKS": "1", "GIT_TERMINAL_PROMPT": "1", "GIT_CONFIG_NOSYSTEM": "0"}
+        calls = []
+        with mock.patch.dict(os.environ, dict(poisoned, PATH=str(good.parent))), mock.patch.object(studio.subprocess, "run", make_git_runner(calls)):
+            studio.in_git_worktree(target)
+        self.assertTrue(calls)
+        for argv, kwargs in calls:
+            env = {k.upper(): v for k, v in kwargs["env"].items()}
+            for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_COUNT", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS",
+                        "GIT_SSH", "GIT_SSH_COMMAND", "GIT_PAGER", "PAGER"):
+                self.assertFalse(key in env, key + " must not reach git")
+            self.assertEqual((env.get("GIT_CONFIG_NOSYSTEM"), env.get("GIT_TERMINAL_PROMPT"), env.get("GIT_OPTIONAL_LOCKS")), ("1", "0", "0"))
+            self.assertEqual(env.get("NODEFAULTCURRENTDIRECTORYINEXEPATH"), "1")
+
+    @unittest.skipUnless(os.name == "nt", "UNC paths are a Windows thing")
+    def test_a_unc_path_entry_is_never_looked_at(self):
+        seen = []
+        real_isfile, real_samefile = os.path.isfile, os.path.samefile
+
+        def spy_isfile(p):
+            seen.append(os.fspath(p))
+            return real_isfile(p)
+
+        def spy_samefile(a, b):
+            seen.append(os.fspath(a))
+            return real_samefile(a, b)
+
+        good = make_fake_git(self.tmp / "bin")
+        target = write(self.tmp / "work" / "f.md", "# F\n")
+        unc = ["\\\\server.invalid\\share\\bin", "//server.invalid/share/bin"]
+        calls = []
+        with mock.patch.dict(os.environ, {"PATH": os.pathsep.join(unc + [str(good.parent)])}), \
+                mock.patch.object(studio.subprocess, "run", make_git_runner(calls)), \
+                mock.patch.object(os.path, "isfile", spy_isfile), mock.patch.object(os.path, "samefile", spy_samefile):
+            studio.in_git_worktree(target)
+        self.assertTrue(calls and same(calls[0][0][0], good), "the git of the local folder answered")
+        self.assertEqual([s for s in seen if s.startswith(("\\\\", "//"))], [], "a UNC entry would reach out to a server on the network")
+        with mock.patch.dict(os.environ, {"PATH": os.pathsep.join(unc)}):
+            self.assertIsNone(studio._trusted_program("git", []))
 
 
 class FmtRound3Tests(unittest.TestCase):

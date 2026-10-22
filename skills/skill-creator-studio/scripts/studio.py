@@ -117,6 +117,8 @@ FMT_STEP_LABELS = tuple(
 FMT_PRUNE_DIRS = frozenset({".git", ".tmp", ".worktrees", "dist", "node_modules", "__pycache__", ".venv", ".pytest_cache", ".mypy_cache"})
 FMT_FRONT_SEARCH_LINES = 60  # a frontmatter block that starts later than this is not looked for
 FMT_GIT_TIMEOUT = 5  # seconds for each git question of in_git_worktree
+# Settings given to every git question, so that a program named in the .git/config of the folder being formatted (core.fsmonitor, a hook) is not run:
+FMT_GIT_GUARDS = ("core.fsmonitor=false", "core.hooksPath=" + os.devnull, "core.untrackedCache=false", "protocol.allow=never")
 FMT_BLOCKING_REASONS = frozenset({"would-change-text", "not-utf8", "unreadable", "too-many-folders", "limit"})  # skipped for these: exit 1 even inside a folder
 
 
@@ -2083,11 +2085,14 @@ def _trusted_program(name: str, avoid: list) -> str | None:
     there is no such program. Windows looks for a bare name in the current folder of the process before the PATH, and the `cwd=` of a
     subprocess does not change that, so a program placed in the folder being worked on would run in place of the real one: the program is
     named by its full path instead. An empty entry, '.', a relative entry and an entry with no drive letter never count; on Windows only
-    a .exe or .com file does (a .bat or .cmd is a script, and nothing here may run one)."""
+    a .exe or .com file does (a .bat or .cmd is a script, and nothing here may run one). On Windows an entry that starts with two slashes (a
+    network share such as //server/share) is skipped without being looked at, because looking at it would reach out to a server."""
     suffixes = (".exe", ".com") if os.name == "nt" else ("",)
     for raw in os.environ.get("PATH", "").split(os.pathsep):
         entry = raw.strip().strip('"')
         if not entry or not os.path.isabs(entry) or (os.name == "nt" and not os.path.splitdrive(entry)[0]):
+            continue
+        if os.name == "nt" and entry.replace("\\", "/").startswith("//"):
             continue
         if any(_same_folder(entry, other) for other in avoid):
             continue
@@ -2100,10 +2105,13 @@ def _trusted_program(name: str, avoid: list) -> str | None:
 
 def in_git_worktree(path: Path) -> bool:
     """True only when git itself holds `path` safely: it lies inside a work tree, is tracked, git is watching it (no assume-unchanged or
-    skip-worktree flag), it has no change since the last commit, and its bytes are those of the commit, so `git checkout` brings the old
-    bytes back. An untracked or ignored file, a file with uncommitted changes or one whose change git was told to ignore, a bare `.git`
-    name that is no repository (as C:/Users/<me>/.git on this machine), and any failure (no git on a safe PATH entry, time-out,
-    unreadable) all give False: fmt then makes a backup."""
+    skip-worktree flag), and its bytes on disk, taken raw, are exactly those of the last commit, so `git checkout` brings the old bytes back.
+    An untracked or ignored file, a file with uncommitted changes or one whose change git was told to ignore, a file whose line endings
+    differ from the blob (autocrlf), a bare `.git` name that is no repository (as C:/Users/<me>/.git on this machine), and any failure (no git on
+    a safe PATH entry, time-out, unreadable) all give False: fmt then makes a backup.
+    The configuration of the repository is the repository's own, and a package unpacked with a .git folder can name a program in it
+    (core.fsmonitor, filter.<x>.clean, a hook): so every question carries FMT_GIT_GUARDS, the file is hashed with --no-filters, nothing is
+    compared through `git diff`, and the child gets no GIT_* variable of this process (GIT_DIR, GIT_CONFIG_*, GIT_EXTERNAL_DIFF ...)."""
     here = Path(os.path.abspath(path))
     try:
         in_use = os.getcwd()
@@ -2112,11 +2120,13 @@ def in_git_worktree(path: Path) -> bool:
     git = _trusted_program("git", [x for x in (in_use, os.fspath(here.parent)) if x])
     if git is None:
         return False
-    env = {k: v for k, v in os.environ.items() if k.upper() != "NODEFAULTCURRENTDIRECTORYINEXEPATH"}
-    env.update(GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", NoDefaultCurrentDirectoryInExePath="1")
+    dropped = ("PAGER", "SSH_ASKPASS", "NODEFAULTCURRENTDIRECTORYINEXEPATH")
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith("GIT_") and k.upper() not in dropped}
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", NoDefaultCurrentDirectoryInExePath="1")
+    guards = [x for setting in FMT_GIT_GUARDS for x in ("-c", setting)]
 
     def ask(*args: str) -> "subprocess.CompletedProcess":
-        return subprocess.run([git, "--literal-pathspecs", *args], cwd=os.fspath(here.parent), env=env, stdin=subprocess.DEVNULL,
+        return subprocess.run([git, "--literal-pathspecs", *guards, *args], cwd=os.fspath(here.parent), env=env, stdin=subprocess.DEVNULL,
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=FMT_GIT_TIMEOUT, check=False)
 
     try:
@@ -2126,9 +2136,7 @@ def in_git_worktree(path: Path) -> bool:
         listed = ask("ls-files", "-v", "--error-unmatch", "--", here.name)  # "H <name>"; a lower-case h or an S is a flag that hides changes
         if listed.returncode != 0 or not listed.stdout.startswith(b"H "):
             return False
-        if ask("diff", "--quiet", "HEAD", "--", here.name).returncode != 0:
-            return False
-        committed, on_disk = ask("rev-parse", "--verify", "-q", "HEAD:./" + here.name), ask("hash-object", "--", here.name)
+        committed, on_disk = ask("rev-parse", "--verify", "-q", "HEAD:./" + here.name), ask("hash-object", "--no-filters", "--", here.name)
         return committed.returncode == 0 and on_disk.returncode == 0 and bool(committed.stdout.strip()) and committed.stdout == on_disk.stdout
     except (OSError, ValueError, subprocess.SubprocessError):
         return False
