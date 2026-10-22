@@ -678,7 +678,7 @@ class DoctorHardeningTests(unittest.TestCase):
                 self.assertEqual(code, 2, name)
                 self.assertEqual(path.read_bytes(), b"KEEP-ME", "%s was overwritten" % name)
             old = tmp / "old-report.json"
-            old.write_bytes(b"{}")
+            self.assertEqual(run("--roots", CLEAN_ROOTS, "--out", str(old))[0], 0)
             self.assertEqual(run("--roots", CLEAN_ROOTS, "--out", str(old))[0], 0)
             self.assertEqual(json.loads(old.read_text(encoding="utf-8"))["schema"], 1, "an earlier .json report may be replaced")
             self.assertEqual(run("--roots", CLEAN_ROOTS, "--out", str(tmp / "fresh.txt"))[0], 0, "a new file may have any name")
@@ -812,6 +812,247 @@ class DoctorHardeningTests(unittest.TestCase):
             narrow = make_skill(Path(tmp), "narrow-body")
             (narrow / "SKILL.md").write_bytes((narrow / "SKILL.md").read_bytes() + b"x" * 7000)
             self.assertEqual([f for f in studio.validate_skill(narrow) if f["code"] == "ST3"], [])
+
+
+
+CHILD3 = (
+    "import sys, importlib.util, tempfile, time, io, contextlib\n"
+    "from pathlib import Path\n"
+    "spec = importlib.util.spec_from_file_location('s', sys.argv[1]); s = importlib.util.module_from_spec(spec); spec.loader.exec_module(s)\n"
+    "bodies = {'run': 'x' + '`' * 20000, 'run30': 'x' + '`' * 30000, 'alt': '`a' * 20000, 'pairs': '`` `' * 10000, 'triples': '``` ' * 8000}\n"
+    "body = bodies[sys.argv[2]]\n"
+    "head = '---\\nname: bench\\ndescription: Bench. Use when benching.\\n---\\n\\n# T\\n\\n'\n"
+    "t0 = time.perf_counter(); s.lint_forcing_words(body, 0, Path('m')); a = time.perf_counter() - t0\n"
+    "t0 = time.perf_counter(); s.prose_lines(body); b = time.perf_counter() - t0\n"
+    "with tempfile.TemporaryDirectory() as t:\n"
+    "    d = Path(t) / 'bench'; d.mkdir(); (d / 'SKILL.md').write_bytes((head + body).encode('utf-8'))\n"
+    "    t0 = time.perf_counter(); s.validate_skill(d); c = time.perf_counter() - t0\n"
+    "    out = io.StringIO(); t0 = time.perf_counter()\n"
+    "    with contextlib.redirect_stdout(out): s.main(['doctor', '--roots', t, '--json'])\n"
+    "    e = time.perf_counter() - t0\n"
+    "print('%.3f %.3f %.3f %.3f' % (a, b, c, e))\n"
+)
+
+
+def short_name(path: Path):
+    """The 8.3 spelling of an existing path on Windows, else None."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    buf = ctypes.create_unicode_buffer(1024)
+    n = ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, 1024)
+    return Path(buf.value) if n and buf.value and norm(buf.value) != norm(path) else None
+
+
+class DoctorRound3Tests(unittest.TestCase):
+    """SPR-33 TK9 round 3 (security review of round 2): a backtick run made CODE_SPAN_RE cubic; roots, inputs and --out were checked by spelling only."""
+
+    def test_code_span_strip_matches_the_regex_it_replaced(self):
+        import random
+        import re
+        old = re.compile(r"(`+).+?\1")
+        rng = random.Random(33)
+        pieces = ["`", "`", "``", "```", "a", "b c", " ", "x", "\n", "`` ", "~"]
+        different = []
+        for _ in range(24000):
+            sample = "".join(rng.choice(pieces) for _ in range(rng.randint(0, 16)))
+            for repl in (" ", "#"):
+                if studio.strip_code_spans(sample, repl) != old.sub(repl, sample):
+                    different.append(sample)
+        self.assertEqual(different[:5], [], "%d samples differ from the old regex" % len(different))
+        self.assertEqual(studio.strip_code_spans("a `b` c ``d`e`` f"), "a   c   f")
+        self.assertEqual(studio.strip_code_spans("no code here"), "no code here")
+
+    def test_hostile_backtick_bodies_finish_fast(self):
+        for case in ("run", "alt", "pairs", "triples", "run30"):
+            try:
+                done = subprocess.run([sys.executable, "-X", "utf8", "-c", CHILD3, str(ROOT / "studio.py"), case], capture_output=True, text=True, timeout=60)
+            except subprocess.TimeoutExpired:
+                self.fail("%s: still running after 60 s (lint_forcing_words, prose_lines, validate_skill and doctor each get a backtick run)" % case)
+            self.assertEqual(done.returncode, 0, (case, done.stderr[-300:]))
+            times = [float(x) for x in done.stdout.split()]
+            self.assertEqual(len(times), 4, done.stdout)
+            self.assertLess(max(times), 5.0, "%s took %s s (lint, prose, validate, doctor)" % (case, done.stdout.strip()))
+
+    def test_every_regex_in_studio_is_linear_on_hostile_text(self):
+        import ast
+        import re
+        import time
+        tree = ast.parse((ROOT / "studio.py").read_text(encoding="utf-8"))
+        patterns = {}
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "re" and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+                patterns.setdefault(node.args[0].value, 0)
+        self.assertGreater(len(patterns), 25)
+        units = ["`", "[", "(", "<", "<!--", "*", "_", "|", "-", " ", "\n", "#", ":", '"', "'", "\\", "a", "]", ")", "[](", "http://"]
+        size, slow = 8000, []
+        for pattern in patterns:
+            try:
+                rx = re.compile(pattern, re.IGNORECASE)
+            except re.error:
+                continue
+            for unit in units:
+                for text in (unit * (size // len(unit)), "x" + unit * (size // len(unit)), (unit + "a") * (size // (len(unit) + 1)), unit * (size // len(unit)) + "x"):
+                    start = time.perf_counter()
+                    list(rx.finditer(text))
+                    rx.match(text)
+                    rx.fullmatch(text)
+                    rx.search(text)
+                    took = time.perf_counter() - start
+                    if took > 1.0:
+                        slow.append((pattern, unit, round(took, 2)))
+        self.assertEqual(slow, [], "regex(es) over 1 s on %d characters" % size)
+
+    def test_xml_tag_check_matches_the_regex_it_replaced(self):
+        import random
+        import re
+        rng = random.Random(5)
+        for _ in range(8000):
+            sample = "".join(rng.choice("<>a <") for _ in range(rng.randint(0, 12)))
+            self.assertEqual(studio.has_xml_tag(sample), bool(re.search(r"<[^>]+>", sample)), repr(sample))
+        start = __import__("time").perf_counter()
+        studio.has_xml_tag("<" * 100000)
+        studio.has_xml_tag("<>" * 100000)
+        self.assertLess(__import__("time").perf_counter() - start, 1.0)
+        start = __import__("time").perf_counter()
+        studio.ABSOLUTE_LINK_RE.search("a" * 100000)
+        studio.ABSOLUTE_LINK_RE.match("a" * 100000)
+        self.assertLess(__import__("time").perf_counter() - start, 1.0, "a scheme-looking run of letters must not be quadratic")
+
+    def test_root_too_broad_looks_through_links_and_short_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            home = tmp / "people" / "a-rather-long-home-folder-name"
+            make_skill(home / "proj", "fine-skill")
+            up = tmp / "up-alias"
+            make_dir_link(self, up, home.parent)
+            alias = tmp / "home-alias"
+            make_dir_link(self, alias, home)
+            scans = []
+            real_scandir = os.scandir
+
+            def spy(path):
+                scans.append(os.fspath(path))
+                return real_scandir(path)
+
+            with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}), mock.patch.object(os, "scandir", spy):
+                self.assertTrue(studio.root_too_broad(alias) and studio.root_too_broad(up))
+                for broad in (alias, up, alias / "..", alias / "proj" / ".."):
+                    self.assertEqual(run("--roots", str(broad), "--json")[0], 2, str(broad))
+                self.assertEqual(scans, [], "a refused run must not list anything")
+                if os.name == "nt":
+                    self.assertTrue(studio.root_too_broad("\\\\?\\" + str(home)))
+                    self.assertEqual(run("--roots", "\\\\?\\" + str(home))[0], 2)
+                    spelled = short_name(home)
+                    if spelled is None:
+                        self.skipTest("8.3 names are off on this volume")
+                    self.assertTrue(studio.root_too_broad(spelled))
+                    self.assertEqual(run("--roots", str(spelled))[0], 2)
+                    with mock.patch.dict(os.environ, {"HOME": str(spelled), "USERPROFILE": str(spelled)}):
+                        self.assertEqual(run("--roots", str(home))[0], 2, "HOME in its short spelling, root in the long one")
+                    self.assertEqual(scans, [])
+                self.assertEqual(run("--roots", str(home / "proj"))[0], 0)
+
+    def test_iter_skill_dirs_checks_cloud_attributes_on_the_real_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            real = tmp / "plain-name"
+            make_skill(real, "hidden-skill")
+            alias = tmp / "alias"
+            make_dir_link(self, alias, real)
+            with mock.patch.object(studio, "path_is_cloud", lambda p: norm(p) == norm(real)), watching() as calls:
+                skills, skipped = studio.iter_skill_dirs([alias])
+            self.assertEqual(skills, [])
+            self.assertEqual([s["reason"] for s in skipped], ["cloud"])
+            self.assertFalse([p for n, p, _ in calls if n in ("scandir", "listdir") and is_under(p, real)], "the placeholder folder must not be listed")
+
+    def test_roots_file_and_baseline_are_resolved_before_they_are_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            home = tmp / "home"
+            secret = home / ".secret"
+            secret.mkdir(parents=True)
+            (secret / "roots.txt").write_text("%s\n# CANARY-ROOTS\n" % FIX, encoding="utf-8")
+            (secret / "base.json").write_text('{"schema": 1, "skills": [], "x": "CANARY-BASE"}', encoding="utf-8")
+            door = tmp / "innocent"
+            make_dir_link(self, door, secret)
+            cases = [(["--roots-file", str(door / "roots.txt")], "roots.txt"), (["--roots", CLEAN_ROOTS, "--baseline", str(door / "base.json")], "base.json")]
+            short = short_name(secret)
+            if short is not None:
+                cases += [(["--roots-file", str(short / "roots.txt")], "roots.txt"), (["--roots", CLEAN_ROOTS, "--baseline", str(short / "base.json")], "base.json")]
+            if os.name == "nt":
+                plain = tmp / "plain.txt"
+                plain.write_text("%s\n" % FIX, encoding="utf-8")
+                cases += [(["--roots-file", str(plain) + "::$DATA"], "$DATA"), (["--roots-file", str(plain) + ":evil"], ":evil"),
+                          (["--roots", CLEAN_ROOTS, "--baseline", str(plain) + "::$DATA"], "$DATA")]
+            with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
+                for argv, tail in cases:
+                    with watching() as calls:
+                        code, out, err = run(*argv)
+                    self.assertEqual(code, 2, (argv, out, err))
+                    self.assertNotIn("CANARY", out + err, argv)
+                    self.assertFalse([p for n, p, _ in calls if n == "open" and p.endswith(tail)], ("opened", argv))
+
+    def test_doctor_out_overwrites_only_its_own_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            keep = {}
+            for name, content in (("secrets.json", b'{"token": "CANARY-OUT"}'), (".claude.json", b'{"oauth": "CANARY-OUT"}'), ("package.json", b"{}"),
+                                  ("UPPER.JSON", b'{"a": 1}'), ("notes.json", b"[1, 2]"), ("binary.json", b"\x97\x98\x99")):
+                keep[name] = (tmp / name, content)
+                (tmp / name).write_bytes(content)
+            for name, (path, content) in keep.items():
+                code, out, err = run("--roots", CLEAN_ROOTS, "--out", str(path))
+                self.assertEqual(code, 2, (name, err))
+                self.assertEqual(path.read_bytes(), content, "%s was overwritten" % name)
+                self.assertNotIn("CANARY", out + err)
+            report = tmp / "report.json"
+            self.assertEqual(run("--roots", CLEAN_ROOTS, "--out", str(report))[0], 0)
+            self.assertEqual(run("--roots", CLEAN_ROOTS, "--out", str(report))[0], 0, "a report doctor wrote may be replaced")
+            compact = tmp / "compact.json"
+            compact.write_bytes(b'{"schema":1,"skills":[]}')
+            self.assertEqual(run("--roots", CLEAN_ROOTS, "--out", str(compact))[0], 0, "a report that starts with the schema key may be replaced")
+            empty = tmp / "empty.json"
+            empty.write_bytes(b"")
+            self.assertEqual(run("--roots", CLEAN_ROOTS, "--out", str(empty))[0], 0, "an empty file holds nothing to lose")
+            if os.name == "nt":
+                for spelled in (str(tmp / "stream.json") + ":evil", str(tmp / "stream.json") + "::$DATA", str(report) + ":evil"):
+                    code, _, err = run("--roots", CLEAN_ROOTS, "--out", spelled)
+                    self.assertEqual(code, 2, spelled)
+                    self.assertFalse((tmp / "stream.json").exists(), "no stream may be created")
+
+    def test_walk_files_stops_at_a_file_and_depth_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sk = make_skill(Path(tmp), "wide-skill")
+            (sk / "references").mkdir()
+            for i in range(120):
+                (sk / "references" / ("r%03d.md" % i)).write_bytes(b"x\n")
+            deep = sk / "assets"
+            for level in range(8):
+                deep = deep / ("d%d" % level)
+            deep.mkdir(parents=True)
+            (deep / "bottom.txt").write_bytes(b"x")
+            with mock.patch.object(studio, "DOCTOR_MAX_FILES_PER_SKILL", 50), watching() as calls:
+                found = studio.validate_skill(sk)
+            self.assertIn("SZ1", [f["code"] for f in found])
+            self.assertTrue([f for f in found if f["code"] == "SZ1" and "50" in f["message"]])
+            listed = [p for n, p, _ in calls if n == "scandir" and is_under(p, sk / "references")]
+            self.assertLessEqual(len(listed), 2)
+            with mock.patch.object(studio, "DOCTOR_MAX_SKILL_DEPTH", 3), watching() as calls:
+                found = studio.validate_skill(sk)
+            self.assertIn("SZ1", [f["code"] for f in found])
+            self.assertFalse([p for n, p, _ in calls if n == "scandir" and p.endswith("d5")], "a folder below the depth cap is not listed")
+            quiet = studio.validate_skill(sk)
+            self.assertNotIn("SZ1", [f["code"] for f in quiet], "default caps are far above this skill")
+
+    def test_input_file_that_resolves_to_a_secret_name_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            plain = tmp / "notes.txt"
+            self.assertIsNone(studio.input_file_problem(plain))
+            with mock.patch.object(Path, "resolve", lambda self, strict=False: tmp / ".env"):
+                self.assertIn("secret-looking", studio.input_file_problem(plain))
 
 
 if __name__ == "__main__":

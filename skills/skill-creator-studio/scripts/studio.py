@@ -41,7 +41,7 @@ STRICT_OPEN, STRICT_CLOSE = "<!-- studio:strict -->", "<!-- /studio:strict -->"
 CONTENTS_RE = re.compile(r"^##\s+(Table of Contents|Contents|Mục lục)\s*$", re.IGNORECASE)
 MD_LINK_RE = re.compile(r"\[([^\[\]]*)\]\([^()]*\)")  # [text](target) -> text; no nested brackets or parens, so a line of "[" stays linear
 FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
-CODE_SPAN_RE = re.compile(r"(`+).+?\1")
+BACKTICK_RUN_RE = re.compile(r"`+")
 URL_RE = re.compile(r"https?://\S+")
 LIST_ITEM_RE = re.compile(r"^\s*([-*+]|\d+[.)])\s")
 CONTENTS_MAX = 12
@@ -65,7 +65,7 @@ SENTENCE_ABBREV_RE = re.compile(r"\b(e\.g|i\.e)\.")
 TRIGGER_RE = re.compile(r"(?i)\b(use when|when to use|used when|for tasks involving)\b")
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 LINK_RE = re.compile(r"\[[^\[\]\n]*\]\(([^()\n]+)\)")  # one line, no nested brackets or parens: linear on hostile input
-ABSOLUTE_LINK_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*:")  # a scheme (file:, smb:) or a drive letter (C:)
+ABSOLUTE_LINK_RE = re.compile(r"\A[A-Za-z][A-Za-z0-9+.\-]*:")  # a scheme (file:, smb:) or a drive letter (C:)
 FRONT_KEY_RE = re.compile(r"^([a-zA-Z][\w-]*):(?:\s+(.*))?$")
 META_KEY_RE = re.compile(r"^\s{2,}([\w.-]+):(?:\s+(.*))?$")
 SKIP_DIRS = {"__pycache__", ".git", ".venv", "evals", "tests", ".pytest_cache", ".mypy_cache"}
@@ -93,6 +93,9 @@ DOCTOR_MAX_DEPTH = 12  # folder levels below a root
 DOCTOR_MAX_DIRS = 100000  # folders listed per run
 DOCTOR_MAX_SKILLS = 3000
 DOCTOR_MAX_FILE_BYTES = 1_000_000  # a SKILL.md or reference above this is not read (SZ1)
+DOCTOR_MAX_FILES_PER_SKILL = 5000  # files and folders listed inside one skill; the rest is not listed (SZ1)
+DOCTOR_MAX_SKILL_DEPTH = 12  # folder levels listed inside one skill
+DOCTOR_REPORT_HEAD = re.compile(rb'\A(?:\xef\xbb\xbf)?\s*\{\s*"schema"\s*:')  # how a doctor report starts
 
 
 def emit(level: str, code: str, path: Path, line: int, message: str) -> dict:
@@ -266,16 +269,73 @@ def path_is_cloud(path) -> bool:
         return False
 
 
-def root_too_broad(path) -> bool:
-    """True for a drive or filesystem root, the home folder, or any folder above it. Names only: nothing is stat-ed."""
-    text = os.path.normcase(os.path.abspath(os.fspath(path)))
+def _plain_path(path) -> str:
+    """Case-normalised absolute spelling without a \\\\?\\ or \\\\?\\UNC\\ prefix. Names only."""
+    text = os.path.abspath(os.fspath(path))
+    if text.startswith("\\\\?\\UNC\\"):
+        text = "\\\\" + text[8:]
+    elif text.startswith("\\\\?\\"):
+        text = text[4:]
+    return os.path.normcase(text)
+
+
+def _broad_by_name(text: str, homes: list) -> bool:
     if not os.path.splitdrive(text)[1].strip("\\/"):
         return True
+    for home in homes:
+        try:
+            if os.path.commonpath([text, home]) == text:
+                return True
+        except ValueError:  # another drive
+            continue
+    return False
+
+
+def root_too_broad(path, markers=CLOUD_MARKERS) -> bool:
+    """True for a drive or filesystem root, the home folder, or any folder above it, judged on the spelling given, on the normalised
+    spelling (no \\\\?\\ prefix) and on the real path (a junction or symlink into the home, an 8.3 name). The real path is looked up only
+    for a local path outside the cloud and secret zones; a UNC path is never resolved."""
+    given = _plain_path(path)
+    homes = []
     try:
-        home = os.path.normcase(os.path.abspath(str(Path.home())))
-        return os.path.commonpath([text, home]) == text
-    except (RuntimeError, KeyError, OSError, ValueError):
+        home = Path.home()
+        homes.append(_plain_path(home))
+        if not zone_reason(home, markers):
+            homes.append(_plain_path(home.resolve()))
+    except (RuntimeError, KeyError, OSError):
+        pass
+    if _broad_by_name(given, homes):
+        return True
+    if given.startswith("\\\\") or zone_reason(given, markers):
         return False
+    try:
+        real = _plain_path(Path(given).resolve())
+    except (OSError, RuntimeError):
+        return False
+    return real != given and _broad_by_name(real, homes)
+
+
+def input_file_problem(source: Path, markers=CLOUD_MARKERS) -> str | None:
+    """Why an input file (--roots-file, --baseline) may not be read, else None. Decided before opening it: not an NTFS data stream
+    (name:stream), not a secret-looking name, not a cloud placeholder, and neither the spelling given nor the real path (a link, an 8.3
+    name such as SECRET~1) in a cloud or secret zone."""
+    text = os.fspath(source)
+    if os.name == "nt" and ":" in os.path.splitdrive(text)[1]:
+        return "names an NTFS data stream; not read"
+    if is_sensitive_name(source.name):
+        return "has a secret-looking file name; not read"
+    reason = zone_reason(source, markers)
+    if not reason:
+        if path_is_cloud(source):
+            return "is a cloud placeholder; not read"
+        try:
+            real = source.resolve()
+        except (OSError, RuntimeError):
+            return "cannot be resolved; not read"
+        if is_sensitive_name(real.name):
+            return "is a link to a file with a secret-looking name; not read"
+        reason = zone_reason(real, markers)
+    return "is inside a %s zone; not read" % reason if reason else None
 
 
 def link_crosses_link(base: Path, link: str) -> bool:
@@ -302,6 +362,63 @@ def read_capped(path, limit: int | None) -> tuple:
     if len(data) > limit:
         return None, True
     return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n"), False
+
+
+def strip_code_spans(text: str, repl: str = " ") -> str:
+    """Replace each inline code span as re.sub(r"(`+).+?\\1", repl, text) did, but in linear time: a long run of backticks made
+    that regex cubic. The regex's rule, worked out per run of K backticks that starts a try: the longest opener k that has a closer wins,
+    a closer being k backticks after at least one character, inside the same run (k <= (K-1)//2) or in a later run at least k long.
+    A run no closer can follow stays plain text. Each line is handled alone, as `.` never matched a newline."""
+    if "`" not in text:
+        return text
+    return "\n".join(_strip_code_spans_line(part, repl) for part in text.split("\n"))
+
+
+def _strip_code_spans_line(line: str, repl: str) -> str:
+    runs = [match.span() for match in BACKTICK_RUN_RE.finditer(line)]
+    if not runs:
+        return line
+    longest_after = [0] * (len(runs) + 1)
+    for index in range(len(runs) - 1, -1, -1):
+        longest_after[index] = max(longest_after[index + 1], runs[index][1] - runs[index][0])
+    out, copied, index, pos = [], 0, 0, runs[0][0]
+    while index < len(runs):
+        width = runs[index][1] - pos
+        inside = (width - 1) // 2
+        size = max(inside, min(width, longest_after[index + 1]))
+        if size < 1:
+            break  # no run is left to close anything
+        if size == inside:
+            end, last = pos + 2 * size + 1, index
+        else:
+            last = index + 1
+            while runs[last][1] - runs[last][0] < size:
+                last += 1
+            end = runs[last][0] + size
+        out.append(line[copied:pos])
+        out.append(repl)
+        copied = end
+        if end < runs[last][1]:
+            index, pos = last, end
+        else:
+            index = last + 1
+            if index < len(runs):
+                pos = runs[index][0]
+    out.append(line[copied:])
+    return "".join(out)
+
+
+def has_xml_tag(text: str) -> bool:
+    """Same answer as re.search(r"<[^>]+>", text), in linear time: a '<' whose first following '>' is not right behind it."""
+    start = text.find("<")
+    while start != -1:
+        close = text.find(">", start + 1)
+        if close == -1:
+            return False
+        if close > start + 1:
+            return True
+        start = text.find("<", start + 1)
+    return False
 
 
 def strip_html_comments(text: str, repl: str = " ") -> str:
@@ -346,19 +463,26 @@ def zone_named(name: str, markers=CLOUD_MARKERS) -> bool:
     return low == ".secret" or any(marker.casefold() in low for marker in markers)
 
 
-def walk_files(base: Path, markers=CLOUD_MARKERS) -> tuple[list[Path], set, set, set]:
-    """(every file and folder under `base`, sorted; the links, the real folders and the cloud placeholders the listing itself reports).
+def walk_files(base: Path, markers=CLOUD_MARKERS, max_files: int | None = None, max_depth: int | None = None) -> tuple[list[Path], set, set, set, bool]:
+    """(every file and folder under `base`, sorted; the links, the real folders and the cloud placeholders the listing itself reports; cut short).
     A symlink or junction (any reparse point) is listed as a link and never entered, a folder named like a cloud/secret zone and
-    anything carrying cloud attributes are listed but never entered or opened, and nothing else is stat-ed per entry except folders about to be entered."""
-    found, links, dirs, cloud, stack = [], set(), set(), set(), [base]
-    while stack:
-        current = stack.pop()
+    anything carrying cloud attributes are listed but never entered or opened, and nothing else is stat-ed per entry except folders about to be entered.
+    The walk stops after `max_files` entries (default DOCTOR_MAX_FILES_PER_SKILL) and does not enter folders `max_depth` levels down
+    (default DOCTOR_MAX_SKILL_DEPTH); either sets the last value, True."""
+    max_files = DOCTOR_MAX_FILES_PER_SKILL if max_files is None else max_files
+    max_depth = DOCTOR_MAX_SKILL_DEPTH if max_depth is None else max_depth
+    found, links, dirs, cloud, stack, cut = [], set(), set(), set(), [(base, 0)], False
+    while stack and not cut:
+        current, depth = stack.pop()
         try:
             with os.scandir(current) as scan:
                 entries = list(scan)
         except OSError:
             continue
         for entry in entries:
+            if len(found) >= max_files:
+                cut = True
+                break
             path = Path(entry.path)
             found.append(path)
             try:
@@ -375,10 +499,13 @@ def walk_files(base: Path, markers=CLOUD_MARKERS) -> tuple[list[Path], set, set,
                         links.add(path)
                     else:
                         dirs.add(path)
-                        stack.append(path)
+                        if depth + 1 < max_depth:
+                            stack.append((path, depth + 1))
+                        else:
+                            cut = True
             except OSError:
                 continue
-    return sorted(found), links, dirs, cloud
+    return sorted(found), links, dirs, cloud, cut
 
 
 def check_evals(folder: Path) -> list[dict]:
@@ -602,7 +729,7 @@ def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
         if stripped.startswith("|"):
             continue
         prose = strip_html_comments(text)
-        prose = CODE_SPAN_RE.sub(" ", prose)
+        prose = strip_code_spans(prose)
         prose = MD_LINK_RE.sub(" ", prose)
         prose = URL_RE.sub(" ", prose)
         match = FORCE_RE.search(prose)
@@ -654,7 +781,7 @@ def prose_lines(body: str) -> list[tuple[int, str]]:
         if stripped.startswith("|") or VI_OK_MARK in text:
             continue
         prose = strip_html_comments(text)
-        prose = CODE_SPAN_RE.sub(" ", prose)
+        prose = strip_code_spans(prose)
         if "<!--" in prose:  # a comment that continues on the next lines
             prose, in_comment = prose[:prose.index("<!--")], True
         prose = MD_LINK_RE.sub(r"\1", prose)
@@ -869,7 +996,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
             findings.append(emit("ERROR", "FM5", manifest, 2, "name must not contain the reserved word '%s'" % word))
         elif claude and name in CLAUDE_CODE_RESERVED_NAMES:
             findings.append(emit("ERROR", "FM5", manifest, 2, "name '%s' is reserved by Claude Code" % name))
-    if not isinstance(desc, str) or not desc.strip() or len(desc) > 1024 or re.search(r"<[^>]+>", desc or ""):
+    if not isinstance(desc, str) or not desc.strip() or len(desc) > 1024 or has_xml_tag(desc or ""):
         findings.append(emit("ERROR", "DS1", manifest, 3, "description must be a nonempty string <=1024 chars without XML tags"))
     elif not re.search(r"(?i)\b(use when|when to use|used when|for tasks involving)\b", desc):
         findings.append(emit("WARN", "DS3", manifest, 3, "description should describe when to invoke the Skill, e.g. 'Use when ...'"))
@@ -963,7 +1090,10 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
         elif detail is not None:
             refs_linked.add(detail)
     ref_dir = folder / "references"
-    tree, tree_links, tree_dirs, tree_cloud = walk_files(folder, markers)
+    tree, tree_links, tree_dirs, tree_cloud, tree_cut = walk_files(folder, markers)
+    if tree_cut:
+        findings.append(emit("WARN", "SZ1", folder, 0, "skill lists more than %d files and folders or goes deeper than %d levels; the rest was not listed or checked"
+                             % (DOCTOR_MAX_FILES_PER_SKILL, DOCTOR_MAX_SKILL_DEPTH)))
     if ref_dir in tree_dirs:
         for p in (x for x in tree if ref_dir in x.parents and x.name.endswith(".md") and not is_sensitive_name(x.name)):
             if p in tree_cloud:
@@ -1345,10 +1475,9 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
     items = [(x.strip(), x.strip()) for x in (roots or "").split(";") if x.strip()]
     if roots_file:
         listing = Path(os.path.abspath(os.path.expanduser(roots_file)))
-        if is_sensitive_name(listing.name):
-            raise ValueError("--roots-file has a secret-looking file name; not read")
-        if zone_reason(listing, markers):
-            raise ValueError("--roots-file is inside a %s zone; not read: %s" % (zone_reason(listing, markers), roots_file))
+        problem = input_file_problem(listing, markers)
+        if problem:
+            raise ValueError("--roots-file %s" % problem)
         try:
             lines = listing.read_text(encoding="utf-8").splitlines()
         except UnicodeError:
@@ -1363,7 +1492,7 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
     found = []
     for item, label in items:
         path = Path(os.path.abspath(os.path.expanduser(item)))
-        if root_too_broad(path):
+        if root_too_broad(path, markers):
             raise ValueError("root too broad; pass narrower roots (not a drive root, the home folder or a folder above it): %s" % label)
         if not zone_reason(path, markers) and not path.is_dir():
             raise ValueError("root not found or not a directory: %s" % label)
@@ -1396,7 +1525,7 @@ def iter_skill_dirs(roots: list, include_cache: bool = False, skip_markers: tupl
         except (OSError, RuntimeError):
             skip(given, "unreadable")
             continue
-        reason = zone_reason(real, markers)
+        reason = zone_reason(real, markers) or ("cloud" if path_is_cloud(real) else None)
         if reason:
             skip(given, reason)
             continue
@@ -1546,19 +1675,30 @@ def _baseline_problem(obj) -> str | None:
 def _out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), include_cache: bool = False, skip_markers: tuple = ()) -> str | None:
     """Why `out` may not be written, else None. The report may not land in what the scan reads: not in a zone, not under skills/, not in a
     scanned skill, and not in a scanned root unless the folder in between (.tmp, .worktrees, a cache...) is one the scan leaves out.
-    It may not carry a secret-looking name, and an existing file that is not a .json report is never overwritten."""
+    It may not carry a secret-looking name or an NTFS stream, and an existing file is overwritten only when it is empty or already a doctor
+    report (a .json file that starts with {"schema")."""
     markers = CLOUD_MARKERS + tuple(skip_markers)
     reason = zone_reason(out, markers)
     if reason:
         return "--out is inside a %s zone" % reason
+    if os.name == "nt" and ":" in os.path.splitdrive(os.fspath(out))[1]:
+        return "--out names an NTFS data stream: %s" % out.name
     if is_sensitive_name(out.name):
         return "--out has a secret-looking file name: %s" % out.name
     if not out.parent.is_dir():
         return "folder of --out does not exist: %s (doctor never creates folders)" % out.parent
     if out.is_dir() or is_link(out):
         return "--out must be a plain file path: %s" % out
-    if out.exists() and out.suffix.lower() != ".json":
-        return "--out would overwrite an existing file that is not a .json report: %s" % out
+    if out.exists():
+        if out.suffix.lower() != ".json":
+            return "--out would overwrite an existing file that is not a .json report: %s" % out
+        try:
+            with open(out, "rb") as handle:
+                head = handle.read(64)
+        except OSError:
+            return "--out exists and cannot be checked: %s" % out
+        if head.strip() and not DOCTOR_REPORT_HEAD.match(head):
+            return "--out would overwrite an existing file that is not a doctor report (it must start with {\"schema\"): %s" % out
     try:
         real = out.parent.resolve() / out.name
     except (OSError, RuntimeError):
@@ -1601,12 +1741,7 @@ def cmd_doctor(args) -> int:
         return 2
     if args.baseline:
         source = Path(os.path.abspath(os.path.expanduser(args.baseline)))
-        if is_sensitive_name(source.name):
-            problem = "has a secret-looking file name; not read"
-        elif zone_reason(source, markers):
-            problem = "is inside a %s zone; not read" % zone_reason(source, markers)
-        else:
-            problem = None
+        problem = input_file_problem(source, markers)
         if problem is None:
             try:
                 baseline = json.loads(source.read_text(encoding="utf-8"))
