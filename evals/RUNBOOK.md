@@ -12,8 +12,12 @@ evals/<skill-name>/
   rubric.md               # tiêu chí chấm độc lập, hard-fail điều kiện
   fixtures/               # dữ liệu synthetic, không có customer data
   baselines/BASELINE.md   # No-skill run, nếu chưa chạy ghi NOT RUN
-  runs/                   # tạo trong lần thực thi thực tế (optional)
+  runs/                   # tạo trong lần thực thi thực tế (optional); lô có tên: runs/SPR-18/, runs/SPR-33/
 ```
+
+Công cụ chung nằm ở `evals/tools/` (chỉ thư viện chuẩn): `activation.py` đếm kích hoạt từ transcript (`verify`, `hash`, `count`, `freeze`, `summarize`), `oracle.py` chấm đầu ra theo `expected/<case-id>.json`, `redact.py` làm bản transcript che email và đường dẫn máy để commit được.
+
+Xuất các ca positive sang định dạng agentskills (không gọi model): `python3 studio.py evals <skill> --export agentskills --out dist/agentskills` ghi `<out>/<skill>/evals/evals.json`; `--out` không được nằm dưới `skills/` hay `evals/`.
 
 ## Trước khi viết Skill
 
@@ -104,3 +108,7 @@ Cầu `ask-agy` (headless `--print`) không đo được kích hoạt: một lư
 Dùng lại nguyên bộ câu `evals/<skill>/cases.json`, oracle `expected/`, thước `rubric.md` (xem manifest), skill vào `.agents/skills` của workspace thử bằng
 `studio.py install … --agent antigravity --workspace <run-dir>`, và với baseline phải tạm đưa skill toàn máy ra khỏi `~/.gemini/antigravity/skills`
 (việc đổi máy, cần Đức duyệt riêng). Chấm kích hoạt bằng lịch sử tool call của IDE; không coi tên skill trong danh mục là kích hoạt.
+
+## Lô SPR-33 — cùng cách đo, trên Claude Code
+
+Lô 16 lượt (8 case mỗi skill) chạy ngày 22/10/2026 với Claude Code 2.1.308, model `claude-sonnet-5-5`, nạp skill bằng `--plugin-dir` từ bản `git archive` tại SHA lô, đúng lệnh ở dòng Claude Code của bảng trên; log ở `runs/SPR-33/`, đếm bằng `activation.py count … --runtime claude-code` và `summarize`. Số đo và giới hạn: [QA_REPORT.md](../QA_REPORT.md). Codex và Antigravity thật không chạy ở lô này (`not_run:needs-directive`).

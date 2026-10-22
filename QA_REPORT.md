@@ -9,7 +9,7 @@
 - `python -X utf8 studio.py sync-template --check` — **PASS**: `Template distribution mirror is in sync.` (hai template `skill-template` và `skill-template-full` khớp từng file với bản trong skill factory).
 - `python -X utf8 -m pytest tests -q -p no:cacheprovider` — dòng cuối nguyên văn:
 
-  `339 passed, 1 skipped, 1 warning, 48 subtests passed in 24.53s`
+  `339 passed, 1 skipped, 1 warning, 48 subtests passed in 23.88s`
 
 - `python -X utf8 -m unittest discover -s tests` — **PASS**: `Ran 340 tests`, `OK (skipped=1)`. (`unittest` in `UnicodeDecodeError` từ thread subprocess cp1252 nhưng vẫn exit 0; có từ trước sprint.)
 - `python -X utf8 -m pytest tests/test_docs_links.py -q -p no:cacheprovider` — **PASS**: `1 passed`.
