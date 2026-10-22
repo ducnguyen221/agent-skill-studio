@@ -96,6 +96,23 @@ DOCTOR_MAX_FILE_BYTES = 1_000_000  # a SKILL.md or reference above this is not r
 DOCTOR_MAX_FILES_PER_SKILL = 5000  # files and folders listed inside one skill; the rest is not listed (SZ1)
 DOCTOR_MAX_SKILL_DEPTH = 12  # folder levels listed inside one skill
 DOCTOR_REPORT_HEAD = re.compile(rb'\A(?:\xef\xbb\xbf)?\s*\{\s*"schema"\s*:')  # how a doctor report starts
+FM_ORDER = ("name", "description", "license", "compatibility", "allowed-tools", "metadata")
+DOC_MIN_KEYS = ("title", "status", "updated")
+FMT_META_LINE_RE = re.compile(r"^(\s{2,}[\w.-]+:)[ \t]+(\S.*?)[ \t]*$")
+FMT_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+FMT_CONCLUSION_RE = re.compile(r"^>\s*\*\*(Conclusion|Kết luận):\*\*")
+FMT_STEP_RE = re.compile(r"(?i)^(step|bước)\s+\d+\s+[—–-]\s*\S")
+FMT_PROCESS_SECTIONS = (
+    (re.compile(r"(?i)^(when to use|khi nào dùng)"), "When to use / not"),
+    (re.compile(r"(?i)^(steps|bước)$"), "Steps"),
+    (re.compile(r"(?i)^(gotchas|cạm bẫy|lưu ý)$"), "Gotchas"),
+    (re.compile(r"(?i)^(done when|kiểm xong)$"), "Done when"),
+)
+FMT_STEP_LABELS = tuple(
+    (re.compile(r"(?i)^\s*(?:[-*+]\s+)?(?:\*\*)?(?:%s):" % names), label)
+    for names, label in (("Command|Lệnh", "Command:"), ("Expect|Kỳ vọng", "Expect:"), ("Stop if|Dừng nếu", "Stop if:")))
+FMT_PRUNE_DIRS = frozenset({".git", ".tmp", ".worktrees", "dist", "node_modules", "__pycache__", ".venv", ".pytest_cache", ".mypy_cache"})
+FMT_FRONT_SEARCH_LINES = 60  # a frontmatter block that starts later than this is not looked for
 
 
 def emit(level: str, code: str, path: Path, line: int, message: str) -> dict:
@@ -1837,6 +1854,419 @@ def cmd_doctor(args) -> int:
     return 1 if found else 0
 
 
+def _fm_bounds(lines: list) -> tuple | None:
+    """(0, closing index) when line 0 is '---' and a closing '---' follows, else None."""
+    if not lines or lines[0].strip() != "---":
+        return None
+    for index in range(1, len(lines)):
+        if lines[index].strip() == "---":
+            return 0, index
+    return None
+
+
+def _fm_blocks(block_lines: list) -> tuple[list, list]:
+    """(lines before the first key, [(key, [the key line and every line after it up to the next top-level key])])."""
+    pre, blocks = [], []
+    for line in block_lines:
+        match = None if line[:1].isspace() else FRONT_KEY_RE.fullmatch(line)
+        if match:
+            blocks.append((match.group(1), [line]))
+        else:
+            (blocks[-1][1] if blocks else pre).append(line)
+    return pre, blocks
+
+
+def _looks_like_front(lines: list) -> bool:
+    """lines[0] is '---', a closing '---' follows, and between them every plain line is `key: value` (at least one key)."""
+    bounds = _fm_bounds(lines)
+    if not bounds:
+        return False
+    keys = 0
+    for line in lines[1:bounds[1]]:
+        if not line.strip() or line[:1].isspace() or line.lstrip().startswith("#"):
+            continue
+        if not FRONT_KEY_RE.fullmatch(line):
+            return False
+        keys += 1
+    return keys > 0
+
+
+def _quote_meta(line: str) -> str:
+    """One `  key: value` line of a metadata block with the value in double quotes; a value the parser cannot read as a plain string stays as it is."""
+    match = FMT_META_LINE_RE.match(line)
+    if not match:
+        return line
+    value = match.group(2)
+    if value[0] == '"':
+        return line
+    if value[0] == "'" and len(value) >= 2 and value[-1] == "'":
+        value = value[1:-1].replace("''", "'")
+    elif value[0] in "[{>|&*!%@`'" or " #" in value or ": " in value:
+        return line
+    return "%s %s" % (match.group(1), json.dumps(value, ensure_ascii=False))
+
+
+def fmt_text(text: str, kind: str, profile: str = "portable") -> tuple[str, list]:
+    """Pure (no I/O): (the text in house style, findings FT1-FT5). `kind` is skill, process, studio-doc or other. A finding is
+    {level, code, line, message, fixable}; the returned text has every fixable one applied and the words of the body unchanged.
+    `profile` is accepted for symmetry with doctor: fmt adds no opcos metadata, so it changes nothing here."""
+    if profile not in PROFILES:
+        raise ValueError("unknown profile %r" % profile)
+    found: list[dict] = []
+
+    def add(code: str, line: int, message: str, fixable: bool) -> None:
+        found.append({"level": "ERROR", "code": code, "line": line, "message": message, "fixable": fixable})
+
+    new = text
+    if new.startswith("﻿"):
+        add("FT1", 1, "byte order mark", True)
+        new = new.lstrip("﻿")
+    if "\r" in new:
+        add("FT1", len(re.findall(r"\r\n|\r|\n", new[:new.index("\r")])) + 1, "CR or CRLF line ending; use LF", True)
+        new = new.replace("\r\n", "\n").replace("\r", "\n")
+    lines = new.split("\n")
+    trailing = [i + 1 for i, line in enumerate(lines) if line != line.rstrip(" \t")]
+    if trailing:
+        add("FT1", trailing[0], "trailing whitespace on %d line(s)" % len(trailing), True)
+        lines = [line.rstrip(" \t") for line in lines]
+    joined = "\n".join(lines)
+    core = joined.rstrip("\n")
+    wanted = core + "\n" if core else ""
+    if joined != wanted:
+        add("FT1", len(lines), "no final newline" if not joined.endswith("\n") else "more than one final newline", True)
+    lines = wanted.split("\n")[:-1] if wanted else []
+
+    lead = next((i for i, line in enumerate(lines) if line.strip()), 0)
+    if lead and _looks_like_front(lines[lead:]):
+        add("FT5", 1, "%d blank line(s) before the frontmatter; it must start on line 1" % lead, True)
+        lines = lines[lead:]
+    elif kind != "other" and not (lines and lines[0] == "---"):
+        fences = 0
+        for index in range(1, min(len(lines), FMT_FRONT_SEARCH_LINES)):
+            if FENCE_OPEN_RE.match(lines[index]):
+                fences += 1
+            elif lines[index] == "---" and fences % 2 == 0 and _looks_like_front(lines[index:]):
+                block = lines[index + 1:index + _fm_bounds(lines[index:])[1]]
+                if any(FRONT_KEY_RE.fullmatch(x) and FRONT_KEY_RE.fullmatch(x).group(1) in ("name", "description", "title", "status", "updated") for x in block):
+                    add("FT5", index + 1, "frontmatter starts on line %d; it must start on line 1" % (index + 1), False)
+                break
+
+    bounds = _fm_bounds(lines)
+    if kind == "skill" and bounds:
+        pre, blocks = _fm_blocks(lines[1:bounds[1]])
+        offset = 2 + len(pre)
+        rebuilt = []
+        for key, block in blocks:
+            head = FRONT_KEY_RE.fullmatch(block[0])
+            if key == "metadata" and head and not (head.group(2) or "").strip():
+                quoted = [block[0]]
+                for number, line in enumerate(block[1:], start=offset + 1):
+                    changed = _quote_meta(line)
+                    if changed != line:
+                        add("FT3", number, "metadata value must be a double-quoted string", True)
+                    quoted.append(changed)
+                block = quoted
+            rebuilt.append((key, block))
+            offset += len(block)
+        rank = lambda key: FM_ORDER.index(key) if key in FM_ORDER else len(FM_ORDER)
+        ordered = sorted(rebuilt, key=lambda item: rank(item[0]))
+        if [k for k, _ in ordered] != [k for k, _ in rebuilt]:
+            line = 2 + len(pre)
+            for (have, block), (want, _) in zip(rebuilt, ordered):
+                if have != want:
+                    break
+                line += len(block)
+            add("FT2", line, "frontmatter keys out of order; expected %s, then any other keys in their own order" % ", ".join(FM_ORDER), True)
+        lines = ["---"] + pre + [x for _, block in ordered for x in block] + lines[bounds[1]:]
+    if kind == "studio-doc":
+        keys = {key for key, _ in _fm_blocks(lines[1:bounds[1]])[1]} if bounds else set()
+        missing = [key for key in DOC_MIN_KEYS if key not in keys]
+        if missing:
+            add("FT4", 1, "missing minimum frontmatter key(s): %s" % ", ".join(missing), False)
+    found.sort(key=lambda item: item["line"])
+    return ("\n".join(lines) + "\n" if lines else ""), found
+
+
+def check_process_shape(text: str) -> list:
+    """PR1 (WARN) for each part of the process-file shape (SPEC 9.13) that is missing. English or Vietnamese labels."""
+    lines = text.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    bounds = _fm_bounds(lines)
+    start = bounds[1] + 1 if bounds else 0
+    body = lines[start:]
+    heads: list[tuple] = []  # (index in body, level, title)
+    plain: list[tuple] = []  # (index in body, line) outside code fences
+    fence = None
+    for index, line in enumerate(body):
+        match = FENCE_OPEN_RE.match(line)
+        if match:
+            fence = None if fence == match.group(1)[0] else (fence or match.group(1)[0])
+            continue
+        if fence:
+            continue
+        plain.append((index, line))
+        head = FMT_HEADING_RE.match(line)
+        if head:
+            heads.append((index, len(head.group(1)), head.group(2)))
+    found: list[dict] = []
+
+    def warn(index: int, message: str) -> None:
+        found.append({"level": "WARN", "code": "PR1", "line": start + index + 1, "message": message})
+
+    if not any(level == 1 for _, level, _ in heads):
+        warn(0, "process file has no '# <Name>' title")
+    if not any(FMT_CONCLUSION_RE.match(line) for _, line in plain):
+        warn(0, "process file has no '> **Conclusion:**' (VI '> **Kết luận:**') line")
+    if len(body) > 100 and not any(CONTENTS_RE.match("## " + title) for _, level, title in heads if level == 2):
+        warn(0, "process file is over 100 lines and has no '## Contents'")
+    for pattern, label in FMT_PROCESS_SECTIONS:
+        if not any(level == 2 and pattern.match(title) for _, level, title in heads):
+            warn(0, "process file has no '## %s' section" % label)
+    steps = [(i, title) for i, level, title in heads if level == 3 and FMT_STEP_RE.match(title)]
+    if not steps:
+        warn(0, "process file has no '### Step N — <verb>' (VI '### Bước N — <động từ>') section")
+    ends = [i for i, level, _ in heads if level <= 3]
+    for index, title in steps:
+        stop = next((e for e in ends if e > index), len(body))
+        section = [line for i, line in plain if index < i < stop]
+        for pattern, label in FMT_STEP_LABELS:
+            if not any(pattern.match(line) for line in section):
+                warn(index, "step '%s' has no '%s'" % (title, label))
+    return found
+
+
+def classify_md(path: Path, root: Path | None) -> str:
+    """skill (SKILL.md, SKILL.vi.md), process (*PROCESS*.md, *_WORKFLOW.md), studio-doc (standards/*.md, content/*.md, templates/README.md
+    of the repo `root`) or other."""
+    name = path.name
+    if name in ("SKILL.md", "SKILL.vi.md"):
+        return "skill"
+    upper = name.upper()
+    if upper.endswith(".MD") and ("PROCESS" in upper or upper.endswith("_WORKFLOW.MD")):
+        return "process"
+    if root is not None:
+        try:
+            parts = tuple(x.casefold() for x in Path(os.path.abspath(path)).relative_to(os.path.abspath(root)).parts)
+        except ValueError:
+            return "other"
+        if len(parts) == 2 and parts[0] in ("standards", "content") and parts[1].endswith(".md"):
+            return "studio-doc"
+        if parts == ("templates", "readme.md"):
+            return "studio-doc"
+    return "other"
+
+
+def in_git_worktree(path: Path) -> bool:
+    """True when `path` or a folder above it holds a .git entry (folder, or file for a linked worktree). Looks at names only."""
+    here = Path(os.path.abspath(path))
+    return any(os.path.lexists(os.path.join(os.fspath(p), ".git")) for p in [here] + list(here.parents))
+
+
+def _crosses_link_below(root, path) -> bool:
+    """True when a folder between `root` and `path` (the last part excluded) is a symlink or junction; False when `path` is not under `root`."""
+    base = Path(os.path.abspath(root))
+    try:
+        parts = Path(os.path.abspath(path)).relative_to(base).parts
+    except ValueError:
+        return False
+    for part in parts[:-1]:
+        base = base / part
+        if is_link(base):
+            return True
+    return False
+
+
+def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None = None) -> list[Path]:
+    """The Markdown files to format: each given file, plus every *.md under each given folder (and under `root` with all_repo). Never
+    entered or opened: links, cloud placeholders, cloud/secret zones, .git, .tmp, .worktrees, dist, node_modules, evals/**/runs. A file or
+    folder left out is appended to `skipped` as {path, reason}."""
+    skipped = skipped if skipped is not None else []
+    files: list[Path] = []
+    seen: set = set()
+
+    def skip(path, reason: str) -> None:
+        skipped.append({"path": str(path), "reason": reason})
+
+    def take(path: Path) -> None:
+        key = os.path.normcase(os.path.abspath(path))
+        if key in seen:
+            return
+        seen.add(key)
+        if not path.name.lower().endswith(".md"):
+            skip(path, "not-markdown")
+        elif secret_file_name(path.name):
+            skip(path, "secret-name")
+        else:
+            try:
+                size = os.lstat(path).st_size
+            except OSError:
+                skip(path, "unreadable")
+                return
+            if size > DOCTOR_MAX_FILE_BYTES:
+                skip(path, "limit")
+            else:
+                files.append(path)
+
+    starts = [Path(os.path.abspath(os.path.expanduser(os.fspath(p)))) for p in paths]
+    if all_repo and root is not None:
+        starts.append(Path(os.path.abspath(root)))
+    for start in starts:
+        reason = zone_reason(start)
+        if reason:
+            skip(start, reason)
+        elif is_link(start) or (root is not None and _crosses_link_below(root, start)):
+            skip(start, "link")
+        elif path_is_cloud(start):
+            skip(start, "cloud")
+        elif start.is_file():
+            take(start)
+        elif start.is_dir():
+            stack, visited = [start], 0
+            while stack:
+                current = stack.pop()
+                visited += 1
+                if visited > DOCTOR_MAX_DIRS:
+                    skip(current, "limit")
+                    break
+                try:
+                    with os.scandir(current) as scan:
+                        entries = sorted(scan, key=lambda e: e.name)
+                except OSError:
+                    skip(current, "unreadable")
+                    continue
+                for entry in entries:
+                    child = Path(entry.path)
+                    try:
+                        is_dir = entry.is_dir(follow_symlinks=False)
+                        is_file = entry.is_file(follow_symlinks=False)
+                    except OSError:
+                        continue
+                    if is_dir or is_file:
+                        if entry_is_cloud(entry):
+                            skip(child, "cloud")
+                            continue
+                    if entry.is_symlink() or (is_dir and is_link(child)):
+                        if is_dir or entry.name.lower().endswith(".md"):
+                            skip(child, "link")
+                    elif is_dir:
+                        if entry.name in FMT_PRUNE_DIRS or (entry.name == "runs" and "evals" in (x.casefold() for x in child.parts)):
+                            continue
+                        if zone_named(entry.name):
+                            skip(child, "cloud-or-secret-zone")
+                        else:
+                            stack.append(child)
+                    elif is_file and entry.name.lower().endswith(".md"):
+                        take(child)
+    return sorted(files)
+
+
+def _body_words(text: str) -> list:
+    """Words of what follows the frontmatter (the whole text without one), ignoring a BOM: the thing fmt --fix must not change."""
+    lines = text.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    while lines and not lines[0].strip():
+        lines = lines[1:]
+    bounds = _fm_bounds(lines)
+    return ("\n".join(lines[bounds[1] + 1:]) if bounds else "\n".join(lines)).split()
+
+
+def _write_fixed(path: Path, data: bytes, backup: bool) -> None:
+    """Replace `path` with `data`: a copy `<name>.bak-<ISO>` first when `backup`, then a temp file next to it and an atomic replace."""
+    if backup:
+        stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        target, count = path.with_name("%s.bak-%s" % (path.name, stamp)), 1
+        while os.path.lexists(target):
+            target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
+            count += 1
+        shutil.copy2(path, target)
+    temp = path.with_name(".%s.fmt-tmp" % path.name)
+    try:
+        with open(temp, "wb") as handle:
+            handle.write(data)
+        try:
+            shutil.copymode(path, temp)
+        except OSError:
+            pass
+        os.replace(temp, path)
+    finally:
+        if os.path.lexists(temp):
+            os.unlink(temp)
+
+
+def cmd_fmt(args) -> int:
+    """`fmt --check` (default) lists FT*/PR1 findings and never writes; `fmt --fix` applies the fixable ones to the files named.
+    Exit 0 nothing left at ERROR level, 1 an ERROR (FT*) remains, 2 a path does not exist or the request is refused."""
+    fixing = bool(args.fix)
+    repo = repo_root(Path(__file__)) or repo_root(Path.cwd())
+    if args.profile not in PROFILES:
+        print("ERROR: unknown profile %s" % args.profile, file=sys.stderr)
+        return 2
+    if args.all and fixing:
+        print("ERROR: --all only reports; give the files or folders to --fix", file=sys.stderr)
+        return 2
+    if not args.paths and not args.all:
+        print("ERROR: give at least one file or folder, or --all", file=sys.stderr)
+        return 2
+    if args.all and repo is None:
+        print("ERROR: --all needs to run inside the Studio repo", file=sys.stderr)
+        return 2
+    for given in args.paths:
+        spelled = Path(os.path.abspath(os.path.expanduser(given)))
+        if not zone_reason(spelled) and not os.path.lexists(spelled):
+            print("ERROR: path does not exist: %s" % given, file=sys.stderr)
+            return 2
+    skipped: list[dict] = []
+    files = iter_md(args.paths, args.all, repo, skipped)
+    results, errors, warnings, changed = [], 0, 0, 0
+    for path in files:
+        try:
+            raw = path.read_bytes()
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            skipped.append({"path": str(path), "reason": "not-utf8"})
+            continue
+        except OSError:
+            skipped.append({"path": str(path), "reason": "unreadable"})
+            continue
+        kind = classify_md(path, repo)
+        new, found = fmt_text(text, kind, args.profile)
+        wrote = False
+        if fixing and new != text:
+            if _body_words(new) != _body_words(text):  # fmt_text is meant never to do this; refuse to write if it ever does
+                skipped.append({"path": str(path), "reason": "would-change-text"})
+                continue
+            try:
+                _write_fixed(path, new.encode("utf-8"), not in_git_worktree(path))
+            except OSError as exc:
+                print("ERROR: cannot write %s: %s" % (path, exc.strerror or type(exc).__name__), file=sys.stderr)
+                return 2
+            wrote, changed = True, changed + 1
+            found = fmt_text(new, kind, args.profile)[1]
+        if kind == "process":
+            found = found + check_process_shape(new if fixing else text)
+        errors += sum(1 for f in found if f["level"] == "ERROR")
+        warnings += sum(1 for f in found if f["level"] == "WARN")
+        results.append({"path": str(path), "kind": kind, "changed": wrote,
+                        "findings": [dict(f, fixable=f.get("fixable", False)) for f in found]})
+    report = {"schema": 1, "mode": "fix" if fixing else "check", "files": results, "skipped": skipped,
+              "totals": {"files": len(results), "changed": changed, "errors": errors, "warnings": warnings}}
+    if args.json:
+        try:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        except UnicodeEncodeError:
+            print(json.dumps(report, ensure_ascii=True, indent=2))
+    else:
+        for item in results:
+            for f in item["findings"]:
+                print("%s:%d: %s %s %s%s" % (item["path"], f["line"], f["level"], f["code"], f["message"],
+                                             " (fixable with --fix)" if f["fixable"] and not fixing else ""))
+            if item["changed"]:
+                print("fixed: %s" % item["path"])
+        for item in skipped:
+            print("skipped (%s): %s" % (item["reason"], item["path"]))
+        print("fmt --%s: %d files, %d changed, %d errors, %d warnings, %d skipped"
+              % (report["mode"], len(results), changed, errors, warnings, len(skipped)))
+    return 1 if errors else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Agent Skill Studio: create, audit, lint, package and install portable skills")
     parser.add_argument("--version", action="version", version=VERSION)
@@ -1895,6 +2325,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", help="write the JSON report here; the folder must exist; not under skills/, a scanned skill or a scanned root (a folder the scan skips, such as .tmp, is fine); not a secret-looking name")
     p.add_argument("--fail-on", choices=DOCTOR_FAIL_ON, default="error", help="what makes the exit code 1 (default error; new needs --baseline)")
     p.set_defaults(func=cmd_doctor)
+    p = sub.add_parser("fmt", help="check (default) or fix the house style of Markdown files: line endings, key order, quoted metadata (never edits the words of the body)")
+    p.add_argument("paths", nargs="*", help="files or folders (*.md); --fix only touches what is named")
+    p.add_argument("--all", action="store_true", help="every *.md of the repo, report only (not with --fix)")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="list findings, write nothing (default)")
+    mode.add_argument("--fix", action="store_true", help="apply the fixable findings; a file outside a git tree is copied to <file>.bak-<ISO> first")
+    p.add_argument("--profile", choices=PROFILES, default="portable")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_fmt)
     args = parser.parse_args(argv)
     return args.func(args)
 

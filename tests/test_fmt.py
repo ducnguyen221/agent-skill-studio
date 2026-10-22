@@ -1,0 +1,409 @@
+"""SPR-33 TK10: `studio.py fmt --check|--fix` (SPEC 9.12, 9.13, FR18, SC11). `fmt_text` is pure: it never reads or writes a file."""
+import contextlib
+import importlib.util
+import io
+import os
+import re
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("studio_fmt_impl", ROOT / "studio.py")
+studio = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(studio)
+
+SKILL = "---\nname: demo-skill\ndescription: Checks a toy example. Use when testing fmt.\n---\n\n# Demo\n\nBody text here.\n"
+
+
+def run(*argv, root=None, in_git=True):
+    """Run `studio.py fmt ...` in-process; returns (exit code, stdout, stderr). `root` stands in for the repo root,
+    `in_git` for the git-worktree test (the temp folder of this machine sits under a git home)."""
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(contextlib.redirect_stdout(out))
+        stack.enter_context(contextlib.redirect_stderr(err))
+        if root is not None:
+            stack.enter_context(mock.patch.object(studio, "repo_root", lambda start: Path(root)))
+        stack.enter_context(mock.patch.object(studio, "in_git_worktree", lambda path: in_git, create=True))
+        try:
+            code = studio.main(["fmt", *argv])
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else 2
+    return code, out.getvalue(), err.getvalue()
+
+
+def write(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(text.encode("utf-8"))
+    return path
+
+
+def codes(findings):
+    return [f["code"] for f in findings]
+
+
+def body_of(text: str) -> str:
+    text = text.lstrip("\ufeff").replace("\r\n", "\n")
+    lines = text.split("\n")
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                return "\n".join(lines[i + 1:])
+    return text
+
+
+class FmtTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_fmt_check_detects_crlf_bom_trailing(self):
+        for label, text in (("crlf", SKILL.replace("\n", "\r\n")),
+                            ("bom", "\ufeff" + SKILL),
+                            ("trailing", SKILL.replace("Body text here.", "Body text here.   ")),
+                            ("no-final-newline", SKILL.rstrip("\n")),
+                            ("two-final-newlines", SKILL + "\n")):
+            with self.subTest(label):
+                _, found = studio.fmt_text(text, "skill")
+                self.assertEqual(set(codes(found)), {"FT1"}, found)
+                path = write(self.tmp / label / "SKILL.md", text)
+                before = path.read_bytes()
+                code, out, _ = run("--check", str(path))
+                self.assertEqual(code, 1, out)
+                self.assertIn("FT1", out)
+                self.assertEqual(path.read_bytes(), before, "--check must not write")
+
+    def test_fmt_fix_idempotent(self):
+        text = "\ufeff---\r\ndescription: Checks. Use when testing.\r\nname: demo\r\nmetadata:\r\n  version: 1\r\n---\r\n\r\n# Demo  \r\n\r\nBody.   \r\n\r\n\r\n"
+        path = write(self.tmp / "SKILL.md", text)
+        self.assertEqual(run("--fix", str(path))[0], 0)
+        first = path.read_bytes()
+        self.assertNotEqual(first, text.encode("utf-8"))
+        self.assertEqual(run("--fix", str(path))[0], 0)
+        self.assertEqual(path.read_bytes(), first, "second --fix must change no byte")
+        self.assertEqual(run("--check", str(path))[0], 0)
+        again, found = studio.fmt_text(first.decode("utf-8"), "skill")
+        self.assertEqual((again, found), (first.decode("utf-8"), []))
+
+    def test_fmt_fix_never_changes_body_text(self):
+        fence = "`" * 3
+        text = ("---\nmetadata:\n  version: 2\ndescription: Checks. Use when testing.\nname: demo\n---\n\n"
+                "# Demo   \r\n\r\n" + fence + "bash\r\npython studio.py new x  \r\n" + fence + "\r\n\r\n| a | b |\r\n|---|---|\r\n| 1 | 2 |   \r\n\r\nSee C:/Users/x/y.md and ../a/b.md.\r\n\r\n\r\n")
+        new, _ = studio.fmt_text(text, "skill")
+        self.assertEqual(body_of(new).split(), body_of(text).split())
+        path = write(self.tmp / "SKILL.md", text)
+        self.assertEqual(run("--fix", str(path))[0], 0)
+        self.assertEqual(body_of(path.read_bytes().decode("utf-8")).split(), body_of(text).split())
+        self.assertIn("C:/Users/x/y.md", path.read_text(encoding="utf-8"))
+
+    def test_fmt_orders_frontmatter_keys(self):
+        text = ("---\nmetadata:\n  author: x\ndescription: Checks. Use when testing.\nx-extra: 1\nname: demo\n"
+                "allowed-tools: Read\nlicense: MIT\ncompatibility: any\nzeta: 2\n---\n\n# Demo\n")
+        new, found = studio.fmt_text(text, "skill")
+        self.assertIn("FT2", codes(found))
+        keys = [m.group(1) for m in re.finditer(r"(?m)^([A-Za-z][\w-]*):", new.split("---")[1])]
+        self.assertEqual(keys, ["name", "description", "license", "compatibility", "allowed-tools", "metadata", "x-extra", "zeta"])
+        self.assertIn("metadata:\n  author: \"x\"\n", new)  # the indented block travelled with its key
+        self.assertEqual(studio.fmt_text(new, "skill")[1], [])
+        _, found = studio.fmt_text(text, "studio-doc")
+        self.assertNotIn("FT2", codes(found), "FT2 is for skills only")
+
+    def test_fmt_quotes_metadata_values(self):
+        text = "---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  version: 1\n  stable: true\n  note: 'it''s'\n  quoted: \"already\"\n  word: plain\n---\n\n# Demo\n"
+        new, found = studio.fmt_text(text, "skill")
+        self.assertEqual(codes(found).count("FT3"), 4, found)
+        self.assertIn('  version: "1"\n', new)
+        self.assertIn('  stable: "true"\n', new)
+        self.assertIn('  note: "it\'s"\n', new)
+        self.assertIn('  quoted: "already"\n', new)
+        self.assertIn('  word: "plain"\n', new)
+        parsed, problems, _ = studio.parse_frontmatter(new, Path("SKILL.md"))
+        self.assertEqual(problems, [])
+        self.assertEqual(parsed["metadata"], {"version": "1", "stable": "true", "note": "it's", "quoted": "already", "word": "plain"})
+        self.assertNotIn("FT3", codes(studio.fmt_text(text, "studio-doc")[1]), "FT3 is for skills only")
+
+    def test_fmt_doc_missing_min_frontmatter_ft4(self):
+        base = self.tmp / "repo"
+        doc = write(base / "standards" / "X.md", "# Title\n\nBody.\n")
+        self.assertEqual(studio.classify_md(doc, base), "studio-doc")
+        _, found = studio.fmt_text("# Title\n\nBody.\n", "studio-doc")
+        self.assertEqual(codes(found), ["FT4"])
+        self.assertIn("title", found[0]["message"])
+        before = doc.read_bytes()
+        code, out, _ = run("--fix", str(doc), root=base)
+        self.assertEqual(code, 1, out)
+        self.assertIn("FT4", out)
+        self.assertEqual(doc.read_bytes(), before, "--fix never adds frontmatter")
+        _, found = studio.fmt_text("---\ntitle: \"T\"\nstatus: active\n---\n\n# T\n", "studio-doc")
+        self.assertEqual(codes(found), ["FT4"])
+        self.assertIn("updated", found[0]["message"])
+        self.assertEqual(studio.fmt_text("---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\nkind: entry\n---\n\n# T\n", "studio-doc")[1], [])
+
+    def test_fmt_pr1_process_shape(self):
+        base = self.tmp / "repo"
+        bad = write(base / "references" / "NEW_WORKFLOW.md", "# New\n\n## Contents\n\nSome text only.\n")
+        self.assertEqual(studio.classify_md(bad, base), "process")
+        found = studio.check_process_shape("# New\n\nSome text only.\n")
+        self.assertTrue(found and set(codes(found)) == {"PR1"})
+        self.assertTrue(all(f["level"] == "WARN" for f in found))
+        code, out, _ = run("--check", str(bad), root=base)
+        self.assertEqual(code, 0, "PR1 is a warning: the exit code does not change")
+        self.assertIn("PR1", out)
+        en = ("# Name\n\n> **Conclusion:** x.\n\n## When to use / not\n\n- a\n\n## Steps\n\n### Step 1 — Do\n\n- Command: c\n- Expect: e\n- Stop if: s\n\n## Gotchas\n\n- g\n\n## Done when\n\n- d\n")
+        vi = ("# Tên\n\n> **Kết luận:** x.\n\n## Khi nào dùng / Không dùng\n\n- a\n\n## Bước\n\n### Bước 1 — Làm\n\n- Lệnh: c\n- Kỳ vọng: e\n- Dừng nếu: s\n\n## Gotchas\n\n- g\n\n## Kiểm xong\n\n- d\n")
+        self.assertEqual(studio.check_process_shape(en), [])
+        self.assertEqual(studio.check_process_shape(vi), [])
+        self.assertEqual(codes(studio.check_process_shape(en.replace("- Stop if: s\n", ""))), ["PR1"])
+
+    def test_fmt_backup_outside_git(self):
+        path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
+        code, _, _ = run("--fix", str(path), in_git=False)
+        self.assertEqual(code, 0)
+        backups = sorted(p for p in self.tmp.iterdir() if p.name.startswith("SKILL.md.bak-"))
+        self.assertEqual(len(backups), 1, [p.name for p in self.tmp.iterdir()])
+        self.assertEqual(backups[0].read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"), "the backup holds the original bytes")
+        self.assertRegex(backups[0].name, r"^SKILL\.md\.bak-\d{8}T\d{6}")
+        inside = write(self.tmp / "in-git" / "SKILL.md", SKILL.replace("\n", "\r\n"))
+        self.assertEqual(run("--fix", str(inside), in_git=True)[0], 0)
+        self.assertEqual([p.name for p in inside.parent.iterdir()], ["SKILL.md"], "no backup inside a git tree")
+
+    def test_fmt_never_adds_contents(self):
+        text = "---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\n---\n\n# T\n" + "\n".join("## Section %d  \n\ntext\n" % i for i in range(1, 40)) + "\n\n"
+        self.assertGreater(len(text.splitlines()), 100)
+        new, _ = studio.fmt_text(text, "studio-doc")
+        headings = lambda t: [ln.rstrip() for ln in t.splitlines() if ln.startswith("#")]
+        self.assertEqual(headings(new), headings(text))
+        self.assertEqual(sum(1 for ln in new.splitlines() if ln.startswith("## ")), sum(1 for ln in text.splitlines() if ln.startswith("## ")))
+        self.assertNotRegex(new, r"(?im)^##\s+(table of contents|contents|mục lục)")
+
+
+def make_dir_link(test, link: Path, target: Path) -> None:
+    """A directory symlink, or a junction on Windows without the symlink privilege; skips the test when neither works."""
+    try:
+        os.symlink(target, link, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError):
+        pass
+    if os.name == "nt":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True)
+        if link.exists():
+            return
+    test.skipTest("cannot create a symlink or junction here")
+
+
+def tree_snapshot(base: Path):
+    return sorted((p.relative_to(base).as_posix(), p.read_bytes()) for p in base.rglob("*") if p.is_file())
+
+
+class FmtMoreTests(unittest.TestCase):
+    """Negative and edge cases around the nine named tests."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_fmt_clean_file_zero_changes(self):
+        path = write(self.tmp / "SKILL.md", SKILL)
+        before = path.stat().st_mtime_ns
+        for mode in ("--check", "--fix"):
+            code, out, _ = run(mode, str(path), in_git=False)
+            self.assertEqual(code, 0, out)
+        self.assertEqual(path.stat().st_mtime_ns, before, "a clean file is not rewritten")
+        self.assertEqual([p.name for p in self.tmp.iterdir()], ["SKILL.md"], "no backup, no temp file")
+        self.assertEqual(studio.fmt_text(SKILL, "skill"), (SKILL, []))
+        self.assertEqual(studio.fmt_text("", "other"), ("", []))
+
+    def test_fmt_body_with_code_block_and_paths_keeps_every_word(self):
+        fence = "`" * 3
+        body = "# T\n\n" + fence + "powershell\nGet-Content C:\\Users\\x\\a.txt   \n" + fence + "\n\nSee [a](../b/c.md) and `x  y`.\n"
+        new, _ = studio.fmt_text(SKILL.split("# Demo")[0] + body, "skill")
+        self.assertEqual(new.split(), (SKILL.split("# Demo")[0] + body).split())
+        self.assertIn("C:\\Users\\x\\a.txt\n", new)
+
+    def test_fmt_frontmatter_crlf_and_bom_fixed(self):
+        text = "\ufeff---\r\nname: demo\r\ndescription: Checks. Use when testing.\r\nmetadata:\r\n  version: 1\r\n---\r\n\r\n# T\r\n"
+        new, found = studio.fmt_text(text, "skill")
+        self.assertEqual(set(codes(found)), {"FT1", "FT3"})
+        self.assertEqual(new, "---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  version: \"1\"\n---\n\n# T\n")
+
+    def test_fmt_check_exit_1_for_each_code(self):
+        fence = "`" * 3
+        cases = {
+            "FT1": SKILL.replace("Demo", "Demo  "),
+            "FT2": "---\ndescription: Checks. Use when testing.\nname: demo\n---\n\n# T\n",
+            "FT3": SKILL.replace("---\n\n#", "metadata:\n  version: 1\n---\n\n#"),
+            "FT5": "\n\n" + SKILL,
+        }
+        for code_name, text in cases.items():
+            with self.subTest(code_name):
+                path = write(self.tmp / code_name / "SKILL.md", text)
+                code, out, _ = run("--check", str(path))
+                self.assertEqual(code, 1, out)
+                self.assertIn(code_name, out)
+                self.assertEqual(run("--fix", str(path))[0], 0, "fixable: --fix clears it")
+        base = self.tmp / "repo"
+        doc = write(base / "content" / "d.md", "# T\n")
+        self.assertEqual(run("--check", str(doc), root=base)[0], 1)
+        late = write(base / "content" / "late.md", "# T\n\n---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\n---\n\nbody\n")
+        code, out, _ = run("--fix", str(late), root=base)
+        self.assertEqual(code, 1, "frontmatter that starts late is reported, not moved")
+        self.assertIn("FT5", out)
+        quiet = "# T\n\n" + fence + "\n---\nname: x\n---\n" + fence + "\n"
+        self.assertEqual([f["code"] for f in studio.fmt_text(quiet, "skill")[1]], [])
+
+    def test_fmt_fix_skips_symlink_and_junction(self):
+        real = self.tmp / "real"
+        write(real / "SKILL.md", SKILL.replace("\n", "\r\n"))
+        outer = self.tmp / "outer"
+        outer.mkdir()
+        link = outer / "linked"
+        make_dir_link(self, link, real)
+        code, out, _ = run("--fix", str(outer), in_git=True)
+        self.assertEqual(code, 0, out)
+        self.assertIn("skipped (link)", out)
+        self.assertEqual((real / "SKILL.md").read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"), "nothing written through a link")
+        code, out, _ = run("--fix", str(link / "SKILL.md"), root=self.tmp, in_git=True)  # a file reached through a link below the repo root
+        self.assertEqual(code, 0, out)
+        self.assertIn("skipped (link)", out)
+        self.assertEqual((real / "SKILL.md").read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"))
+
+    def test_fmt_given_link_is_skipped(self):
+        real = self.tmp / "real"
+        write(real / "a.md", "# A  \n")
+        link = self.tmp / "lnk"
+        make_dir_link(self, link, real)
+        code, out, _ = run("--fix", str(link))
+        self.assertEqual(code, 0)
+        self.assertIn("skipped (link)", out)
+        self.assertEqual((real / "a.md").read_bytes(), b"# A  \n")
+
+    def test_fmt_missing_path_exit_2(self):
+        code, _, err = run("--check", str(self.tmp / "nope.md"))
+        self.assertEqual(code, 2)
+        self.assertIn("does not exist", err)
+        good = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
+        code, _, _ = run("--fix", str(good), str(self.tmp / "nope.md"))
+        self.assertEqual(code, 2)
+        self.assertEqual(good.read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"), "nothing is written when a path is missing")
+        self.assertEqual(run()[0], 2, "no path and no --all")
+        self.assertEqual(run("--check", "--fix", str(good))[0], 2, "--check and --fix exclude each other")
+
+    def test_fmt_all_does_not_touch_runs_or_pruned_dirs(self):
+        base = self.tmp / "repo"
+        for rel in ("evals/s/runs/r1/out.md", "evals/s/cases.md", ".tmp/x.md", ".worktrees/w/y.md", "dist/z.md", "node_modules/m/n.md", ".git/g.md", "docs/ok.md"):
+            write(base / rel, "# T  \n")
+        before = tree_snapshot(base)
+        code, out, _ = run("--all", root=base)
+        self.assertEqual(code, 1, out)  # the two reachable files have trailing whitespace
+        self.assertEqual(tree_snapshot(base), before, "--all only reports")
+        listed = [str(Path(f["path"]).relative_to(base).as_posix()) for f in __import__("json").loads(run("--all", "--json", root=base)[1])["files"]]
+        self.assertEqual(listed, ["docs/ok.md", "evals/s/cases.md"])
+        code, _, err = run("--all", "--fix", root=base)
+        self.assertEqual(code, 2)
+        self.assertIn("--all only reports", err)
+        self.assertEqual(tree_snapshot(base), before)
+
+    def test_fmt_skips_secret_names_cloud_zone_and_big_files(self):
+        base = self.tmp / "repo"
+        write(base / ".env.md", "# S  \n")
+        write(base / "auth.json.md", "# ok  \n")
+        write(base / "OneDrive - X" / "a.md", "# C  \n")
+        write(base / ".secret" / "s.md", "# C  \n")
+        write(base / "big.md", "# B  \n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))
+        (base / "bad.md").write_bytes(b"\xff\xfe\x00bad")
+        before = tree_snapshot(base)
+        code, out, _ = run("--fix", str(base), in_git=True)
+        after = dict(tree_snapshot(base))
+        for name in (".env.md", "OneDrive - X/a.md", ".secret/s.md", "big.md", "bad.md"):
+            self.assertEqual(after[name], dict(before)[name], name)
+        self.assertEqual(after["auth.json.md"], b"# ok\n")
+        for reason in ("secret-name", "cloud-or-secret-zone", "limit", "not-utf8"):
+            self.assertIn("skipped (%s)" % reason, out)
+
+    def test_fmt_json_report_schema(self):
+        path = write(self.tmp / "SKILL.md", SKILL.replace("Demo", "Demo "))
+        code, out, _ = run("--check", "--json", str(path))
+        report = __import__("json").loads(out)
+        self.assertEqual(code, 1)
+        self.assertEqual(set(report), {"schema", "mode", "files", "skipped", "totals"})
+        self.assertEqual((report["schema"], report["mode"]), (1, "check"))
+        self.assertEqual(set(report["files"][0]), {"path", "kind", "changed", "findings"})
+        self.assertEqual(set(report["files"][0]["findings"][0]), {"level", "code", "line", "message", "fixable"})
+        self.assertEqual(report["totals"], {"files": 1, "changed": 0, "errors": 1, "warnings": 0})
+
+    def test_fmt_refuses_to_write_if_words_would_change(self):
+        path = write(self.tmp / "SKILL.md", SKILL.replace("Demo", "Demo "))
+        before = path.read_bytes()
+        with mock.patch.object(studio, "fmt_text", lambda text, kind, profile="portable": (text.replace("Body", "Other").rstrip() + "\n", [])):
+            code, out, _ = run("--fix", str(path))
+        self.assertIn("skipped (would-change-text)", out)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_fmt_write_failure_exit_2(self):
+        path = write(self.tmp / "SKILL.md", SKILL.replace("Demo", "Demo "))
+        with mock.patch.object(studio, "_write_fixed", side_effect=OSError(13, "denied")):
+            code, _, err = run("--fix", str(path))
+        self.assertEqual(code, 2)
+        self.assertIn("cannot write", err)
+
+    def test_fmt_backup_name_never_overwrites(self):
+        path = write(self.tmp / "SKILL.md", "# T  \n")
+        fixed = {"stamp": None}
+        real_now = studio.datetime
+
+        class Fixed(real_now):
+            @classmethod
+            def now(cls, tz=None):
+                return real_now(2026, 10, 23, 1, 2, 3)
+
+        with mock.patch.object(studio, "datetime", Fixed):
+            studio._write_fixed(path, b"# T\n", True)
+            path.write_bytes(b"# T  \n")
+            studio._write_fixed(path, b"# T\n", True)
+        self.assertEqual(sorted(p.name for p in self.tmp.iterdir()), ["SKILL.md", "SKILL.md.bak-20261023T010203", "SKILL.md.bak-20261023T010203-1"])
+
+    def test_in_git_worktree_marker(self):
+        (self.tmp / "a" / "b").mkdir(parents=True)
+        (self.tmp / "a" / ".git").mkdir()
+        self.assertTrue(studio.in_git_worktree(self.tmp / "a" / "b" / "f.md"))
+        (self.tmp / "c").mkdir()
+        (self.tmp / "c" / ".git").write_text("gitdir: x\n", encoding="utf-8")  # a linked worktree has a .git file
+        self.assertTrue(studio.in_git_worktree(self.tmp / "c" / "f.md"))
+
+    def test_fmt_text_rejects_unknown_profile_and_accepts_opcos(self):
+        with self.assertRaises(ValueError):
+            studio.fmt_text(SKILL, "skill", "nope")
+        self.assertEqual(studio.fmt_text(SKILL, "skill", "opcos"), (SKILL, []))
+        self.assertEqual(run("--check", "--profile", "opcos", str(write(self.tmp / "SKILL.md", SKILL)))[0], 0)
+
+    def test_classify_md(self):
+        base = self.tmp
+        self.assertEqual(studio.classify_md(base / "x" / "SKILL.vi.md", base), "skill")
+        self.assertEqual(studio.classify_md(base / "standards" / "A.md", base), "studio-doc")
+        self.assertEqual(studio.classify_md(base / "content" / "A.md", base), "studio-doc")
+        self.assertEqual(studio.classify_md(base / "content" / "exemplar" / "A.md", base), "other")
+        self.assertEqual(studio.classify_md(base / "templates" / "README.md", base), "studio-doc")
+        self.assertEqual(studio.classify_md(base / "templates" / "project" / "README.md", base), "other")
+        self.assertEqual(studio.classify_md(base / "references" / "PROCESS_TEMPLATE.md", base), "process")
+        self.assertEqual(studio.classify_md(base / "references" / "AUDIT_WORKFLOW.md", base), "process")
+        self.assertEqual(studio.classify_md(base / "standards" / "A.md", None), "other")
+        self.assertEqual(studio.classify_md(base / "standards" / "A.md", self.tmp / "elsewhere"), "other")
+
+    def test_shipped_process_template_matches_pr1(self):
+        path = ROOT / "templates" / "skill-template-full" / "references" / "PROCESS_TEMPLATE.md"
+        self.assertEqual(studio.check_process_shape(path.read_text(encoding="utf-8")), [])
+
+    def test_fmt_misplaced_blank_lines_before_frontmatter(self):
+        new, found = studio.fmt_text("\n\n" + SKILL, "skill")
+        self.assertEqual(codes(found), ["FT5"])
+        self.assertEqual(new, SKILL)
+        self.assertEqual(studio.fmt_text("\n\n# plain\n", "other"), ("\n\n# plain\n", []), "blank lines are only removed ahead of a frontmatter")
+
+
+if __name__ == "__main__":
+    unittest.main()
