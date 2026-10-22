@@ -117,7 +117,7 @@ FMT_STEP_LABELS = tuple(
 FMT_PRUNE_DIRS = frozenset({".git", ".tmp", ".worktrees", "dist", "node_modules", "__pycache__", ".venv", ".pytest_cache", ".mypy_cache"})
 FMT_FRONT_SEARCH_LINES = 60  # a frontmatter block that starts later than this is not looked for
 FMT_GIT_TIMEOUT = 5  # seconds for each git question of in_git_worktree
-FMT_BLOCKING_REASONS = frozenset({"would-change-text", "not-utf8", "unreadable", "too-many-folders"})  # skipped for these: exit 1 even inside a folder
+FMT_BLOCKING_REASONS = frozenset({"would-change-text", "not-utf8", "unreadable", "too-many-folders", "limit"})  # skipped for these: exit 1 even inside a folder
 
 
 def emit(level: str, code: str, path: Path, line: int, message: str) -> dict:
@@ -1860,9 +1860,9 @@ def cmd_doctor(args) -> int:
 
 
 def _fm_bounds(lines: list) -> tuple | None:
-    """(0, closing index) when line 0 is '---' and a closing '---' follows, else None. The closing line is '---' in column 0 (blanks after it
-    are allowed): an indented '---' inside a block scalar does not close the frontmatter."""
-    if not lines or lines[0].strip() != "---":
+    """(0, closing index) when line 0 is '---' and a closing '---' follows, else None. Both lines are '---' in column 0 (blanks after them
+    are allowed): an indented '---' neither opens the frontmatter nor, inside a block scalar, closes it."""
+    if not lines or lines[0].rstrip() != "---":
         return None
     for index in range(1, len(lines)):
         if lines[index].rstrip() == "---":
@@ -1900,7 +1900,7 @@ def _looks_like_front(lines: list) -> bool:
 def _quote_meta(line: str) -> tuple[str, str]:
     """(the line, status) for one line of a metadata block. `fixed`: the value is now in double quotes. `stuck`: the value is not a plain
     string fmt can quote safely (a comment, a block or flow marker, an unmatched quote) and the line stays as it is. `ok`: nothing to do."""
-    match = FMT_META_LINE_RE.match(line.rstrip())
+    match = FMT_META_LINE_RE.match(line.rstrip(" \t"))  # only the blanks FT1 removes: a no-break space belongs to the value
     if not match:
         return line, "ok"
     value = match.group(2)
@@ -1944,7 +1944,9 @@ def fmt_text(text: str, kind: str, profile: str = "portable") -> tuple[str, list
     lines = wanted.split("\n")[:-1] if wanted else []
 
     lead = next((i for i, line in enumerate(lines) if line.strip()), 0)
-    if lead and _looks_like_front(lines[lead:]):
+    if kind != "other" and lines and lines[lead].strip() == "---" and lines[lead] != "---" and _looks_like_front(["---"] + lines[lead + 1:]):
+        add("FT5", lead + 1, "the opening '---' of the frontmatter must be in column 0 (line %d is indented)" % (lead + 1), False)
+    elif lead and _looks_like_front(lines[lead:]):
         add("FT5", 1, "%d blank line(s) before the frontmatter; it must start on line 1" % lead, True)
         lines = lines[lead:]
     elif kind != "other" and not (lines and lines[0] == "---"):
@@ -2066,24 +2068,68 @@ def classify_md(path: Path, root: Path | None) -> str:
     return "other"
 
 
+def _same_folder(a, b) -> bool:
+    """True when the folders `a` and `b` are the same one: the same spelling (ignoring case on Windows) or, when both exist, the same inode."""
+    if os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b)):
+        return True
+    try:
+        return os.path.samefile(a, b)
+    except (OSError, ValueError):
+        return False
+
+
+def _trusted_program(name: str, avoid: list) -> str | None:
+    """Absolute path of the program `name`, found only in the PATH entries that are absolute folders other than those in `avoid`; None when
+    there is no such program. Windows looks for a bare name in the current folder of the process before the PATH, and the `cwd=` of a
+    subprocess does not change that, so a program placed in the folder being worked on would run in place of the real one: the program is
+    named by its full path instead. An empty entry, '.', a relative entry and an entry with no drive letter never count; on Windows only
+    a .exe or .com file does (a .bat or .cmd is a script, and nothing here may run one)."""
+    suffixes = (".exe", ".com") if os.name == "nt" else ("",)
+    for raw in os.environ.get("PATH", "").split(os.pathsep):
+        entry = raw.strip().strip('"')
+        if not entry or not os.path.isabs(entry) or (os.name == "nt" and not os.path.splitdrive(entry)[0]):
+            continue
+        if any(_same_folder(entry, other) for other in avoid):
+            continue
+        for suffix in suffixes:
+            candidate = os.path.join(entry, name + suffix)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+    return None
+
+
 def in_git_worktree(path: Path) -> bool:
-    """True only when git itself holds `path` safely: it lies inside a work tree, is tracked, and has no change since the last commit, so
-    `git checkout` brings the old bytes back. An untracked or ignored file, a file with uncommitted changes, a bare `.git` name that is no
-    repository (as C:/Users/<me>/.git on this machine), and any failure (no git, time-out, unreadable) all give False: fmt then makes a backup."""
+    """True only when git itself holds `path` safely: it lies inside a work tree, is tracked, git is watching it (no assume-unchanged or
+    skip-worktree flag), it has no change since the last commit, and its bytes are those of the commit, so `git checkout` brings the old
+    bytes back. An untracked or ignored file, a file with uncommitted changes or one whose change git was told to ignore, a bare `.git`
+    name that is no repository (as C:/Users/<me>/.git on this machine), and any failure (no git on a safe PATH entry, time-out,
+    unreadable) all give False: fmt then makes a backup."""
     here = Path(os.path.abspath(path))
-    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0")
+    try:
+        in_use = os.getcwd()
+    except OSError:
+        in_use = None
+    git = _trusted_program("git", [x for x in (in_use, os.fspath(here.parent)) if x])
+    if git is None:
+        return False
+    env = {k: v for k, v in os.environ.items() if k.upper() != "NODEFAULTCURRENTDIRECTORYINEXEPATH"}
+    env.update(GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", NoDefaultCurrentDirectoryInExePath="1")
 
     def ask(*args: str) -> "subprocess.CompletedProcess":
-        return subprocess.run(["git", "--literal-pathspecs", *args], cwd=os.fspath(here.parent), env=env, stdin=subprocess.DEVNULL,
+        return subprocess.run([git, "--literal-pathspecs", *args], cwd=os.fspath(here.parent), env=env, stdin=subprocess.DEVNULL,
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=FMT_GIT_TIMEOUT, check=False)
 
     try:
         inside = ask("rev-parse", "--is-inside-work-tree")
         if inside.returncode != 0 or inside.stdout.strip() != b"true":
             return False
-        if ask("ls-files", "--error-unmatch", "--", here.name).returncode != 0:
+        listed = ask("ls-files", "-v", "--error-unmatch", "--", here.name)  # "H <name>"; a lower-case h or an S is a flag that hides changes
+        if listed.returncode != 0 or not listed.stdout.startswith(b"H "):
             return False
-        return ask("diff", "--quiet", "HEAD", "--", here.name).returncode == 0
+        if ask("diff", "--quiet", "HEAD", "--", here.name).returncode != 0:
+            return False
+        committed, on_disk = ask("rev-parse", "--verify", "-q", "HEAD:./" + here.name), ask("hash-object", "--", here.name)
+        return committed.returncode == 0 and on_disk.returncode == 0 and bool(committed.stdout.strip()) and committed.stdout == on_disk.stdout
     except (OSError, ValueError, subprocess.SubprocessError):
         return False
 
@@ -2218,20 +2264,20 @@ def _write_fixed(path: Path, data: bytes, backup: bool) -> None:
     before anything is made. Whatever this call made is removed again when it fails; the original file stays as it was."""
     if not os.access(path, os.W_OK):
         raise PermissionError(13, "file is read-only", os.fspath(path))
-    made_backup = None
-    if backup:
-        stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        target, count = path.with_name("%s.bak-%s" % (path.name, stamp)), 1
-        while os.path.lexists(target):
-            target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
-            count += 1
-        shutil.copy2(path, target)
-        made_backup = target
-    handle, name = tempfile.mkstemp(dir=os.fspath(path.parent), prefix=".%s." % path.name, suffix=".fmt-tmp")
-    temp = Path(name)
-    done = False
+    made_backup, temp, handle, done = None, None, None, False
     try:
-        with os.fdopen(handle, "wb") as out:
+        if backup:
+            stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+            target, count = path.with_name("%s.bak-%s" % (path.name, stamp)), 1
+            while os.path.lexists(target):
+                target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
+                count += 1
+            made_backup = target  # named before the copy, so that a copy that stops half way is removed too
+            shutil.copy2(path, target)
+        handle, name = tempfile.mkstemp(dir=os.fspath(path.parent), prefix=".%s." % path.name, suffix=".fmt-tmp")
+        temp = Path(name)
+        out, handle = os.fdopen(handle, "wb"), None
+        with out:
             out.write(data)
             out.flush()
             os.fsync(out.fileno())
@@ -2243,7 +2289,13 @@ def _write_fixed(path: Path, data: bytes, backup: bool) -> None:
         done = True
     finally:
         if not done:
-            _remove_quietly(temp)
+            if handle is not None:
+                try:
+                    os.close(handle)
+                except OSError:
+                    pass
+            if temp is not None:
+                _remove_quietly(temp)
             if made_backup is not None:
                 _remove_quietly(made_backup)
 
@@ -2306,8 +2358,9 @@ def cmd_fmt(args) -> int:
         warnings += sum(1 for f in found if f["level"] == "WARN")
         results.append({"path": str(path), "kind": kind, "changed": wrote,
                         "findings": [dict(f, fixable=f.get("fixable", False)) for f in found]})
-    # A file or folder that was asked for (or could not be read, or was refused) and so was not checked keeps "exit 0 = everything is in house
-    # style" true: it makes the exit code 1. A file left out while walking a folder (cloud, link, secret name, over the size limit) does not.
+    # A file or folder that was asked for (or could not be read, was refused, or is over the size limit) and so was not checked keeps "exit 0 =
+    # everything is in house style" true: it makes the exit code 1. A file left out while walking a folder because it is cloud, a link, a
+    # secret name or in a secret zone is left out on purpose and does not.
     blocked = {id(item) for item in skipped if item["reason"] in FMT_BLOCKING_REASONS or os.path.normcase(os.path.abspath(item["path"])) in named}
     report = {"schema": 1, "mode": "fix" if fixing else "check", "files": results, "skipped": skipped,
               "totals": {"files": len(results), "changed": changed, "errors": errors, "warnings": warnings, "blocked": len(blocked)}}
@@ -2324,8 +2377,8 @@ def cmd_fmt(args) -> int:
             if item["changed"]:
                 print("fixed: %s" % item["path"])
         for item in skipped:
-            print("skipped (%s): %s%s" % (item["reason"], item["path"], "  [not checked: exit 1]" if id(item) in blocked else ""))
-        print("fmt --%s: %d files, %d changed, %d errors, %d warnings, %d skipped, %d of them not checked"
+            print("skipped (%s): %s%s" % (item["reason"], item["path"], "  [blocks the exit]" if id(item) in blocked else ""))
+        print("fmt --%s: %d files, %d changed, %d errors, %d warnings, %d skipped, %d of them block the exit"
               % (report["mode"], len(results), changed, errors, warnings, len(skipped), len(blocked)))
     return 1 if errors or blocked else 0
 

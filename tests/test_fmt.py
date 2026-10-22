@@ -391,6 +391,244 @@ class FmtMoreTests(unittest.TestCase):
         self.assertEqual(studio.fmt_text("\n\n# plain\n", "other"), ("\n\n# plain\n", []), "blank lines are only removed ahead of a frontmatter")
 
 
+# ---- round 3 (Opus re-review of round 2) --------------------------------------------------------------------------------------------
+
+def make_fake_git(folder: Path) -> Path:
+    """A file that looks like a git program to a PATH lookup and is never run: tests that use it mock subprocess.run."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / ("git.exe" if os.name == "nt" else "git")
+    path.write_bytes(b"MZ-not-really-git" if os.name == "nt" else b"#!/bin/sh\nexit 1\n")
+    path.chmod(0o755)
+    return path
+
+
+def recording_run(calls):
+    def fake(argv, **kwargs):
+        calls.append((list(argv), kwargs))
+        return subprocess.CompletedProcess(argv, 1, stdout=b"", stderr=b"")
+    return fake
+
+
+def chdir(test, folder: Path) -> None:
+    before = os.getcwd()
+    os.chdir(folder)
+    test.addCleanup(os.chdir, before)
+
+
+def same(a, b) -> bool:
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+class FmtGitProgramTests(unittest.TestCase):
+    """in_git_worktree runs the git found in the absolute PATH entries only. Windows looks in the current folder of the process before the
+    PATH for a bare name, and `cwd=` does not change that, so a git.exe planted in the folder being formatted used to run in place of git."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def ask(self, target: Path, path_value: str):
+        calls = []
+        with mock.patch.dict(os.environ, {"PATH": path_value}), mock.patch.object(studio.subprocess, "run", recording_run(calls)):
+            result = studio.in_git_worktree(target)
+        return result, calls
+
+    def test_in_git_worktree_runs_git_by_absolute_path_with_a_safe_environment(self):
+        good = make_fake_git(self.tmp / "bin")
+        target = write(self.tmp / "work" / "f.md", "# F\n")
+        before = dict(os.environ)
+        result, calls = self.ask(target, str(good.parent))
+        self.assertFalse(result)
+        self.assertTrue(calls, "git was asked")
+        argv, kwargs = calls[0]
+        self.assertTrue(os.path.isabs(argv[0]), "never a bare name: %r" % argv[0])
+        self.assertTrue(same(argv[0], good))
+        env = {k.upper(): v for k, v in kwargs["env"].items()}
+        self.assertEqual(env.get("NODEFAULTCURRENTDIRECTORYINEXEPATH"), "1")
+        self.assertEqual(dict(os.environ), before, "the child gets the variable, not this process")
+
+    def test_in_git_worktree_ignores_relative_empty_and_current_folder_path_entries(self):
+        good = make_fake_git(self.tmp / "bin")
+        cwd = self.tmp / "cwd"
+        work = self.tmp / "work"
+        make_fake_git(cwd)
+        make_fake_git(cwd / "rel")
+        make_fake_git(work)
+        target = write(work / "f.md", "# F\n")
+        chdir(self, cwd)
+        bad = ["", " ", ".", "rel", str(cwd), str(work)]
+        if os.name == "nt":
+            bad.append(os.path.splitdrive(str(cwd / "rel"))[1])  # rooted but with no drive letter: it means 'on the current drive'
+        result, calls = self.ask(target, os.pathsep.join(bad + [str(good.parent)]))
+        self.assertTrue(calls)
+        self.assertTrue(same(calls[0][0][0], good), calls[0][0][0])
+        for entry in bad:
+            result, calls = self.ask(target, entry)
+            self.assertEqual((result, calls), (False, []), "no usable git: nothing is run, and fmt then makes a backup (%r)" % entry)
+
+    def test_in_git_worktree_with_no_git_on_the_path_runs_nothing(self):
+        target = write(self.tmp / "work" / "f.md", "# F\n")
+        self.assertEqual(self.ask(target, ""), (False, []))
+        self.assertEqual(self.ask(target, str(self.tmp / "empty")), (False, []))
+
+    @unittest.skipUnless(os.name == "nt" and shutil.which("git") and shutil.which("whoami"), "needs Windows, git and whoami.exe")
+    def test_a_program_named_git_in_the_current_folder_is_not_run(self):
+        clean_git_env(self)
+        repo = make_repo(self.tmp)
+        shutil.copyfile(shutil.which("whoami"), repo / "git.exe")  # a harmless program to stand in for a planted one
+        chdir(self, repo)
+        patcher = mock.patch.dict(os.environ)  # a shell may set this variable, which hides the hole; the hole is there when it is not set
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("NoDefaultCurrentDirectoryInExePath", None)
+        planted = subprocess.run(["git", "--version"], capture_output=True, stdin=subprocess.DEVNULL)
+        self.assertNotIn(b"git version", planted.stdout, "the setup: a bare 'git' really does find the planted git.exe first")
+        self.assertTrue(studio.in_git_worktree(repo / "tracked.md"), "the real git answered; the planted git.exe in the current folder did not")
+
+
+@unittest.skipUnless(shutil.which("git"), "git is needed")
+class FmtGitCleanTests(unittest.TestCase):
+    """A file is 'held by git' only if git can bring back exactly the bytes fmt replaces: not for a file whose change git was told to ignore."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        clean_git_env(self)
+
+    def test_fmt_backup_when_the_change_is_hidden_from_git(self):
+        for flag in ("--assume-unchanged", "--skip-worktree"):
+            with self.subTest(flag):
+                base = self.tmp / flag.strip("-")
+                base.mkdir()
+                repo = make_repo(base)
+                git(repo, "update-index", flag, "tracked.md")
+                (repo / "tracked.md").write_bytes(b"# edited by hand  \n")  # a local change git does not look for
+                self.assertFalse(studio.in_git_worktree(repo / "tracked.md"), "git cannot restore this file: keep the bytes in a backup")
+                self.assertEqual(run("--fix", str(repo / "tracked.md"), in_git=None)[0], 0)
+                (backup,) = backups_of(repo)
+                self.assertTrue(backup.name.startswith("tracked.md.bak-"))
+                self.assertEqual(backup.read_bytes(), b"# edited by hand  \n", "the bytes from before fmt are not lost")
+                self.assertEqual((repo / "tracked.md").read_bytes(), b"# edited by hand\n")
+
+    def test_in_git_worktree_false_for_any_flagged_file_even_unchanged(self):
+        for flag in ("--assume-unchanged", "--skip-worktree"):
+            with self.subTest(flag):
+                base = self.tmp / flag.strip("-")
+                base.mkdir()
+                repo = make_repo(base)
+                self.assertTrue(studio.in_git_worktree(repo / "tracked.md"))
+                git(repo, "update-index", flag, "tracked.md")
+                self.assertFalse(studio.in_git_worktree(repo / "tracked.md"), "a flag means git is not watching this file")
+
+    def test_in_git_worktree_false_when_git_has_a_stale_view_of_the_file(self):
+        repo = make_repo(self.tmp)
+        path = repo / "tracked.md"
+        old_time = time.time_ns() - 3600 * 10 ** 9
+        os.utime(path, ns=(old_time, old_time))  # older than the index, or git would not trust the time (racy-git) and read the bytes
+        git(repo, "status", "--short")  # refresh the index so that it stores the size and time of the file as it is now
+        stat_before = os.stat(path)
+        size = stat_before.st_size
+        path.write_bytes(b"# X\n".ljust(size - 1, b"x") + b"\n")  # other bytes, same size
+        os.utime(path, ns=(stat_before.st_atime_ns, stat_before.st_mtime_ns))  # and the same time: git diff sees no change
+        self.assertEqual(subprocess.run(["git", "diff", "--quiet", "HEAD", "--", "tracked.md"], cwd=repo, stdin=subprocess.DEVNULL).returncode, 0,
+                         "the setup: git's own quick check is fooled")
+        self.assertFalse(studio.in_git_worktree(path), "compare the bytes with the commit, not only the stored size and time")
+
+    def test_in_git_worktree_true_when_only_line_endings_differ_under_autocrlf(self):
+        repo = make_repo(self.tmp)
+        git(repo, "config", "core.autocrlf", "true")
+        (repo / "tracked.md").write_bytes(b"# T  \r\n")  # what a Windows checkout looks like
+        self.assertTrue(studio.in_git_worktree(repo / "tracked.md"), "the blob git would restore is the committed one")
+
+
+class FmtRound3Tests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    # (3) a metadata value ends where the line ends, not at the first Unicode space
+    def test_fmt_keeps_a_unicode_space_at_the_end_of_a_metadata_value(self):
+        self.assertEqual(studio._quote_meta("  v: abc\u00a0"), ('  v: "abc\u00a0"', "fixed"))
+        text = "---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  v: abc\u00a0\n---\n\n# T\n"
+        new, found = studio.fmt_text(text, "skill")
+        self.assertEqual(codes(found), ["FT3"])
+        self.assertEqual(new, text.replace("v: abc\u00a0", 'v: "abc\u00a0"'))
+        self.assertEqual(studio.fmt_text(new, "skill")[1], [])
+
+    # (4) a file over the size limit was not checked: exit 1, whichever way it was reached
+    def test_fmt_file_over_the_size_limit_in_a_folder_is_exit_1(self):
+        write(self.tmp / "ok.md", "# Ok\n")
+        write(self.tmp / "big.md", "# B  \n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))  # trailing spaces: an FT1 nobody saw
+        for mode in ("--check", "--fix"):
+            with self.subTest(mode):
+                code, out, _ = run(mode, str(self.tmp), in_git=True)
+                self.assertEqual(code, 1, out)
+                self.assertIn("skipped (limit)", out)
+                self.assertIn("1 of them block the exit", out)
+                self.assertNotIn("not checked", out, "a summary that says 'not checked' next to exit 0 contradicts itself")
+        report = __import__("json").loads(run("--check", "--json", str(self.tmp), in_git=True)[1])
+        self.assertEqual((report["totals"]["blocked"], report["totals"]["errors"]), (1, 0))
+
+    def test_fmt_summary_names_what_blocks_the_exit(self):
+        write(self.tmp / "ok.md", "# Ok\n")
+        code, out, _ = run("--check", str(self.tmp), in_git=True)
+        self.assertEqual(code, 0, out)
+        self.assertIn("0 skipped, 0 of them block the exit", out)
+
+    # (5) the opening '---' is in column 0, like the closing one
+    def test_fmt_indented_opening_line_is_reported_not_rewritten(self):
+        for opening in (" ---", "\t---", "  ---"):
+            with self.subTest(repr(opening)):
+                text = SKILL.replace("---\nname", opening + "\nname", 1)
+                self.assertIsNone(studio._fm_bounds(text.split("\n")))
+                new, found = studio.fmt_text(text, "skill")
+                self.assertEqual(codes(found), ["FT5"])
+                self.assertFalse(found[0]["fixable"])
+                self.assertEqual(found[0]["line"], 1)
+                self.assertEqual(new, text, "fmt does not guess: the bytes stay as they are")
+                path = write(self.tmp / "SKILL.md", text)
+                self.assertEqual(run("--check", str(path), in_git=True)[0], 1)
+                self.assertEqual(run("--fix", str(path), in_git=True)[0], 1)
+                self.assertEqual(path.read_bytes(), text.encode("utf-8"))
+
+    def test_fmt_indented_dashes_that_are_no_frontmatter_stay_quiet(self):
+        text = " ---\nJust a rule line and a paragraph.\n---\n\n# T\n"
+        self.assertEqual(studio.fmt_text(text, "skill"), (text, []))
+        self.assertEqual(studio.fmt_text(" ---\nname: x\n---\n", "other"), (" ---\nname: x\n---\n", []))
+
+    def test_fmt_indented_opening_after_blank_lines_is_reported_too(self):
+        text = "\n\n" + SKILL.replace("---\nname", " ---\nname", 1)
+        new, found = studio.fmt_text(text, "skill")
+        self.assertEqual(codes(found), ["FT5"])
+        self.assertEqual(new, text)
+
+    # (6) a failure of the temp file also removes the backup that was just made
+    def test_fmt_temp_file_failure_removes_the_backup(self):
+        path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
+        before = path.read_bytes()
+        with mock.patch.object(studio.tempfile, "mkstemp", side_effect=PermissionError(13, "denied")):
+            code, _, err = run("--fix", str(path), in_git=False)
+        self.assertEqual(code, 2, err)
+        self.assertIn("cannot write", err)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual([p.name for p in self.tmp.iterdir()], ["SKILL.md"], "no backup left behind")
+
+    def test_fmt_failed_copy_removes_the_half_made_backup(self):
+        path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
+
+        def half_copy(source, target, **kwargs):
+            Path(target).write_bytes(b"half")
+            raise OSError(28, "no space")
+
+        with mock.patch.object(studio.shutil, "copy2", half_copy):
+            code, _, err = run("--fix", str(path), in_git=False)
+        self.assertEqual(code, 2, err)
+        self.assertEqual([p.name for p in self.tmp.iterdir()], ["SKILL.md"])
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -679,18 +917,17 @@ class FmtExitCodeTests(unittest.TestCase):
 
     def test_fmt_skips_found_while_walking_a_folder_stay_exit_0_but_are_listed(self):
         write(self.tmp / "ok.md", "# Ok\n")
-        write(self.tmp / "big.md", "# B\n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))
         write(self.tmp / ".env.md", "# S\n")
         write(self.tmp / "OneDrive - X" / "a.md", "# C\n")
         real = write(self.tmp / "elsewhere" / "r.md", "# R\n")
         make_dir_link(self, self.tmp / "lnk", real.parent)
         code, out, _ = run("--check", str(self.tmp), in_git=True)
         self.assertEqual(code, 0, out)
-        for reason in ("limit", "secret-name", "cloud-or-secret-zone", "link"):
+        for reason in ("secret-name", "cloud-or-secret-zone", "link"):
             self.assertIn("skipped (%s)" % reason, out)
         report = __import__("json").loads(run("--check", "--json", str(self.tmp), in_git=True)[1])
         self.assertEqual(report["totals"]["blocked"], 0)
-        self.assertGreaterEqual(len(report["skipped"]), 4)
+        self.assertGreaterEqual(len(report["skipped"]), 3)
 
     def test_fmt_json_counts_the_files_that_block_the_exit(self):
         bad = self.tmp / "bad.md"
