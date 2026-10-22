@@ -257,6 +257,15 @@ class ForcingWordsTest(StudioCase):
         found, text = self.ct10("# Skill\n\n## MUST read first")
         self.assertEqual([f["line"] for f in found], [text.index("## MUST read first") + 1])
 
+    def test_ct10_reason_word_hidden_in_code_link_url_or_comment_does_not_count(self):
+        # the reason must sit in the same prose the forcing word is read from (code span, link, URL and HTML comment are not prose)
+        for number, line in enumerate(("You MUST run `because`", "MUST (see [because](x))", "NEVER skip https://example.com/because/x",
+                                       "ALWAYS check <!-- because --> it", "MUST run `to avoid` it", "NEVER push [vì](y.md)")):
+            found, text = self.ct10("# Skill\n\n" + line, "hid-%d" % number)
+            self.assertEqual([f["line"] for f in found], [text.index(line) + 1], line)
+        for number, line in enumerate(("You MUST run `x` because it only reads.", "NEVER push [docs](x.md) vì repo dùng chung.")):
+            self.assertEqual(self.ct10("# Skill\n\n" + line, "ok-%d" % number)[0], [], line)
+
     def test_ct10_ignores_lowercase_and_substrings(self):
         self.assertEqual(self.ct10("# Skill\n\nYou must run it. MUSTARD and ALWAYSON are words.")[0], [])
 

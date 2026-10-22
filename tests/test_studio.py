@@ -1377,5 +1377,195 @@ class AgentskillsExportTests(unittest.TestCase):
                 self.assertTrue(survivor.is_file(), label)
 
 
+class ExportFixtureHardeningTests(unittest.TestCase):
+    """The export must refuse a secret-named, zoned, linked or hard-linked fixture from names and lstat alone: no open, stat or copy of it, no file written."""
+
+    call = AgentskillsExportTests.call
+    make_eval = AgentskillsExportTests.make_eval
+
+    def export_traced(self, folder, out, watch):
+        """Run the export; return (code, findings, stats, touched) where touched lists every open/stat/copyfile aimed at a path whose last part is in `watch`."""
+        import builtins
+        from unittest import mock
+        touched = []
+        real_open, real_stat, real_path_stat, real_copy = builtins.open, os.stat, Path.stat, shutil.copyfile
+
+        def seen(arg):
+            try:
+                return os.path.basename(os.fspath(arg)).lower() in watch
+            except TypeError:
+                return False
+
+        def spy_open(file, *args, **kwargs):
+            if seen(file):
+                touched.append(("open", str(file)))
+            return real_open(file, *args, **kwargs)
+
+        def spy_stat(path, *args, **kwargs):
+            if seen(path) and kwargs.get("follow_symlinks", True):  # stat(follow_symlinks=False) is lstat: metadata of the entry itself, allowed
+                touched.append(("stat", str(path)))
+            return real_stat(path, *args, **kwargs)
+
+        def spy_path_stat(self, *args, **kwargs):
+            if seen(self) and kwargs.get("follow_symlinks", True):
+                touched.append(("Path.stat", str(self)))
+            return real_path_stat(self, *args, **kwargs)
+
+        def spy_copy(src, dst, *args, **kwargs):
+            if seen(src):
+                touched.append(("copyfile", str(src)))
+            return real_copy(src, dst, *args, **kwargs)
+        with mock.patch("builtins.open", spy_open), mock.patch.object(os, "stat", spy_stat), \
+                mock.patch.object(Path, "stat", spy_path_stat), mock.patch.object(studio.shutil, "copyfile", spy_copy):
+            code, findings, stats = studio.export_agentskills(folder, "demo-skill", out)
+        return code, findings, stats, touched
+
+    def one_fixture_eval(self, base, name, content=b"CANARY"):
+        """An eval whose only positive case names fixtures/<name>."""
+        folder = self.make_eval(base, fixtures={name: content})
+        data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+        data["cases"][0]["fixtures"] = ["fixtures/" + name]
+        data["cases"][1]["fixtures"] = []
+        (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+        return folder
+
+    def assert_refused_untouched(self, folder, base, watch, label):
+        out = Path(base) / "out"
+        code, findings, stats, touched = self.export_traced(folder, out, watch)
+        self.assertEqual((1, "EX4", 0, []), (code, findings[0]["code"] if findings else "no finding", stats["exported"], touched), "%s: %s" % (label, findings))
+        self.assertFalse(out.exists(), label)
+        return findings
+
+    def test_x_secret_named_fixture_refused_before_any_read(self):
+        for name in (".env", ".env.local", ".ENV", "auth.json", "AUTH.JSON", "canary.pem", "canary.key", "canary.credentials.json", "credentials.json", "secrets.json", "id_rsa"):
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.one_fixture_eval(t, name)
+                findings = self.assert_refused_untouched(folder, t, {name.lower()}, name)
+                self.assertIn("secret or credential name", findings[0]["message"], name)
+
+    def test_x_innocent_look_alike_names_are_still_exported(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t, fixtures={"environment.csv": b"1", "authors.json": b"2", "pem.csv": b"3", "monkey.csv": b"4"})
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][0]["fixtures"] = ["fixtures/environment.csv", "fixtures/authors.json"]
+            data["cases"][1]["fixtures"] = ["fixtures/pem.csv", "fixtures/monkey.csv"]
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual((0, 2), (code, stats["exported"]))
+            self.assertEqual(["authors.json", "environment.csv", "monkey.csv", "pem.csv"], sorted(x.name for x in (Path(t) / "out" / "demo-skill" / "evals" / "files").iterdir()))
+
+    def test_x_secret_named_fixture_in_a_negative_case_is_refused_too(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.one_fixture_eval(t, "a.csv")
+            (folder / "fixtures" / "auth.json").write_bytes(b"CANARY")
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][2]["fixtures"] = ["fixtures/auth.json"]  # c3 is a should_trigger false case: check_evals would still stat it
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            self.assert_refused_untouched(folder, t, {"auth.json"}, "negative case")
+
+    def test_x_fixture_folder_named_like_a_zone_refused(self):
+        for zone in (".secret", ".SECRET", "OneDrive - X", "sharepoint-sync"):
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.one_fixture_eval(t, "a.csv")
+                (folder / "fixtures" / zone).mkdir()
+                (folder / "fixtures" / zone / "canary.csv").write_bytes(b"CANARY")
+                data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+                data["cases"][0]["fixtures"] = ["fixtures/%s/canary.csv" % zone]
+                (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+                findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, zone)
+                self.assertIn("secret or cloud-synced zone", findings[0]["message"], zone)
+
+    def test_x_eval_folder_inside_a_zone_refused_without_reading_cases_json(self):
+        for zone in ("OneDrive - X", ".secret"):
+            with tempfile.TemporaryDirectory() as t:
+                base = Path(t) / zone
+                base.mkdir()
+                folder = self.make_eval(base, fixtures={"canary.csv": b"CANARY"})
+                data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+                data["cases"][0]["fixtures"] = ["fixtures/canary.csv"]
+                data["cases"][1]["fixtures"] = []
+                (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+                findings = self.assert_refused_untouched(folder, t, {"canary.csv", "cases.json"}, zone)
+                self.assertIn("eval folder is inside", findings[0]["message"], zone)
+
+    def test_x_eval_folder_under_a_fake_home_secret_refused(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            home = Path(t) / "home"
+            (home / ".secret").mkdir(parents=True)
+            studio._secret_dirs.cache_clear()
+            try:
+                with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
+                    self.assertEqual("secret-zone", studio.zone_reason(home / ".secret" / "e"))
+                    folder = self.make_eval(home / ".secret", fixtures={"canary.csv": b"CANARY"})
+                    data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+                    data["cases"][0]["fixtures"] = ["fixtures/canary.csv"]
+                    data["cases"][1]["fixtures"] = []
+                    (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+                    self.assert_refused_untouched(folder, t, {"canary.csv", "cases.json"}, "fake HOME/.secret")
+            finally:
+                studio._secret_dirs.cache_clear()
+
+    def test_x_cloud_placeholder_or_resolved_zone_refused(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.one_fixture_eval(t, "canary.csv")
+            with mock.patch.object(studio, "path_is_cloud", lambda path: os.path.basename(os.fspath(path)) == "canary.csv"):
+                findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "placeholder")
+            self.assertIn("cloud placeholder", findings[0]["message"])
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.one_fixture_eval(t, "canary.csv")
+            real_realpath = os.path.realpath
+
+            def through_a_junction(path, *args, **kwargs):  # the fixtures folder "resolves" into a synced folder although no spelling in cases.json says so
+                found = real_realpath(path, *args, **kwargs)
+                return os.path.join(os.path.dirname(found), "OneDrive - Y") if os.path.basename(found) == "fixtures" else found
+            with mock.patch.object(os.path, "realpath", through_a_junction):
+                findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "resolved zone")
+            self.assertIn("resolves into", findings[0]["message"])
+
+    def test_x_symlink_and_hard_link_fixtures_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            outside = Path(t) / "outside.csv"
+            outside.write_bytes(b"CANARY")
+            folder = self.one_fixture_eval(t, "x.csv")
+            (folder / "fixtures" / "x.csv").unlink()
+            link = folder / "fixtures" / "canary.csv"
+            try:
+                os.link(outside, link)
+            except OSError:
+                self.skipTest("hard links are not available here")
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][0]["fixtures"] = ["fixtures/canary.csv"]
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "hard link")
+            self.assertIn("hard link", findings[0]["message"])
+            link.unlink()
+            try:
+                os.symlink(outside, link)
+            except (OSError, NotImplementedError):
+                return
+            findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "symlink")
+            self.assertIn("symlink or junction", findings[0]["message"])
+
+    def test_x_fixture_source_refuses_by_spelling_alone(self):
+        # the per-fixture entry point (also used by the export loop) must not need the eval-level pre-pass: it decides from names, nothing exists on disk here
+        with tempfile.TemporaryDirectory() as t:
+            for zone in ("OneDrive - X", ".secret", "SharePoint"):
+                source, parts, problem = studio.export_fixture_source(Path(t) / zone / "evals" / "demo-skill", "fixtures/a.csv")
+                self.assertEqual((None, [], True), (source, parts, "inside a secret or cloud-synced folder" in problem), zone)
+            for name in (".env", "auth.json", "k.pem"):
+                source, _, problem = studio.export_fixture_source(Path(t) / "e", "fixtures/" + name)
+                self.assertEqual((None, True), (source, "secret or credential name" in problem), name)
+            self.assertEqual("missing/outside eval fixture 'fixtures/a.csv'", studio.export_fixture_source(Path(t) / "e", "fixtures/a.csv")[2])
+
+    def test_x_cases_json_that_is_not_valid_still_reports_ev1(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            (folder / "cases.json").write_text("{not json", encoding="utf-8")
+            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual((1, "EV1"), (code, findings[0]["code"]), findings)
+
+
 if __name__ == "__main__":
     unittest.main()

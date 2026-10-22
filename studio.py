@@ -627,17 +627,63 @@ def export_eval_dirs(eval_dir: Path) -> list[Path]:
     return [eval_dir.resolve().parent] + [root / "evals" for root in (repo_root(here), repo_root(Path.cwd())) if root]
 
 
-def export_fixture_source(eval_dir: Path, relative: str) -> tuple[Path | None, list[str], str]:
-    """Resolve a fixture path from cases.json to (source, export-name parts, problem). Only plain relative paths inside eval_dir, no links."""
+def export_fixture_refusal(eval_dir: Path, relative: str) -> str:
+    """Why a fixture path from cases.json must not be exported, or "" when it may be. Reads names and link/cloud metadata (lstat) only: it never opens,
+    stats-through or follows the fixture itself, so a secret, a cloud placeholder or a link target is not touched before the answer (RK15)."""
     posix = relative.replace("\\", "/")
     parts = [x for x in posix.split("/")]
     if not posix or posix.startswith("/") or ":" in posix or any(x in ("", ".", "..") for x in parts):  # ':' also covers drive letters and NTFS streams (a.csv:hid)
-        return None, [], "unsafe fixture path '%s' (must be a plain relative path inside the eval folder, without ':')" % relative
+        return "unsafe fixture path '%s' (must be a plain relative path inside the eval folder, without ':')" % relative
+    for part in parts:
+        if secret_file_name(part):
+            return "fixture '%s' has a secret or credential name ('%s': .env*, *.credentials.json, auth.json, *.pem, *.key, secrets.json...); refusing to copy it" % (relative, part)
+        if zone_named(part):
+            return "fixture '%s' sits in a folder named like a secret or cloud-synced zone ('%s'); refusing to copy it" % (relative, part)
+    if zone_reason(eval_dir / relative):
+        return "fixture '%s' is inside a secret or cloud-synced folder; refusing to copy it" % relative
     current = eval_dir
     for part in parts:
         current = current / part
         if is_link(current):
-            return None, [], "fixture '%s' goes through a symlink or junction; refusing to copy it" % relative
+            return "fixture '%s' goes through a symlink or junction; refusing to copy it" % relative
+        if path_is_cloud(current):
+            return "fixture '%s' is a cloud placeholder; refusing to copy it" % relative
+    if zone_reason(Path(os.path.realpath(current.parent)) / parts[-1]):
+        return "fixture '%s' resolves into a secret or cloud-synced folder; refusing to copy it" % relative
+    try:
+        info = os.lstat(current)
+    except OSError:
+        return ""  # missing: reported by the caller
+    if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
+        return "fixture '%s' is a hard link (%d names for one file); refusing to copy it" % (relative, info.st_nlink)
+    return ""
+
+
+def export_eval_refusal(eval_dir: Path) -> str:
+    """The first reason any fixture named in cases.json is refused (export_fixture_refusal), checked BEFORE check_evals stats a single fixture. An eval folder
+    inside a secret or cloud-synced zone is refused without reading cases.json. Unreadable or malformed JSON gives "" so that check_evals reports it (EV1)."""
+    if zone_reason(eval_dir):
+        return "eval folder is inside a secret or cloud-synced folder; refusing to read or export it"
+    try:
+        cases = json.loads((eval_dir / "cases.json").read_text(encoding="utf-8"))["cases"]
+        listed = [c["fixtures"] for c in cases if isinstance(c, dict) and isinstance(c.get("fixtures"), list)]
+    except (ValueError, OSError, KeyError, TypeError):
+        return ""
+    for relative in (x for fixtures in listed for x in fixtures if isinstance(x, str)):
+        problem = export_fixture_refusal(eval_dir, relative)
+        if problem:
+            return problem
+    return ""
+
+
+def export_fixture_source(eval_dir: Path, relative: str) -> tuple[Path | None, list[str], str]:
+    """Resolve a fixture path from cases.json to (source, export-name parts, problem). Only plain relative paths inside eval_dir, no links,
+    no secret/credential names, nothing in a secret or cloud-synced zone (export_fixture_refusal)."""
+    problem = export_fixture_refusal(eval_dir, relative)
+    if problem:
+        return None, [], problem
+    parts = relative.replace("\\", "/").split("/")
+    current = eval_dir.joinpath(*parts)
     if not current.is_file() or not valid_resolved_under(current, eval_dir):
         return None, [], "missing/outside eval fixture '%s'" % relative
     return current, (parts[1:] if parts[0] == "fixtures" and len(parts) > 1 else parts), ""
@@ -647,7 +693,7 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     """Write <out_root>/<skill_name>/evals/evals.json (agentskills schema, SPEC 9.6) plus evals/files/ from evals/<skill>/cases.json.
 
     Returns (exit code, findings, {"exported", "excluded_negative", "path"}). 2 = destination under skills/ or an evals root (EX1);
-    1 = refused before any write (EV*, EX2-EX7) or a write error (EX8). On EX8 the files this run created are removed again (empty folders may remain);
+    1 = refused before any write (EV*, EX2-EX7; EX4 also covers a fixture with a secret/credential name, in a secret or cloud-synced zone, behind a link or a hard link, decided from names and lstat before any fixture is opened or stat-ed) or a write error (EX8). On EX8 the files this run created are removed again (empty folders may remain);
     a file replaced under --force is not restored. Only the positive cases (should_trigger true) are exported; nothing else is deleted,
     and --force only overwrites the files this function generates."""
     eval_dir, out_root = Path(eval_dir), Path(out_root)
@@ -663,6 +709,9 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
         return refuse(2, "EX1", "export destination must not be under evals/ (frozen test data; the export would change the eval it came from): %s" % out_root, out_root)
     if not EXPORT_NAME_RE.match(skill_name or ""):
         return refuse(1, "EX2", "skill name '%s' is not a plain lowercase-hyphen name" % skill_name)
+    problem = export_eval_refusal(eval_dir)  # names, zones and links first: check_evals below stats every fixture
+    if problem:
+        return refuse(1, "EX4", problem, eval_dir / "cases.json")
     problems = [x for x in check_evals(eval_dir) if x["level"] == "ERROR"]
     if problems:
         return 1, problems, stats
@@ -784,7 +833,7 @@ def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
         prose = MD_LINK_RE.sub(" ", prose)
         prose = URL_RE.sub(" ", prose)
         match = FORCE_RE.search(prose)
-        if match and not REASON_RE.search(text):
+        if match and not REASON_RE.search(prose):
             findings.append(emit("WARN", "CT10", manifest, lineno,
                                  "'%s' without a reason on the same line (SK-14); state why, or mark a deliberately strict step with %s ... %s"
                                  % (match.group(1), STRICT_OPEN, STRICT_CLOSE)))
