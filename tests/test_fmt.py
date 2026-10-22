@@ -4,8 +4,11 @@ import importlib.util
 import io
 import os
 import re
+import shutil
+import stat
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -20,14 +23,15 @@ SKILL = "---\nname: demo-skill\ndescription: Checks a toy example. Use when test
 
 def run(*argv, root=None, in_git=True):
     """Run `studio.py fmt ...` in-process; returns (exit code, stdout, stderr). `root` stands in for the repo root,
-    `in_git` for the git-worktree test (the temp folder of this machine sits under a git home)."""
+    `in_git` for the git-worktree test (True/False stand in for it; None runs the real one, which asks git)."""
     out, err = io.StringIO(), io.StringIO()
     with contextlib.ExitStack() as stack:
         stack.enter_context(contextlib.redirect_stdout(out))
         stack.enter_context(contextlib.redirect_stderr(err))
         if root is not None:
             stack.enter_context(mock.patch.object(studio, "repo_root", lambda start: Path(root)))
-        stack.enter_context(mock.patch.object(studio, "in_git_worktree", lambda path: in_git, create=True))
+        if in_git is not None:
+            stack.enter_context(mock.patch.object(studio, "in_git_worktree", lambda path: in_git, create=True))
         try:
             code = studio.main(["fmt", *argv])
         except SystemExit as exc:
@@ -159,18 +163,6 @@ class FmtTests(unittest.TestCase):
         self.assertEqual(studio.check_process_shape(vi), [])
         self.assertEqual(codes(studio.check_process_shape(en.replace("- Stop if: s\n", ""))), ["PR1"])
 
-    def test_fmt_backup_outside_git(self):
-        path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
-        code, _, _ = run("--fix", str(path), in_git=False)
-        self.assertEqual(code, 0)
-        backups = sorted(p for p in self.tmp.iterdir() if p.name.startswith("SKILL.md.bak-"))
-        self.assertEqual(len(backups), 1, [p.name for p in self.tmp.iterdir()])
-        self.assertEqual(backups[0].read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"), "the backup holds the original bytes")
-        self.assertRegex(backups[0].name, r"^SKILL\.md\.bak-\d{8}T\d{6}")
-        inside = write(self.tmp / "in-git" / "SKILL.md", SKILL.replace("\n", "\r\n"))
-        self.assertEqual(run("--fix", str(inside), in_git=True)[0], 0)
-        self.assertEqual([p.name for p in inside.parent.iterdir()], ["SKILL.md"], "no backup inside a git tree")
-
     def test_fmt_never_adds_contents(self):
         text = "---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\n---\n\n# T\n" + "\n".join("## Section %d  \n\ntext\n" % i for i in range(1, 40)) + "\n\n"
         self.assertGreater(len(text.splitlines()), 100)
@@ -268,7 +260,7 @@ class FmtMoreTests(unittest.TestCase):
         self.assertIn("skipped (link)", out)
         self.assertEqual((real / "SKILL.md").read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"), "nothing written through a link")
         code, out, _ = run("--fix", str(link / "SKILL.md"), root=self.tmp, in_git=True)  # a file reached through a link below the repo root
-        self.assertEqual(code, 0, out)
+        self.assertEqual(code, 1, "named directly and not checked: exit 1 ('exit 0' means every file was checked)")
         self.assertIn("skipped (link)", out)
         self.assertEqual((real / "SKILL.md").read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"))
 
@@ -278,7 +270,7 @@ class FmtMoreTests(unittest.TestCase):
         link = self.tmp / "lnk"
         make_dir_link(self, link, real)
         code, out, _ = run("--fix", str(link))
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
         self.assertIn("skipped (link)", out)
         self.assertEqual((real / "a.md").read_bytes(), b"# A  \n")
 
@@ -318,6 +310,7 @@ class FmtMoreTests(unittest.TestCase):
         (base / "bad.md").write_bytes(b"\xff\xfe\x00bad")
         before = tree_snapshot(base)
         code, out, _ = run("--fix", str(base), in_git=True)
+        self.assertEqual(code, 1, "bad.md is not UTF-8: it was not checked")
         after = dict(tree_snapshot(base))
         for name in (".env.md", "OneDrive - X/a.md", ".secret/s.md", "big.md", "bad.md"):
             self.assertEqual(after[name], dict(before)[name], name)
@@ -334,13 +327,14 @@ class FmtMoreTests(unittest.TestCase):
         self.assertEqual((report["schema"], report["mode"]), (1, "check"))
         self.assertEqual(set(report["files"][0]), {"path", "kind", "changed", "findings"})
         self.assertEqual(set(report["files"][0]["findings"][0]), {"level", "code", "line", "message", "fixable"})
-        self.assertEqual(report["totals"], {"files": 1, "changed": 0, "errors": 1, "warnings": 0})
+        self.assertEqual(report["totals"], {"files": 1, "changed": 0, "errors": 1, "warnings": 0, "blocked": 0})
 
     def test_fmt_refuses_to_write_if_words_would_change(self):
         path = write(self.tmp / "SKILL.md", SKILL.replace("Demo", "Demo "))
         before = path.read_bytes()
         with mock.patch.object(studio, "fmt_text", lambda text, kind, profile="portable": (text.replace("Body", "Other").rstrip() + "\n", [])):
             code, out, _ = run("--fix", str(path))
+        self.assertEqual(code, 1, "a refused write is not a clean run")
         self.assertIn("skipped (would-change-text)", out)
         self.assertEqual(path.read_bytes(), before)
 
@@ -366,14 +360,6 @@ class FmtMoreTests(unittest.TestCase):
             path.write_bytes(b"# T  \n")
             studio._write_fixed(path, b"# T\n", True)
         self.assertEqual(sorted(p.name for p in self.tmp.iterdir()), ["SKILL.md", "SKILL.md.bak-20261023T010203", "SKILL.md.bak-20261023T010203-1"])
-
-    def test_in_git_worktree_marker(self):
-        (self.tmp / "a" / "b").mkdir(parents=True)
-        (self.tmp / "a" / ".git").mkdir()
-        self.assertTrue(studio.in_git_worktree(self.tmp / "a" / "b" / "f.md"))
-        (self.tmp / "c").mkdir()
-        (self.tmp / "c" / ".git").write_text("gitdir: x\n", encoding="utf-8")  # a linked worktree has a .git file
-        self.assertTrue(studio.in_git_worktree(self.tmp / "c" / "f.md"))
 
     def test_fmt_text_rejects_unknown_profile_and_accepts_opcos(self):
         with self.assertRaises(ValueError):
@@ -407,3 +393,490 @@ class FmtMoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def clean_git_env(test):
+    """Drop GIT_DIR, GIT_INDEX_FILE ... of an outer git (a hook) so the repos these tests make are the ones git looks at."""
+    patcher = mock.patch.dict(os.environ)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+    for key in [k for k in os.environ if k.startswith("GIT_")]:
+        del os.environ[key]
+
+
+def git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *args],
+                   cwd=cwd, check=True, capture_output=True, stdin=subprocess.DEVNULL)
+
+
+def make_repo(base: Path) -> Path:
+    repo = base / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    git(repo, "config", "core.autocrlf", "false")
+    write(repo / ".gitignore", "ignored.md\n")
+    write(repo / "tracked.md", "# T  \n")
+    write(repo / "dirty.md", "# D  \n")
+    git(repo, "add", ".gitignore", "tracked.md", "dirty.md")
+    git(repo, "commit", "-q", "-m", "init")
+    write(repo / "dirty.md", "# D changed  \n")  # tracked, but with a change git has not saved
+    write(repo / "untracked.md", "# U  \n")
+    write(repo / "ignored.md", "# I  \n")
+    return repo
+
+
+def backups_of(folder: Path):
+    return sorted(p for p in folder.iterdir() if ".bak-" in p.name)
+
+
+@unittest.skipUnless(shutil.which("git"), "git is needed to tell whether a file has a git safety net")
+class FmtGitTests(unittest.TestCase):
+    """The backup rule (FR18.5) with a real git: only a file git holds unchanged gets no <file>.bak-<ISO>. Nothing here mocks in_git_worktree."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        clean_git_env(self)
+
+    def test_fmt_backup_outside_git(self):
+        repo = make_repo(self.tmp)
+        plain = self.tmp / "plain"
+        original = {name: (repo / name).read_bytes() for name in ("tracked.md", "dirty.md", "untracked.md", "ignored.md")}
+        outside = write(plain / "x.md", "# X  \n")
+        fake_home = write(self.tmp / "home" / "y" / "z.md", "# Z  \n")
+        (self.tmp / "home" / ".git" / "info").mkdir(parents=True)  # a folder called .git that is no repository (as C:/Users/<me>/.git here)
+        for name in ("tracked.md", "dirty.md", "untracked.md", "ignored.md"):
+            self.assertEqual(run("--fix", str(repo / name), in_git=None)[0], 0)
+        self.assertEqual(run("--fix", str(outside), in_git=None)[0], 0)
+        self.assertEqual(run("--fix", str(fake_home), in_git=None)[0], 0)
+        names = sorted(p.name.split(".bak-")[0] for p in backups_of(repo))
+        self.assertEqual(names, ["dirty.md", "ignored.md", "untracked.md"], "tracked.md (unchanged since the commit) is the only file with no backup")
+        for name in ("dirty.md", "ignored.md", "untracked.md"):
+            (backup,) = [p for p in backups_of(repo) if p.name.startswith(name + ".bak-")]
+            self.assertEqual(backup.read_bytes(), original[name], "the backup holds the original bytes")
+            self.assertRegex(backup.name, r"\.bak-\d{8}T\d{6}")
+        self.assertEqual(len(backups_of(plain)), 1)
+        self.assertEqual(backups_of(plain)[0].read_bytes(), b"# X  \n")
+        self.assertEqual(len(backups_of(fake_home.parent)), 1, "a bare .git name above the file is not a git tree")
+        self.assertEqual((repo / "tracked.md").read_bytes(), b"# T\n")
+        git(repo, "checkout", "--", "tracked.md")  # the whole point of no backup: git restores it
+        self.assertEqual((repo / "tracked.md").read_bytes(), original["tracked.md"])
+
+    def test_in_git_worktree_asks_git(self):
+        repo = make_repo(self.tmp)
+        self.assertTrue(studio.in_git_worktree(repo / "tracked.md"))
+        self.assertFalse(studio.in_git_worktree(repo / "dirty.md"), "uncommitted changes are not on git's side")
+        self.assertFalse(studio.in_git_worktree(repo / "untracked.md"))
+        self.assertFalse(studio.in_git_worktree(repo / "ignored.md"))
+        self.assertFalse(studio.in_git_worktree(repo / "missing.md"))
+        self.assertFalse(studio.in_git_worktree(repo / "no-folder" / "f.md"))
+        write(self.tmp / "plain" / "f.md", "x\n")
+        self.assertFalse(studio.in_git_worktree(self.tmp / "plain" / "f.md"))
+        (self.tmp / "marker" / ".git").mkdir(parents=True)
+        write(self.tmp / "marker" / "f.md", "x\n")
+        self.assertFalse(studio.in_git_worktree(self.tmp / "marker" / "f.md"), "the name .git alone proves nothing")
+        write(repo / "star[1].md", "x\n")
+        git(repo, "add", "--", "star[1].md")
+        git(repo, "commit", "-q", "-m", "star")
+        self.assertTrue(studio.in_git_worktree(repo / "star[1].md"), "file names are literal, not patterns")
+
+    def test_in_git_worktree_fails_safe(self):
+        repo = make_repo(self.tmp)
+        for failure in (FileNotFoundError("git"), subprocess.TimeoutExpired("git", 5), PermissionError(13, "x"), subprocess.SubprocessError("x")):
+            with self.subTest(type(failure).__name__), mock.patch.object(studio.subprocess, "run", side_effect=failure):
+                self.assertFalse(studio.in_git_worktree(repo / "tracked.md"), "no answer from git: assume there is no net, so a backup is made")
+        with mock.patch.dict(os.environ, {"PATH": ""}):
+            self.assertFalse(studio.in_git_worktree(repo / "tracked.md"))
+
+
+class FmtSafeWriteTests(unittest.TestCase):
+    """The temp file of --fix: a new name each time (never a name an attacker can predict), cleaned up on every failure."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_fmt_does_not_write_through_a_planted_link(self):
+        outside = write(self.tmp / "outside" / "canary.txt", "canary\n")
+        folder = self.tmp / "d"
+        tried = 0
+        for label, plant in (("hard link", os.link), ("symlink", os.symlink)):
+            path = write(folder / "SKILL.md", SKILL.replace("\n", "\r\n"))
+            planted = folder / ".SKILL.md.fmt-tmp"  # the name the first version of fmt used
+            try:
+                plant(outside, planted)
+            except (OSError, NotImplementedError):
+                continue
+            tried += 1
+            with self.subTest(label):
+                code, out, _ = run("--fix", str(path), in_git=True)
+                self.assertEqual(code, 0, out)
+                self.assertEqual(outside.read_bytes(), b"canary\n", "nothing is written through a link planted at a guessable name")
+                self.assertEqual(path.read_bytes(), SKILL.encode("utf-8"))
+                self.assertTrue(os.path.lexists(planted), "what was already there is not ours to delete")
+                os.unlink(planted)
+        if not tried:
+            self.skipTest("cannot create a hard link or symlink here")
+
+    def test_fmt_temp_name_is_not_fixed(self):
+        path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
+        seen = []
+        real = os.replace
+        with mock.patch.object(studio.os, "replace", side_effect=lambda src, dst: (seen.append(Path(src).name), real(src, dst))[1]):
+            self.assertEqual(run("--fix", str(path), in_git=True)[0], 0)
+            write(path, SKILL.replace("\n", "\r\n"))
+            self.assertEqual(run("--fix", str(path), in_git=True)[0], 0)
+        self.assertEqual(len(seen), 2)
+        self.assertNotIn(".SKILL.md.fmt-tmp", seen)
+        self.assertNotEqual(seen[0], seen[1], "a fresh random name each time")
+
+    def test_fmt_failed_replace_leaves_nothing_behind(self):
+        path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
+        before = path.read_bytes()
+        with mock.patch.object(studio.os, "replace", side_effect=OSError(5, "access denied")):
+            code, _, err = run("--fix", str(path), in_git=False)
+        self.assertEqual(code, 2, err)
+        self.assertIn("cannot write", err)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual([p.name for p in self.tmp.iterdir()], ["SKILL.md"], "no temp file and no backup of a write that did not happen")
+
+    def test_fmt_read_only_file_is_refused_cleanly(self):
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("root ignores the read-only bit")
+        path = write(self.tmp / "SKILL.md", SKILL.replace("Demo", "Demo  "))
+        os.chmod(path, stat.S_IREAD)
+        self.addCleanup(os.chmod, path, stat.S_IREAD | stat.S_IWRITE)
+        before = path.read_bytes()
+        with mock.patch.object(studio.shutil, "copy2", side_effect=AssertionError("a read-only file must be refused before a backup is made")):
+            code, _, err = run("--fix", str(path), in_git=False)
+        self.assertEqual(code, 2, err)
+        self.assertIn("cannot write", err)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual([p.name for p in self.tmp.iterdir()], ["SKILL.md"], "no .fmt-tmp, no tmp*, no backup left behind")
+
+    def test_fmt_copies_the_mode_to_the_new_file(self):
+        path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
+        real, calls = shutil.copymode, []
+
+        def spy(src, dst):
+            calls.append((Path(src), Path(dst)))
+            return real(src, dst)
+
+        with mock.patch.object(studio.shutil, "copymode", spy):
+            self.assertEqual(run("--fix", str(path), in_git=True)[0], 0)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], path)
+        self.assertEqual(calls[0][1].parent, path.parent)
+        self.assertNotEqual(calls[0][1], path)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission bits")
+    def test_fmt_keeps_the_posix_mode(self):
+        path = write(self.tmp / "run.md", "# T  \n")
+        os.chmod(path, 0o750)
+        self.assertEqual(run("--fix", str(path), in_git=True)[0], 0)
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o750)
+
+
+class FmtPathTests(unittest.TestCase):
+    """Paths handed over directly, outside any repo root: links in the middle, cloud and secret folders, the resolved spelling."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_fmt_direct_path_through_a_link_is_refused(self):
+        fake = self.tmp / "OneDrive - Fake"  # a cloud folder reached through a harmless-looking name
+        write(fake / "c.md", "# C  \n")
+        write(fake / "sub" / "d.md", "# D  \n")
+        work = self.tmp / "work"
+        work.mkdir()
+        make_dir_link(self, work / "j", fake)
+        before = tree_snapshot(fake)
+        for target in (work / "j" / "c.md", work / "j" / "sub", work / "j"):
+            for root in (None, self.tmp / "elsewhere", work):
+                with self.subTest(target=target.relative_to(work).as_posix(), root=None if root is None else root.name):
+                    code, out, _ = run("--fix", str(target), root=root, in_git=True)
+                    self.assertEqual(code, 1, out)
+                    self.assertIn("skipped (link)", out)
+                    self.assertEqual(tree_snapshot(fake), before, "nothing written through the link")
+
+    def test_fmt_link_in_the_middle_of_a_direct_path(self):
+        real = self.tmp / "real"
+        write(real / "b" / "x.md", "# X  \n")
+        (self.tmp / "a").mkdir()
+        make_dir_link(self, self.tmp / "a" / "j2", real)
+        before = tree_snapshot(real)
+        for root in (None, self.tmp / "other"):
+            code, out, _ = run("--fix", str(self.tmp / "a" / "j2" / "b" / "x.md"), root=root, in_git=True)
+            self.assertEqual(code, 1, out)
+            self.assertIn("skipped (link)", out)
+            self.assertEqual(tree_snapshot(real), before)
+
+    def test_fmt_direct_cloud_or_secret_path_is_refused(self):
+        cloud = write(self.tmp / "OneDrive - X" / "a.md", "# C  \n")
+        secret = write(self.tmp / ".secret" / "s.md", "# S  \n")
+        real = os.path.realpath
+        zones = ("onedrive", "." + "secret")
+
+        def resolve(value, *args, **kwargs):  # RK15: a path that names a cloud or secret zone is refused on its spelling, before it is resolved
+            if any(zone in os.fspath(value).casefold() for zone in zones):
+                raise AssertionError("resolved %s" % value)
+            return real(value, *args, **kwargs)
+
+        for path, reason in ((cloud, "cloud"), (secret, "secret-zone")):
+            with self.subTest(reason), mock.patch.object(studio.os.path, "realpath", resolve):
+                before = path.read_bytes()
+                code, out, _ = run("--fix", str(path), in_git=True)
+                self.assertEqual(code, 1, out)
+                self.assertIn("skipped (%s)" % reason, out)
+                self.assertEqual(path.read_bytes(), before)
+
+    @unittest.skipUnless(os.name == "nt", "8.3 short names are a Windows thing")
+    def test_fmt_resolved_spelling_is_checked_for_cloud(self):
+        import ctypes
+        folder = self.tmp / "OneDrive - Fake"
+        target = write(folder / "c.md", "# C  \n")
+        buffer = ctypes.create_unicode_buffer(600)
+        if not ctypes.windll.kernel32.GetShortPathNameW(str(folder), buffer, 600) or "onedrive" in buffer.value.casefold():
+            self.skipTest("this volume gives no 8.3 short name to the folder")
+        before = target.read_bytes()
+        code, out, _ = run("--fix", str(Path(buffer.value) / "c.md"), in_git=True)
+        self.assertEqual(code, 1, out)
+        self.assertIn("skipped (cloud)", out)
+        self.assertEqual(target.read_bytes(), before)
+
+
+class FmtExitCodeTests(unittest.TestCase):
+    """Exit 0 means every file asked for was checked and is in house style (SC11)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_fmt_named_file_that_is_not_checked_is_exit_1(self):
+        big = write(self.tmp / "big.md", "# B\n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))
+        secret = write(self.tmp / ".env.md", "# S\n")
+        other = write(self.tmp / "notes.txt", "x\n")
+        bad = self.tmp / "bad.md"
+        bad.write_bytes(b"\xff\xfe\x00bad")
+        for path, reason in ((big, "limit"), (secret, "secret-name"), (other, "not-markdown"), (bad, "not-utf8")):
+            for mode in ("--check", "--fix"):
+                with self.subTest(reason, mode=mode):
+                    code, out, _ = run(mode, str(path), in_git=True)
+                    self.assertEqual(code, 1, out)
+                    self.assertIn("skipped (%s)" % reason, out)
+
+    def test_fmt_not_utf8_file_found_in_a_folder_is_exit_1(self):
+        write(self.tmp / "ok.md", "# Ok\n")
+        (self.tmp / "bad.md").write_bytes(b"\xff\xfe\x00bad")
+        code, out, _ = run("--check", str(self.tmp), in_git=True)
+        self.assertEqual(code, 1, out)
+        self.assertIn("skipped (not-utf8)", out)
+
+    def test_fmt_skips_found_while_walking_a_folder_stay_exit_0_but_are_listed(self):
+        write(self.tmp / "ok.md", "# Ok\n")
+        write(self.tmp / "big.md", "# B\n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))
+        write(self.tmp / ".env.md", "# S\n")
+        write(self.tmp / "OneDrive - X" / "a.md", "# C\n")
+        real = write(self.tmp / "elsewhere" / "r.md", "# R\n")
+        make_dir_link(self, self.tmp / "lnk", real.parent)
+        code, out, _ = run("--check", str(self.tmp), in_git=True)
+        self.assertEqual(code, 0, out)
+        for reason in ("limit", "secret-name", "cloud-or-secret-zone", "link"):
+            self.assertIn("skipped (%s)" % reason, out)
+        report = __import__("json").loads(run("--check", "--json", str(self.tmp), in_git=True)[1])
+        self.assertEqual(report["totals"]["blocked"], 0)
+        self.assertGreaterEqual(len(report["skipped"]), 4)
+
+    def test_fmt_json_counts_the_files_that_block_the_exit(self):
+        bad = self.tmp / "bad.md"
+        bad.write_bytes(b"\xff\xfe\x00bad")
+        code, out, _ = run("--check", "--json", str(bad), in_git=True)
+        report = __import__("json").loads(out)
+        self.assertEqual((code, report["totals"]["errors"], report["totals"]["blocked"]), (1, 0, 1))
+
+
+class FmtStuckValueTests(unittest.TestCase):
+    """FT3 for a metadata value fmt cannot quote on its own: reported, never rewritten, --check and --fix both exit 1."""
+
+    HEAD = "---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_fmt_ft3_reports_a_value_it_cannot_quote(self):
+        for value in ("x # c", ">-", "|", "'only", "[a, b]", "a: b", "{k: v}", "x\t# c"):
+            with self.subTest(value):
+                text = self.HEAD + "  note: " + value + "\n---\n\n# T\n"
+                new, found = studio.fmt_text(text, "skill")
+                self.assertEqual(new, text, "the line is left alone")
+                self.assertEqual(codes(found), ["FT3"], found)
+                self.assertFalse(found[0]["fixable"])
+                self.assertEqual(found[0]["line"], 5)
+                path = write(self.tmp / ("v%d" % abs(hash(value))) / "SKILL.md", text)
+                for mode in ("--check", "--fix"):
+                    code, out, _ = run(mode, str(path), in_git=True)
+                    self.assertEqual(code, 1, out)
+                    self.assertIn("FT3", out)
+                    self.assertNotIn("fixable with --fix", out)
+                self.assertEqual(path.read_bytes(), text.encode("utf-8"))
+
+    def test_fmt_ft3_fixes_what_it_can_and_still_reports_the_rest(self):
+        text = self.HEAD + "  version: 1\n  note: x # c\n---\n\n# T\n"
+        new, found = studio.fmt_text(text, "skill")
+        self.assertIn('  version: "1"\n', new)
+        self.assertIn("  note: x # c\n", new)
+        self.assertEqual([(f["code"], f["fixable"]) for f in found], [("FT3", True), ("FT3", False)])
+        self.assertEqual([(f["code"], f["fixable"]) for f in studio.fmt_text(new, "skill")[1]], [("FT3", False)])
+        path = write(self.tmp / "SKILL.md", text)
+        self.assertEqual(run("--fix", str(path), in_git=True)[0], 1)
+        first = path.read_bytes()
+        self.assertEqual(run("--fix", str(path), in_git=True)[0], 1)
+        self.assertEqual(path.read_bytes(), first, "idempotent")
+
+
+class FmtFrontmatterEdgeTests(unittest.TestCase):
+    def test_fmt_title_need_not_equal_the_heading(self):
+        text = '---\ntitle: "Authoring Standard"\nstatus: active\nupdated: 2026-10-23\n---\n\n# Skill Authoring Standard\n'
+        self.assertEqual(studio.fmt_text(text, "studio-doc"), (text, []), "FT4 asks for the keys, not for a title that equals the H1")
+
+    def test_fmt_closing_line_is_only_a_dashes_line_in_column_zero(self):
+        text = "---\ndescription: >\n  Checks.\n  ---\n  Use when testing.\nname: demo\n---\n\n# T\n"
+        new, found = studio.fmt_text(text, "skill")
+        self.assertEqual(codes(found), ["FT2"], "an indented '---' inside a block scalar does not close the frontmatter")
+        self.assertEqual(new, "---\nname: demo\ndescription: >\n  Checks.\n  ---\n  Use when testing.\n---\n\n# T\n")
+        self.assertEqual(studio.fmt_text(new, "skill")[1], [])
+        self.assertEqual(studio._fm_bounds(text.split("\n")), (0, 6))
+
+    def test_fmt_comment_in_column_zero_travels_with_the_key_before_it(self):
+        text = "---\ndescription: Checks. Use when testing.\n# about the name\nname: demo\n---\n\n# T\n"
+        new, found = studio.fmt_text(text, "skill")
+        self.assertEqual(codes(found), ["FT2"])
+        self.assertEqual(new, "---\nname: demo\ndescription: Checks. Use when testing.\n# about the name\n---\n\n# T\n")
+
+    def test_pr1_demands_contents_over_100_lines(self):
+        steps = "".join("### Step %d — Do\n\n- Command: c\n- Expect: e\n- Stop if: s\n\n" % i for i in range(1, 25))
+        body = "# N\n\n> **Conclusion:** x.\n\n## When to use / not\n\n- a\n\n## Steps\n\n" + steps + "## Gotchas\n\n- g\n\n## Done when\n\n- d\n"
+        self.assertGreater(len(body.splitlines()), 100)
+        self.assertEqual([f["message"] for f in studio.check_process_shape(body)], ["process file is over 100 lines and has no '## Contents'"])
+        self.assertEqual(studio.check_process_shape(body.replace("## When to use", "## Contents\n\n- x\n\n## When to use", 1)), [])
+        self.assertEqual(studio.check_process_shape(body.replace("## When to use", "## Mục lục\n\n- x\n\n## When to use", 1)), [])
+
+
+ATTACK_N = 100_000
+ATTACK_BODIES = (" ", "\t", " \t", "---", "#", ":", "`", " #", "> ", "—", "*")
+ATTACK_PREFIXES = ("", "  k:", "  k: a", "# ", "## x", "- ", "> **", "Step 1 ", "step 1 — ", "a:", "`" * 3)
+
+
+class FmtSpeedTests(unittest.TestCase):
+    """ReDoS and quadratic loops: every regex of fmt is linear and fmt_text / check_process_shape finish fast on 100 000-character attacks."""
+
+    def patterns(self):
+        found = {}
+        for name, value in vars(studio).items():
+            if name.startswith("FMT_") and isinstance(value, re.Pattern):
+                found[name] = value
+            elif name.startswith("FMT_") and isinstance(value, tuple):
+                for index, item in enumerate(value):
+                    pattern = item[0] if isinstance(item, tuple) else item
+                    if isinstance(pattern, re.Pattern):
+                        found["%s[%d]" % (name, index)] = pattern
+        for name in ("CONTENTS_RE", "FENCE_OPEN_RE", "FRONT_KEY_RE"):
+            found[name] = getattr(studio, name)
+        return found
+
+    def timed(self, label, call, limit=5.0):
+        start = time.perf_counter()
+        call()
+        elapsed = time.perf_counter() - start
+        self.assertLess(elapsed, limit, "%s took %.1f s" % (label, elapsed))
+
+    def test_fmt_regexes_are_linear(self):
+        patterns = self.patterns()
+        self.assertGreaterEqual(len(patterns), 14)
+        self.assertIn("FMT_META_LINE_RE", patterns)
+        self.assertIn("FMT_HEADING_RE", patterns)
+        slow = []
+        for prefix in ATTACK_PREFIXES:
+            for body in ATTACK_BODIES:
+                for tail in ("", "b"):
+                    text = prefix + body * (ATTACK_N // len(body)) + tail
+                    for name, pattern in patterns.items():
+                        for method in (pattern.search, pattern.fullmatch):
+                            start = time.perf_counter()
+                            method(text)
+                            elapsed = time.perf_counter() - start
+                            if elapsed > 1.0:
+                                slow.append("%s %s on %r*%d+%r: %.1f s" % (name, method.__name__, prefix + body, ATTACK_N // len(body), tail, elapsed))
+                    if slow:
+                        self.fail("; ".join(slow))
+
+    def test_fmt_text_and_process_shape_survive_long_lines(self):
+        for width, label in ((" ", "space"), ("\t", "tab"), (" \t", "mixed")):
+            run_of = width * (ATTACK_N // len(width))
+            meta = "---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  k: a" + run_of + "b\n---\n\n# T\n"
+            heading = "# a" + run_of + "b\n\n## Steps\n"
+            self.timed("metadata line, %s" % label, lambda: studio.fmt_text(meta, "skill"))
+            self.timed("heading in fmt_text, %s" % label, lambda: studio.fmt_text(heading, "process"))
+            self.timed("heading in check_process_shape, %s" % label, lambda: studio.check_process_shape(heading))
+            self.timed("trailing run, %s" % label, lambda: studio.fmt_text("# a" + run_of, "other"))
+        for token in ("---", "#", ":", "`", " #", "> ", "*", "-"):
+            run_of = token * (ATTACK_N // len(token))
+            for text in ("---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  k: " + run_of + "\n---\n\n# T\n",
+                         "---\nname: " + run_of + "\n---\n\n# T\n", "# " + run_of + "\n", run_of + "\n", "---\n" + run_of + "\n---\n",
+                         "\n\n---\ntitle: " + run_of + "\n---\n"):
+                for kind in ("skill", "studio-doc", "process", "other"):
+                    self.timed("%r %s" % (token, kind), lambda: studio.fmt_text(text, kind))
+                self.timed("%r process shape" % token, lambda: studio.check_process_shape(text))
+
+    def test_check_process_shape_is_linear_in_the_number_of_steps(self):
+        steps = "".join("### Step %d — Go\n\n- Command: c\n- Expect: e\n- Stop if: s\n\n" % i for i in range(1, 10_001))
+        text = "# P\n\n> **Conclusion:** x.\n\n## Steps\n\n" + steps
+        self.timed("10 000 steps", lambda: studio.check_process_shape(text))
+        self.timed("10 000 headings", lambda: studio.check_process_shape("# P\n" + "".join("## S%d\n" % i for i in range(30_000))))
+        self.timed("fmt_text on a long file", lambda: studio.fmt_text(text, "process"))
+
+
+class FmtSmallTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def test_remove_quietly_never_raises(self):
+        studio._remove_quietly(self.tmp / "missing")  # nothing to remove
+        plain = write(self.tmp / "plain", "x")
+        studio._remove_quietly(plain)
+        self.assertFalse(plain.exists())
+        locked = write(self.tmp / "locked", "x")
+        os.chmod(locked, stat.S_IREAD)
+        studio._remove_quietly(locked)  # a read-only file (a copied mode) loses the bit and goes
+        if os.name == "nt":
+            self.assertFalse(locked.exists())
+        else:
+            os.chmod(locked, stat.S_IREAD | stat.S_IWRITE)
+        with mock.patch.object(studio.os, "unlink", side_effect=PermissionError(13, "no")), mock.patch.object(studio.os, "chmod", side_effect=PermissionError(13, "no")):
+            studio._remove_quietly(plain)  # cannot even change the mode: still no exception
+        with mock.patch.object(studio.os, "unlink", side_effect=PermissionError(13, "no")):
+            studio._remove_quietly(plain)  # retried once after the chmod, still no exception
+
+    def test_quote_meta_statuses(self):
+        self.assertEqual(studio._quote_meta("  version: 1"), ('  version: "1"', "fixed"))
+        self.assertEqual(studio._quote_meta('  version: "1"'), ('  version: "1"', "ok"))
+        self.assertEqual(studio._quote_meta("  # a comment"), ("  # a comment", "ok"))
+        self.assertEqual(studio._quote_meta("  key:"), ("  key:", "ok"))
+        self.assertEqual(studio._quote_meta("  note: x # c")[1], "stuck")
+
+    def test_fmt_too_many_folders_is_not_checked_and_exit_1(self):
+        for name in ("a", "b", "c"):
+            write(self.tmp / name / "x.md", "# X\n")
+        with mock.patch.object(studio, "DOCTOR_MAX_DIRS", 2):
+            code, out, _ = run("--check", str(self.tmp), in_git=True)
+        self.assertEqual(code, 1, out)
+        self.assertIn("skipped (too-many-folders)", out)

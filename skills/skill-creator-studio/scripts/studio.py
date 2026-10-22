@@ -19,7 +19,10 @@ import json
 import os
 import re
 import shutil
+import stat
+import subprocess
 import sys
+import tempfile
 import unicodedata
 import zipfile
 from datetime import datetime, timezone
@@ -98,8 +101,8 @@ DOCTOR_MAX_SKILL_DEPTH = 12  # folder levels listed inside one skill
 DOCTOR_REPORT_HEAD = re.compile(rb'\A(?:\xef\xbb\xbf)?\s*\{\s*"schema"\s*:')  # how a doctor report starts
 FM_ORDER = ("name", "description", "license", "compatibility", "allowed-tools", "metadata")
 DOC_MIN_KEYS = ("title", "status", "updated")
-FMT_META_LINE_RE = re.compile(r"^(\s{2,}[\w.-]+:)[ \t]+(\S.*?)[ \t]*$")
-FMT_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+FMT_META_LINE_RE = re.compile(r"^(\s{2,}[\w.-]+:)[ \t]+(\S.*)$")  # match a line already stripped at the end: no lazy group followed by blanks
+FMT_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")  # same: match a line already stripped at the end
 FMT_CONCLUSION_RE = re.compile(r"^>\s*\*\*(Conclusion|Kết luận):\*\*")
 FMT_STEP_RE = re.compile(r"(?i)^(step|bước)\s+\d+\s+[—–-]\s*\S")
 FMT_PROCESS_SECTIONS = (
@@ -113,6 +116,8 @@ FMT_STEP_LABELS = tuple(
     for names, label in (("Command|Lệnh", "Command:"), ("Expect|Kỳ vọng", "Expect:"), ("Stop if|Dừng nếu", "Stop if:")))
 FMT_PRUNE_DIRS = frozenset({".git", ".tmp", ".worktrees", "dist", "node_modules", "__pycache__", ".venv", ".pytest_cache", ".mypy_cache"})
 FMT_FRONT_SEARCH_LINES = 60  # a frontmatter block that starts later than this is not looked for
+FMT_GIT_TIMEOUT = 5  # seconds for each git question of in_git_worktree
+FMT_BLOCKING_REASONS = frozenset({"would-change-text", "not-utf8", "unreadable", "too-many-folders"})  # skipped for these: exit 1 even inside a folder
 
 
 def emit(level: str, code: str, path: Path, line: int, message: str) -> dict:
@@ -1855,11 +1860,12 @@ def cmd_doctor(args) -> int:
 
 
 def _fm_bounds(lines: list) -> tuple | None:
-    """(0, closing index) when line 0 is '---' and a closing '---' follows, else None."""
+    """(0, closing index) when line 0 is '---' and a closing '---' follows, else None. The closing line is '---' in column 0 (blanks after it
+    are allowed): an indented '---' inside a block scalar does not close the frontmatter."""
     if not lines or lines[0].strip() != "---":
         return None
     for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
+        if lines[index].rstrip() == "---":
             return 0, index
     return None
 
@@ -1891,19 +1897,20 @@ def _looks_like_front(lines: list) -> bool:
     return keys > 0
 
 
-def _quote_meta(line: str) -> str:
-    """One `  key: value` line of a metadata block with the value in double quotes; a value the parser cannot read as a plain string stays as it is."""
-    match = FMT_META_LINE_RE.match(line)
+def _quote_meta(line: str) -> tuple[str, str]:
+    """(the line, status) for one line of a metadata block. `fixed`: the value is now in double quotes. `stuck`: the value is not a plain
+    string fmt can quote safely (a comment, a block or flow marker, an unmatched quote) and the line stays as it is. `ok`: nothing to do."""
+    match = FMT_META_LINE_RE.match(line.rstrip())
     if not match:
-        return line
+        return line, "ok"
     value = match.group(2)
     if value[0] == '"':
-        return line
+        return line, "ok"
     if value[0] == "'" and len(value) >= 2 and value[-1] == "'":
         value = value[1:-1].replace("''", "'")
-    elif value[0] in "[{>|&*!%@`'" or " #" in value or ": " in value:
-        return line
-    return "%s %s" % (match.group(1), json.dumps(value, ensure_ascii=False))
+    elif value[0] in "[{>|&*!%@`'" or " #" in value or "\t#" in value or ": " in value:
+        return line, "stuck"
+    return "%s %s" % (match.group(1), json.dumps(value, ensure_ascii=False)), "fixed"
 
 
 def fmt_text(text: str, kind: str, profile: str = "portable") -> tuple[str, list]:
@@ -1961,9 +1968,11 @@ def fmt_text(text: str, kind: str, profile: str = "portable") -> tuple[str, list
             if key == "metadata" and head and not (head.group(2) or "").strip():
                 quoted = [block[0]]
                 for number, line in enumerate(block[1:], start=offset + 1):
-                    changed = _quote_meta(line)
-                    if changed != line:
+                    changed, status = _quote_meta(line)
+                    if status == "fixed":
                         add("FT3", number, "metadata value must be a double-quoted string", True)
+                    elif status == "stuck":
+                        add("FT3", number, "metadata value is not a plain string (comment, block or flow marker, unmatched quote): quote it by hand", False)
                     quoted.append(changed)
                 block = quoted
             rebuilt.append((key, block))
@@ -2004,7 +2013,7 @@ def check_process_shape(text: str) -> list:
         if fence:
             continue
         plain.append((index, line))
-        head = FMT_HEADING_RE.match(line)
+        head = FMT_HEADING_RE.match(line.rstrip())
         if head:
             heads.append((index, len(head.group(1)), head.group(2)))
     found: list[dict] = []
@@ -2024,10 +2033,12 @@ def check_process_shape(text: str) -> list:
     steps = [(i, title) for i, level, title in heads if level == 3 and FMT_STEP_RE.match(title)]
     if not steps:
         warn(0, "process file has no '### Step N — <verb>' (VI '### Bước N — <động từ>') section")
-    ends = [i for i, level, _ in heads if level <= 3]
+    ends = [i for i, level, _ in heads if level <= 3]  # ascending: a step's section stops at the next heading of level 3 or above
+    plain_at = [i for i, _ in plain]
     for index, title in steps:
-        stop = next((e for e in ends if e > index), len(body))
-        section = [line for i, line in plain if index < i < stop]
+        at = bisect.bisect_right(ends, index)
+        stop = ends[at] if at < len(ends) else len(body)
+        section = [line for _, line in plain[bisect.bisect_right(plain_at, index):bisect.bisect_left(plain_at, stop)]]
         for pattern, label in FMT_STEP_LABELS:
             if not any(pattern.match(line) for line in section):
                 warn(index, "step '%s' has no '%s'" % (title, label))
@@ -2056,21 +2067,35 @@ def classify_md(path: Path, root: Path | None) -> str:
 
 
 def in_git_worktree(path: Path) -> bool:
-    """True when `path` or a folder above it holds a .git entry (folder, or file for a linked worktree). Looks at names only."""
+    """True only when git itself holds `path` safely: it lies inside a work tree, is tracked, and has no change since the last commit, so
+    `git checkout` brings the old bytes back. An untracked or ignored file, a file with uncommitted changes, a bare `.git` name that is no
+    repository (as C:/Users/<me>/.git on this machine), and any failure (no git, time-out, unreadable) all give False: fmt then makes a backup."""
     here = Path(os.path.abspath(path))
-    return any(os.path.lexists(os.path.join(os.fspath(p), ".git")) for p in [here] + list(here.parents))
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0")
 
+    def ask(*args: str) -> "subprocess.CompletedProcess":
+        return subprocess.run(["git", "--literal-pathspecs", *args], cwd=os.fspath(here.parent), env=env, stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=FMT_GIT_TIMEOUT, check=False)
 
-def _crosses_link_below(root, path) -> bool:
-    """True when a folder between `root` and `path` (the last part excluded) is a symlink or junction; False when `path` is not under `root`."""
-    base = Path(os.path.abspath(root))
     try:
-        parts = Path(os.path.abspath(path)).relative_to(base).parts
-    except ValueError:
+        inside = ask("rev-parse", "--is-inside-work-tree")
+        if inside.returncode != 0 or inside.stdout.strip() != b"true":
+            return False
+        if ask("ls-files", "--error-unmatch", "--", here.name).returncode != 0:
+            return False
+        return ask("diff", "--quiet", "HEAD", "--", here.name).returncode == 0
+    except (OSError, ValueError, subprocess.SubprocessError):
         return False
-    for part in parts[:-1]:
+
+
+def _crosses_link(path) -> bool:
+    """True when `path` itself or any folder on the way to it is a symlink or junction. The top-level folder of the volume is not looked at
+    (/tmp and /var are links on macOS); every folder below it is, whether or not it lies under the repo."""
+    parts = Path(os.path.abspath(path)).parts
+    base = Path(parts[0])
+    for depth, part in enumerate(parts[1:], start=1):
         base = base / part
-        if is_link(base):
+        if (depth > 1 or depth == len(parts) - 1) and is_link(base):
             return True
     return False
 
@@ -2113,10 +2138,12 @@ def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None
         reason = zone_reason(start)
         if reason:
             skip(start, reason)
-        elif is_link(start) or (root is not None and _crosses_link_below(root, start)):
+        elif _crosses_link(start):
             skip(start, "link")
         elif path_is_cloud(start):
             skip(start, "cloud")
+        elif zone_reason(os.path.realpath(start)):  # the resolved spelling (8.3 short names, case): checked last, after the lstat above
+            skip(start, zone_reason(os.path.realpath(start)))
         elif start.is_file():
             take(start)
         elif start.is_dir():
@@ -2125,7 +2152,7 @@ def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None
                 current = stack.pop()
                 visited += 1
                 if visited > DOCTOR_MAX_DIRS:
-                    skip(current, "limit")
+                    skip(current, "too-many-folders")
                     break
                 try:
                     with os.scandir(current) as scan:
@@ -2168,8 +2195,30 @@ def _body_words(text: str) -> list:
     return ("\n".join(lines[bounds[1] + 1:]) if bounds else "\n".join(lines)).split()
 
 
+def _remove_quietly(path) -> None:
+    """Delete a file this run made; one that is read-only (copied mode) loses that bit first. Never raises."""
+    for attempt in (0, 1):
+        try:
+            os.unlink(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if attempt:
+                return
+            try:
+                os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+            except OSError:
+                return
+
+
 def _write_fixed(path: Path, data: bytes, backup: bool) -> None:
-    """Replace `path` with `data`: a copy `<name>.bak-<ISO>` first when `backup`, then a temp file next to it and an atomic replace."""
+    """Replace `path` with `data`: a copy `<name>.bak-<ISO>` first when `backup`, then a new temp file next to it (a name chosen by the system
+    and created exclusively, so a link planted at a guessable name is never followed) and an atomic replace. A read-only file is refused
+    before anything is made. Whatever this call made is removed again when it fails; the original file stays as it was."""
+    if not os.access(path, os.W_OK):
+        raise PermissionError(13, "file is read-only", os.fspath(path))
+    made_backup = None
     if backup:
         stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         target, count = path.with_name("%s.bak-%s" % (path.name, stamp)), 1
@@ -2177,18 +2226,26 @@ def _write_fixed(path: Path, data: bytes, backup: bool) -> None:
             target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
             count += 1
         shutil.copy2(path, target)
-    temp = path.with_name(".%s.fmt-tmp" % path.name)
+        made_backup = target
+    handle, name = tempfile.mkstemp(dir=os.fspath(path.parent), prefix=".%s." % path.name, suffix=".fmt-tmp")
+    temp = Path(name)
+    done = False
     try:
-        with open(temp, "wb") as handle:
-            handle.write(data)
+        with os.fdopen(handle, "wb") as out:
+            out.write(data)
+            out.flush()
+            os.fsync(out.fileno())
         try:
             shutil.copymode(path, temp)
         except OSError:
             pass
         os.replace(temp, path)
+        done = True
     finally:
-        if os.path.lexists(temp):
-            os.unlink(temp)
+        if not done:
+            _remove_quietly(temp)
+            if made_backup is not None:
+                _remove_quietly(made_backup)
 
 
 def cmd_fmt(args) -> int:
@@ -2215,6 +2272,9 @@ def cmd_fmt(args) -> int:
             return 2
     skipped: list[dict] = []
     files = iter_md(args.paths, args.all, repo, skipped)
+    named = {os.path.normcase(os.path.abspath(os.path.expanduser(given))) for given in args.paths}
+    if args.all and repo is not None:
+        named.add(os.path.normcase(os.path.abspath(repo)))
     results, errors, warnings, changed = [], 0, 0, 0
     for path in files:
         try:
@@ -2246,8 +2306,11 @@ def cmd_fmt(args) -> int:
         warnings += sum(1 for f in found if f["level"] == "WARN")
         results.append({"path": str(path), "kind": kind, "changed": wrote,
                         "findings": [dict(f, fixable=f.get("fixable", False)) for f in found]})
+    # A file or folder that was asked for (or could not be read, or was refused) and so was not checked keeps "exit 0 = everything is in house
+    # style" true: it makes the exit code 1. A file left out while walking a folder (cloud, link, secret name, over the size limit) does not.
+    blocked = {id(item) for item in skipped if item["reason"] in FMT_BLOCKING_REASONS or os.path.normcase(os.path.abspath(item["path"])) in named}
     report = {"schema": 1, "mode": "fix" if fixing else "check", "files": results, "skipped": skipped,
-              "totals": {"files": len(results), "changed": changed, "errors": errors, "warnings": warnings}}
+              "totals": {"files": len(results), "changed": changed, "errors": errors, "warnings": warnings, "blocked": len(blocked)}}
     if args.json:
         try:
             print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -2261,10 +2324,10 @@ def cmd_fmt(args) -> int:
             if item["changed"]:
                 print("fixed: %s" % item["path"])
         for item in skipped:
-            print("skipped (%s): %s" % (item["reason"], item["path"]))
-        print("fmt --%s: %d files, %d changed, %d errors, %d warnings, %d skipped"
-              % (report["mode"], len(results), changed, errors, warnings, len(skipped)))
-    return 1 if errors else 0
+            print("skipped (%s): %s%s" % (item["reason"], item["path"], "  [not checked: exit 1]" if id(item) in blocked else ""))
+        print("fmt --%s: %d files, %d changed, %d errors, %d warnings, %d skipped, %d of them not checked"
+              % (report["mode"], len(results), changed, errors, warnings, len(skipped), len(blocked)))
+    return 1 if errors or blocked else 0
 
 
 def main(argv: list[str] | None = None) -> int:
