@@ -1,6 +1,6 @@
 # QA Report — Agent Skill Studio v0.1.0
 
-**Run date:** 2026-10-23 · **Status:** PASS (kiểm tĩnh offline, unit test, và một lô kích hoạt trên Claude Code) · **Base:** nhánh `sprint/spr-33-skill-standard`, HEAD `ccbff43` (TK1–TK12) cộng thay đổi tài liệu TK13. Lệnh chạy trên bản `git archive` của cây đã chốt (kết thúc dòng LF), Python `-X utf8`.
+**Run date:** 2026-10-23 · **Status:** PASS (kiểm tĩnh offline, unit test, và một lô kích hoạt trên Claude Code) · **Base:** nhánh `sprint/spr-33-skill-standard`, HEAD `24bd4b3` (TK1–TK12 và các sửa TK14) cộng đồng bộ tài liệu TK15. Lệnh chạy trên bản `git archive` của cây đã chốt (kết thúc dòng LF), Python `-X utf8`.
 
 ## Validation results
 
@@ -9,17 +9,18 @@
 - `python -X utf8 studio.py sync-template --check` — **PASS**: `Template distribution mirror is in sync.` (hai template `skill-template` và `skill-template-full` khớp từng file với bản trong skill factory).
 - `python -X utf8 -m pytest tests -q -p no:cacheprovider` — dòng cuối nguyên văn:
 
-  `339 passed, 1 skipped, 1 warning, 48 subtests passed in 24.79s`
+  `350 passed, 1 skipped, 1 warning, 48 subtests passed in 25.68s`
 
-- `python -X utf8 -m unittest discover -s tests` — **PASS**: `Ran 340 tests`, `OK (skipped=1)`. (`unittest` in `UnicodeDecodeError` từ thread subprocess cp1252 nhưng vẫn exit 0; có từ trước sprint.)
+- `python -X utf8 -m unittest discover -s tests` — **PASS**: `Ran 351 tests`, `OK (skipped=1)`. (`unittest` in `UnicodeDecodeError` từ thread subprocess cp1252 nhưng vẫn exit 0; có từ trước sprint.)
 - `python -X utf8 -m pytest tests/test_docs_links.py -q -p no:cacheprovider` — **PASS**: `1 passed`.
 - `python -X utf8 studio.py fmt --check standards/README.md templates/README.md` — **PASS**: exit 0, `2 files, 0 changed`.
 - `studio.py package` — **PASS**: ZIP chạy được cho cả hai skill mẫu; `evals/` và `__pycache__` bị loại.
 
 ## Lô kích hoạt SPR-33 (Claude Code, 22/10/2026)
 
-- Công cụ: Claude Code **2.1.308**, model `claude-sonnet-5-5`, 16 lượt, 16/16 `ran`, 0 `not_run`. Nạp skill qua `--plugin-dir` từ bản `git archive` tại SHA lô `6d47a330224b7e01a54a330f08a24f9c5cc51729`, `skill_sha256_loaded` khớp băm cây skill tại SHA đó.
-- Kết quả đếm bằng `evals/tools/activation.py summarize`: `data-quality-audit` positive **5/5**, negative **0/3**; `skill-creator-studio` positive **3/5**, negative **0/3**. Số đo trên mẫu nhỏ, không kết luận skill tốt hay kém.
+- Công cụ: Claude Code **2.1.309**, model `claude-sonnet-5-5`, 16 lượt, 16/16 `ran`, 0 `not_run`. Nạp skill qua `--plugin-dir` từ bản `git archive` (kết thúc dòng LF) tại SHA lô `b85329dc60fdad2032eb94111a62133bd8454670`, đặt ngoài cây `workspaces/` (`<local>/opcos/spr33/plugin-b85329d`); `skill_sha256_loaded` khớp băm cây skill tại SHA đó và `activation.py verify` báo `manifest OK` cho cả hai skill.
+- Kết quả đếm bằng `evals/tools/activation.py summarize`: `data-quality-audit` positive **4/5**, negative **0/3**; `skill-creator-studio` positive **2/5**, negative **0/3**. So với SPR-18 (4/5 và 0/3; 2/5 và 0/3): **bằng ở mức ngưỡng**, không hơn không kém.
+- Giới hạn của số đo: lô trước trên SHA `6d47a33` cùng cờ cho 5/5 và 3/5 (negative vẫn 0/3); hai lô lệch nhau ở các lượt `csv-duplicate` và `creator-refine-no-regression`. Mỗi case chỉ một lượt, n=5 positive và n=3 negative, thước không nhạy (RK1), nên dao động giữa hai lô không phân biệt được với nhiễu. SC7 chỉ khẳng định kích hoạt **không hồi quy ở mức ngưỡng**; không tuyên bố skill tốt hơn hay kém đi.
 - Log: `evals/<skill>/runs/SPR-33/`. Hồ sơ đo và transcript đã che: `sc7-runs.md` trong hồ sơ sprint ở OpcOS (`system/docs/plans/2026-10-22-skill-studio-standard-v1/evidence/`).
 - `not_run`: Codex và Antigravity **thật** (cần chỉ thị của Đức, `not_run:needs-directive`); `claude plugin eval` (`not_run:needs-model-call`). `model_evaluated` giữ **`false`** cho cả hai skill (`registry/catalog.json`).
 
