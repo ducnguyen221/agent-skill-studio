@@ -1,15 +1,16 @@
 # Evaluation Standard — Cách chứng minh Skill hoạt động
 
 ## Contents
-- Phạm vi và nơi lưu evals
+- Phạm vi và nơi lưu
 - Loại bài kiểm thử
 - Thiết kế test cases
 - Cách chạy baseline và A/B
-- Chấm điểm, release gate, rollback
-- Phân biệt automatic static test và model test
+- Release gate nội bộ
+- Log test nên có
 - Không pass giả (`not_run`)
 - Phân vai hai hệ eval
 - Xuất sang agentskills
+- Cách reviewer đánh giá
 
 ## Phạm vi và nơi lưu
 

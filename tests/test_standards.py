@@ -97,6 +97,11 @@ OLD_NO_FAKE_PASS: list[tuple[str, str]] = [
 ]
 
 
+def github_slug(title: str) -> str:
+    """Anchor kiểu GitHub: chữ thường, bỏ dấu câu (giữ chữ, số, gạch dưới, gạch nối), khoảng trắng thành gạch nối."""
+    return re.sub(r"[^\w\- ]", "", title.lower()).replace(" ", "-")
+
+
 class StandardsTest(unittest.TestCase):
     def test_memo_v0_shape(self):
         p = STANDARDS_DIR / "MEMO-SKILL-V0.md"
@@ -249,10 +254,30 @@ class StandardsTest(unittest.TestCase):
             if old in text:
                 problems.append("%s: old definition still present: %r" % (rel, old))
         self.assertFalse(problems, "; ".join(problems))
-        # file đã thay câu định nghĩa phải có link tới mục duy nhất (đường tương đối theo vị trí file)
+        # file đã thay câu định nghĩa phải có link tới mục duy nhất: đường tương đối theo vị trí file phải
+        # trỏ tới file có thật (kể cả evals/RUNBOOK.md mà test_docs_links bỏ qua) và anchor phải bằng
+        # slug kiểu GitHub tính từ tiêu đề thật.
+        standard = ROOT_DIR / "standards" / "EVALUATION_STANDARD.md"
+        title = next(
+            ln[3:].strip() for ln in standard.read_text(encoding="utf-8").splitlines()
+            if ln.startswith("## Không pass giả")
+        )
+        slug = github_slug(title)
+        link = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
         for rel in sorted({r for r, _ in OLD_NO_FAKE_PASS} - {"standards/EVALUATION_STANDARD.md"}):
-            text = (ROOT_DIR / rel).read_text(encoding="utf-8")
-            self.assertIn("EVALUATION_STANDARD.md#không-pass-giả-not_run", text, "%s lacks the link to the single definition" % rel)
+            file = ROOT_DIR / rel
+            ok = False
+            for raw in link.findall(file.read_text(encoding="utf-8")):
+                target, _, anchor = raw.strip("<>").partition("#")
+                if not target.endswith("EVALUATION_STANDARD.md"):
+                    continue
+                resolved = (file.parent / target).resolve()
+                if resolved == standard.resolve() and anchor == slug:
+                    ok = True
+            self.assertTrue(
+                ok,
+                "%s lacks a link that resolves to standards/EVALUATION_STANDARD.md#%s" % (rel, slug),
+            )
 
 
 if __name__ == "__main__":
