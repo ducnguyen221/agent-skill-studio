@@ -254,7 +254,12 @@ class FmtMoreTests(unittest.TestCase):
         make_dir_link(self, link, real)
         code, out, _ = run("--fix", str(outer))
         self.assertEqual(code, 0, out)
-        self.assertIn("skipped (link)", out)
+        if os.name == "nt":
+            self.assertIn("skipped (link)", out)
+        else:
+            # POSIX: a directory symlink whose name does not end in .md is passed over without a report (CO of SPR-33, studio.py ~2201); it is still never followed
+            self.assertIn("0 files", out)
+            self.assertNotIn("linked", out)
         self.assertEqual((real / "SKILL.md").read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"), "nothing written through a link")
         code, out, _ = run("--fix", str(link / "SKILL.md"), root=self.tmp)  # a file reached through a link below the repo root
         self.assertEqual(code, 1, "named directly and not checked: exit 1 ('exit 0' means every file was checked)")
@@ -775,11 +780,18 @@ class FmtExitCodeTests(unittest.TestCase):
         make_dir_link(self, self.tmp / "lnk", real.parent)
         code, out, _ = run("--check", str(self.tmp))
         self.assertEqual(code, 0, out)
-        for reason in ("secret-name", "cloud-or-secret-zone", "link"):
+        # POSIX: a directory symlink whose name does not end in .md is passed over without a report (CO of SPR-33, studio.py ~2201); Windows lists it as "link"
+        reasons = ("secret-name", "cloud-or-secret-zone", "link") if os.name == "nt" else ("secret-name", "cloud-or-secret-zone")
+        for reason in reasons:
             self.assertIn("skipped (%s)" % reason, out)
         report = __import__("json").loads(run("--check", "--json", str(self.tmp))[1])
         self.assertEqual(report["totals"]["blocked"], 0)
-        self.assertGreaterEqual(len(report["skipped"]), 3)
+        self.assertGreaterEqual(len(report["skipped"]), len(reasons))
+        if os.name != "nt":
+            # the real thing it is safe for: the link is not followed, so r.md is read once, by its own path, never as lnk/r.md
+            self.assertEqual(report["totals"]["files"], 2, out)
+            self.assertNotIn("lnk", out)
+            self.assertFalse(any("lnk" in str(item) for item in report["files"]), report["files"])
 
     def test_fmt_json_counts_the_files_that_block_the_exit(self):
         bad = self.tmp / "bad.md"
