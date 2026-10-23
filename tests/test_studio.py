@@ -1038,9 +1038,11 @@ class AgentskillsExportTests(unittest.TestCase):
 
     def dir_link(self, link, target):
         """Directory symlink, or a junction on Windows without symlink rights; returns a cleanup callable or None when impossible."""
+        # a link is removed as itself, never through its target: rmdir for a junction or directory symlink on Windows, unlink for a symlink on POSIX (rmdir fails there with NotADirectoryError)
+        remove_link = os.rmdir if os.name == "nt" else os.unlink
         try:
             os.symlink(target, link, target_is_directory=True)
-            return lambda: os.rmdir(link)
+            return lambda: remove_link(link)
         except (OSError, NotImplementedError):
             pass
         if os.name == "nt":

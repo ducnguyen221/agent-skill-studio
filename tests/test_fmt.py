@@ -945,11 +945,8 @@ class FmtSmallTests(unittest.TestCase):
         self.assertFalse(plain.exists())
         locked = write(self.tmp / "locked", "x")
         os.chmod(locked, stat.S_IREAD)
-        studio._remove_quietly(locked)  # a read-only file (a copied mode) loses the bit and goes
-        if os.name == "nt":
-            self.assertFalse(locked.exists())
-        else:
-            os.chmod(locked, stat.S_IREAD | stat.S_IWRITE)
+        studio._remove_quietly(locked)  # a read-only file (a copied mode) goes: on Windows after losing the bit, on POSIX at once (unlink needs a writable folder, not a writable file)
+        self.assertFalse(locked.exists())
         with mock.patch.object(studio.os, "unlink", side_effect=PermissionError(13, "no")), mock.patch.object(studio.os, "chmod", side_effect=PermissionError(13, "no")):
             studio._remove_quietly(plain)  # cannot even change the mode: still no exception
         with mock.patch.object(studio.os, "unlink", side_effect=PermissionError(13, "no")):
