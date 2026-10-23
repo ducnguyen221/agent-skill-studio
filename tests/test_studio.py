@@ -4,9 +4,13 @@ Run: python3 -m unittest discover -s tests -v
 """
 import importlib.util
 import json
+import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import unittest
 import zipfile
 from pathlib import Path
@@ -315,6 +319,9 @@ class StudioTests(unittest.TestCase):
     def test_template_mirror_matches(self):
         run = self.run_cli("sync-template", "--check")
         self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+        self.assertEqual((("skill-template", "skill-template"), ("skill-template-full", "skill-template-full")), studio.TEMPLATE_PAIRS)
+        for src_name, dst_name in studio.TEMPLATE_PAIRS:
+            self.assertEqual([], studio.mirror_diff(ROOT / "templates" / src_name, ROOT / "skills" / "skill-creator-studio" / "assets" / dst_name), src_name)
 
     def test_registry_matches_skill_folders(self):
         obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
@@ -454,6 +461,1110 @@ class StudioTests(unittest.TestCase):
             self.assertTrue(any("codex" in p and "negative_triggered" in p for p in problems), problems)
             with self.assertRaises(AssertionError):
                 self.test_model_evaluated_requires_counted_evidence(catalog_path=path)
+
+
+DESC = "Checks data carefully. Use when testing scaffold generation."
+
+
+def nonblank(path: Path) -> int:
+    return sum(1 for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip())
+
+
+class TemplateTests(unittest.TestCase):
+    """FR10 / FR19: minimal EN/VI template, --full, mirror_diff and install --user (SPR-33 TK6)."""
+
+    def run_cli(self, *args):
+        return self.run_cli_env({}, *args)
+
+    def run_cli_env(self, env, *args):
+        merged = dict(os.environ)
+        merged.update(env)
+        return subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "studio.py"), *map(str, args)], cwd=ROOT, env=merged,
+                              text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def make_home(self, base, *subdirs):
+        home = Path(base) / "home"
+        home.mkdir()
+        for sub in subdirs:
+            (home / sub).mkdir(parents=True)
+        return home, {"HOME": str(home), "USERPROFILE": str(home)}
+
+    def new_skill(self, base, name, *extra):
+        out, evals = Path(base) / "skills", Path(base) / "evals"
+        run = self.run_cli("new", name, "--description", DESC, "--output", out, "--eval-root", evals, *extra)
+        return run, out / name
+
+    def split(self, skill_md):
+        text = skill_md.read_text(encoding="utf-8").replace("\r\n", "\n")
+        _, front, body = text.split("---\n", 2)
+        return front, body
+
+    def test_new_minimal_default(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-min")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            self.assertEqual(["SKILL.md"], sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file()))
+            self.assertLessEqual(nonblank(skill / "SKILL.md"), 20)
+            self.assertIn("STUDIO-DRAFT", (skill / "SKILL.md").read_text(encoding="utf-8"))
+            self.assertEqual([], [f for f in studio.validate_skill(skill) if f["level"] == "ERROR"])
+            pack = self.run_cli("package", skill, "--out", Path(t) / "dist")
+            self.assertEqual(1, pack.returncode, pack.stdout + pack.stderr)
+            self.assertIn("PACK", pack.stdout)
+
+    def test_new_full_flag(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-full", "--full")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            for rel in ("SKILL.md", "references/PROCESS_TEMPLATE.md", "scripts/check_inputs.py", "agents/openai.yaml",
+                        "assets/templates/OUTPUT_TEMPLATE.md", "assets/sample-data/example.json"):
+                self.assertTrue((skill / rel).is_file(), rel)
+            self.assertFalse((skill / "references" / "WORKFLOW_GUIDE.md").exists())
+            self.assertNotIn("WORKFLOW_GUIDE", (skill / "SKILL.md").read_text(encoding="utf-8"))
+            findings = studio.validate_skill(skill)
+            self.assertEqual([], [f for f in findings if f["level"] == "ERROR"])
+            self.assertNotIn("CT10", {f["code"] for f in findings})
+
+    def test_new_lang_vi_body_vietnamese_frontmatter_english(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-vi", "--lang", "vi")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            self.assertEqual(["SKILL.md"], sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file()))
+            front, body = self.split(skill / "SKILL.md")
+            self.assertTrue(front.isascii(), front)
+            self.assertEqual("vi", studio.detect_lang(body))
+            self.assertEqual(body, unicodedata.normalize("NFC", body))
+            self.assertIn("## Gotchas", body)
+            self.assertIn("## References", body)
+            findings = studio.validate_skill(skill)
+            self.assertEqual([], [f for f in findings if f["code"].startswith("VI")])
+            self.assertEqual([], [f for f in findings if f["level"] == "ERROR"])
+
+    def test_new_lang_default_en(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-en")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            front, body = self.split(skill / "SKILL.md")
+            self.assertEqual("en", studio.detect_lang(body))
+            self.assertIn("what an agent would get wrong", body)
+            run2, skill2 = self.new_skill(t, "demo-en2", "--lang", "en")
+            self.assertEqual(0, run2.returncode, run2.stdout + run2.stderr)
+            self.assertEqual(body, self.split(skill2 / "SKILL.md")[1].replace("Demo En2", "Demo En"))
+
+    def test_new_lang_invalid_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-fr", "--lang", "fr")
+            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+            self.assertIn("invalid choice: 'fr'", run.stderr)
+            self.assertFalse(skill.exists())
+
+    def test_new_full_lang_vi_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-fv", "--full", "--lang", "vi")
+            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+            self.assertIn("full template is English-only", run.stderr)
+            self.assertFalse(skill.exists())
+            self.assertFalse((Path(t) / "evals" / "demo-fv").exists())
+
+    def test_minimal_templates_stay_under_20_nonblank_lines(self):
+        """SC4: both default templates stay small; the Vietnamese one mirrors the English headings."""
+        counts = [nonblank(ROOT / "templates" / "skill-template" / f) for f in ("SKILL.md", "SKILL.vi.md")]
+        self.assertEqual([14, 14], counts)
+        en = (ROOT / "templates" / "skill-template" / "SKILL.md").read_text(encoding="utf-8")
+        vi = (ROOT / "templates" / "skill-template" / "SKILL.vi.md").read_text(encoding="utf-8")
+        for heading in ("# Skill Template", "## Gotchas", "## References"):
+            self.assertIn(heading, en)
+            self.assertIn(heading, vi)
+        self.assertNotIn("<", re.search(r"^description: (.*)$", en, re.M).group(1))
+
+    def test_full_has_process_template(self):
+        process = studio.get_template(full=True) / "references" / "PROCESS_TEMPLATE.md"
+        text = process.read_text(encoding="utf-8")
+        for needle in ("# Process Template", "> **Conclusion:**", "## When to use / not", "## Steps", "### Step 1",
+                       "Command:", "Expect:", "Stop if:", "## Gotchas", "## Done when"):
+            self.assertIn(needle, text)
+        lines = text.replace("\r\n", "\n").split("\n")
+        for label in ("Command", "Expect", "Stop if"):
+            self.assertEqual(1, sum(1 for ln in lines if ln.startswith("- %s: " % label)), label)
+            self.assertFalse([ln for ln in lines if ln.startswith(label + ":")], "bare %s: line would merge when rendered" % label)
+        self.assertIn("- Command: [FILL: ", text)
+        self.assertFalse((process.parent / "WORKFLOW_GUIDE.md").exists())
+        self.assertEqual("# Optional, Codex only; delete if unused.", (process.parent.parent / "agents" / "openai.yaml").read_text(encoding="utf-8").splitlines()[0])
+
+    def test_get_template_selects_files(self):
+        base = studio.get_template().parent
+        self.assertEqual(base / "SKILL.md", studio.get_template())
+        self.assertEqual(base / "SKILL.vi.md", studio.get_template(False, "vi"))
+        self.assertEqual(base.parent / "skill-template-full", studio.get_template(True))
+        self.assertEqual(base.parent / "skill-template-full", studio.get_template(full=True, lang="en"))
+
+    def test_mirror_diff_detects_extra_file(self):
+        with tempfile.TemporaryDirectory() as t:
+            src, dst = Path(t) / "src", Path(t) / "dst"
+            for root in (src, dst):
+                (root / "sub").mkdir(parents=True)
+                (root / "same.txt").write_bytes(b"same")
+                (root / "sub" / "keep.txt").write_bytes(b"keep")
+            self.assertEqual([], studio.mirror_diff(src, dst))
+            (dst / "extra.txt").write_bytes(b"x")
+            (dst / "sub" / "keep.txt").write_bytes(b"changed")
+            (src / "missing.txt").write_bytes(b"m")
+            self.assertEqual(["extra.txt", "missing.txt", "sub/keep.txt"], studio.mirror_diff(src, dst))
+            self.assertEqual(["missing.txt", "same.txt", "sub/keep.txt"], studio.mirror_diff(src, Path(t) / "absent"))
+
+    def test_package_includes_agents_dir(self):
+        with tempfile.TemporaryDirectory() as t:
+            skill = Path(t) / "pack-me"
+            (skill / "agents").mkdir(parents=True)
+            (skill / "evals").mkdir()
+            (skill / "tests").mkdir()
+            (skill / "SKILL.md").write_text('---\nname: pack-me\ndescription: "Packs a sample. Use when testing agents directory packaging; not for real work."\n---\n\n# Pack Me\n\nBody.\n', encoding="utf-8")
+            (skill / "agents" / "openai.yaml").write_text("policy:\n  allow_implicit_invocation: true\n", encoding="utf-8")
+            (skill / "evals" / "cases.json").write_text("{}", encoding="utf-8")
+            (skill / "tests" / "t.py").write_text("x = 1\n", encoding="utf-8")
+            run = self.run_cli("package", skill, "--out", Path(t) / "dist")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            with zipfile.ZipFile(Path(t) / "dist" / "pack-me.zip") as zf:
+                names = set(zf.namelist())
+            self.assertIn("pack-me/agents/openai.yaml", names)
+            self.assertIn("pack-me/SKILL.md", names)
+            self.assertFalse([n for n in names if "/evals/" in n or "/tests/" in n], names)
+
+    def test_install_user_antigravity_under_home(self):
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".gemini/config")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "antigravity", "--user")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            dest = home / ".gemini" / "config" / "skills" / "data-quality-audit"
+            self.assertTrue((dest / "SKILL.md").is_file())
+            self.assertTrue(dest.resolve().is_relative_to(Path(t).resolve()))
+            self.assertIn(str(dest), run.stdout)
+
+    def test_install_user_codex_under_home(self):
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "codex", "--user")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            dest = home / ".agents" / "skills" / "data-quality-audit"
+            self.assertTrue((dest / "SKILL.md").is_file())
+            self.assertTrue(dest.resolve().is_relative_to(Path(t).resolve()))
+
+    def test_install_user_claude_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".claude")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "claude", "--user")
+            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+            self.assertIn("not supported for claude", run.stderr)
+            self.assertEqual([], list((home / ".claude").iterdir()))
+
+    def test_install_user_with_workspace_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "codex", "--user", "--workspace", ".")
+            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+            self.assertIn("not allowed with argument", run.stderr)
+            self.assertEqual([], list((home / ".agents").iterdir()))
+
+    def test_install_user_missing_parent_exit2(self):
+        with tempfile.TemporaryDirectory() as t:
+            for agent, parent in (("antigravity", ".gemini"), ("codex", ".agents")):
+                home, env = self.make_home(Path(tempfile.mkdtemp(dir=t)))
+                run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", agent, "--user")
+                self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+                self.assertIn("parent directory not found", run.stderr)
+                self.assertEqual([], list(home.iterdir()), "must not create anything under HOME")
+                self.assertFalse((home / parent).exists())
+
+    def test_full_and_minimal_templates_validate_clean(self):
+        """Round-2 fix 1: the full template is named like its folder, so validate has no FM2."""
+        for folder in ("skill-template", "skill-template-full"):
+            findings = studio.validate_skill(ROOT / "templates" / folder)
+            self.assertEqual([], [f for f in findings if f["level"] == "ERROR"], folder)
+            run = self.run_cli("validate", ROOT / "templates" / folder)
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            self.assertIn(": 0 errors;", run.stdout)
+        self.assertIn("name: skill-template-full\n", (ROOT / "templates" / "skill-template-full" / "SKILL.md").read_text(encoding="utf-8"))
+
+    def test_new_full_does_not_leak_template_suffix_into_name(self):
+        with tempfile.TemporaryDirectory() as t:
+            run, skill = self.new_skill(t, "demo-nm", "--full")
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            text = (skill / "SKILL.md").read_text(encoding="utf-8")
+            self.assertEqual(1, len(re.findall(r"^name: demo-nm$", text, re.M)), text[:200])
+            self.assertNotIn("demo-nm-full", text)
+            self.assertNotIn("name: skill-template", text)
+            self.assertEqual([], [f for f in studio.validate_skill(skill) if f["code"] == "FM2"])
+
+    def test_install_without_scope_flag_means_workspace_dot(self):
+        """No --workspace/--user is --workspace . (the current directory), not its parent."""
+        source = (ROOT / "skills" / "data-quality-audit").resolve()
+        with tempfile.TemporaryDirectory() as t:
+            cwd = Path(t) / "proj" / "inner"
+            cwd.mkdir(parents=True)
+            run = subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "studio.py"), "install", str(source), "--agent", "codex"],
+                                 cwd=cwd, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            dest = cwd / ".agents" / "skills" / "data-quality-audit"
+            self.assertTrue((dest / "SKILL.md").is_file(), run.stdout)
+            self.assertTrue(dest.resolve().is_relative_to(Path(t).resolve()))
+            self.assertFalse((cwd.parent / ".agents").exists())
+            self.assertIn("Installed data-quality-audit for codex at ", run.stdout)
+
+    def test_install_force_refuses_symlink_destination_in_process(self):
+        """Guard test that needs no symlink privilege: a destination reported as a link is never replaced."""
+        import contextlib
+        import io
+        from unittest import mock
+
+        original = Path.is_symlink
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents/skills")
+            dest = home / ".agents" / "skills" / "data-quality-audit"
+            dest.mkdir()
+            (dest / "marker.txt").write_text("keep", encoding="utf-8")
+            out, err = io.StringIO(), io.StringIO()
+
+            def fake(self):
+                return self == dest or original(self)
+
+            with mock.patch.dict(os.environ, env), mock.patch.object(Path, "is_symlink", fake), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = studio.main(["install", str(ROOT / "skills" / "data-quality-audit"), "--agent", "codex", "--user", "--force"])
+            self.assertEqual((1, True), (code, "symlink destination refused" in err.getvalue()), err.getvalue())
+            self.assertEqual("keep", (dest / "marker.txt").read_text(encoding="utf-8"))
+            self.assertEqual(["data-quality-audit"], sorted(p.name for p in dest.parent.iterdir()), "no backup may be created")
+
+    @unittest.skipUnless(os.name == "nt", "directory junctions are the unprivileged link type on Windows; plain symlinks need admin there")
+    def test_install_user_force_refuses_junction_destination(self):
+        import _winapi
+        import hashlib
+
+        def tree_sha(base):
+            digest = hashlib.sha256()
+            for q in sorted(base.rglob("*")):
+                digest.update(q.relative_to(base).as_posix().encode() + (q.read_bytes() if q.is_file() else b""))
+            return digest.hexdigest()
+
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents/skills")
+            outside = Path(t) / "outside"
+            outside.mkdir()
+            (outside / "keep.txt").write_text("keep", encoding="utf-8")
+            before = tree_sha(outside)
+            dest = home / ".agents" / "skills" / "data-quality-audit"
+            _winapi.CreateJunction(str(outside), str(dest))
+            try:
+                run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "codex", "--user", "--force")
+                self.assertEqual(1, run.returncode, run.stdout + run.stderr)
+                self.assertIn("symlink destination refused", run.stderr)
+                self.assertEqual(before, tree_sha(outside), "junction target must not be written through")
+                self.assertEqual(["keep.txt"], sorted(q.name for q in outside.iterdir()))
+                self.assertEqual(["data-quality-audit"], sorted(q.name for q in dest.parent.iterdir()), "no backup may be created")
+            finally:
+                try:
+                    os.rmdir(dest)  # removes the junction itself, never its target; a real dir here means the guard failed
+                except OSError:
+                    pass
+
+    @unittest.skipUnless(os.name == "nt", "directory junctions are the unprivileged link type on Windows; plain symlinks need admin there")
+    def test_install_user_force_junction_to_source_refuses_self_overwrite(self):
+        import _winapi
+        import hashlib
+        import shutil
+
+        def tree_sha(base):
+            digest = hashlib.sha256()
+            for q in sorted(base.rglob("*")):
+                digest.update(q.relative_to(base).as_posix().encode() + (q.read_bytes() if q.is_file() else b""))
+            return digest.hexdigest()
+
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".agents/skills")
+            source = Path(t) / "src" / "data-quality-audit"
+            shutil.copytree(ROOT / "skills" / "data-quality-audit", source)
+            before = tree_sha(source)
+            dest = home / ".agents" / "skills" / "data-quality-audit"
+            _winapi.CreateJunction(str(source), str(dest))
+            try:
+                run = self.run_cli_env(env, "install", source, "--agent", "codex", "--user", "--force")
+                self.assertEqual(1, run.returncode, run.stdout + run.stderr)
+                self.assertIn("refusing self-overwrite", run.stderr)
+                self.assertEqual(before, tree_sha(source))
+            finally:
+                try:
+                    os.rmdir(dest)  # removes the junction itself, never its target; a real dir here means the guard failed
+                except OSError:
+                    pass
+
+    def test_is_link_detects_reparse_points(self):
+        with tempfile.TemporaryDirectory() as t:
+            plain = Path(t) / "plain"
+            plain.mkdir()
+            self.assertFalse(studio.is_link(plain))
+            self.assertFalse(studio.is_link(Path(t) / "absent"))
+            if os.name == "nt":
+                import _winapi
+                link = Path(t) / "junction"
+                _winapi.CreateJunction(str(plain), str(link))
+                try:
+                    self.assertTrue(studio.is_link(link))
+                finally:
+                    os.rmdir(link)
+
+
+    def test_install_user_in_process(self):
+        """Same paths through main() so the changed lines are measured by coverage."""
+        import contextlib
+        import io
+        from unittest import mock
+
+        def call(env, *argv):
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    code = studio.main(list(map(str, argv)))
+                except SystemExit as exc:
+                    code = exc.code
+            return code, out.getvalue(), err.getvalue()
+
+        skill = ROOT / "skills" / "data-quality-audit"
+        with tempfile.TemporaryDirectory() as t:
+            home, env = self.make_home(t, ".gemini/config", ".agents")
+            with mock.patch.dict(os.environ, env):
+                self.assertEqual(home / ".gemini" / "config" / "skills", studio.user_skill_root("antigravity"))
+                self.assertEqual(home / ".agents" / "skills", studio.user_skill_root("codex"))
+                with self.assertRaises(ValueError):
+                    studio.user_skill_root("claude")
+            self.assertEqual(0, call(env, "install", skill, "--agent", "antigravity", "--user")[0])
+            self.assertEqual(0, call(env, "install", skill, "--agent", "codex", "--user")[0])
+            code, _, err = call(env, "install", skill, "--agent", "codex", "--user")
+            self.assertEqual(1, code, err)
+            code, _, err = call(env, "install", skill, "--agent", "claude", "--user")
+            self.assertEqual((2, True), (code, "not supported for claude" in err))
+            code, _, err = call(env, "install", skill, "--agent", "codex", "--user", "--workspace", ".")
+            self.assertEqual((2, True), (code, "not allowed with argument" in err))
+            lone, lone_env = self.make_home(Path(tempfile.mkdtemp(dir=t)))
+            code, _, err = call(lone_env, "install", skill, "--agent", "antigravity", "--user")
+            self.assertEqual((2, True, []), (code, "parent directory not found" in err, list(lone.iterdir())))
+
+    def test_new_and_sync_in_process(self):
+        import contextlib
+        import io
+
+        def call(*argv):
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    code = studio.main(list(map(str, argv)))
+                except SystemExit as exc:
+                    code = exc.code
+            return code, out.getvalue(), err.getvalue()
+
+        with tempfile.TemporaryDirectory() as t:
+            base = Path(t)
+            common = ("--description", DESC, "--output", base / "skills", "--eval-root", base / "evals")
+            self.assertEqual(0, call("new", "ip-min", *common)[0])
+            self.assertEqual(0, call("new", "ip-vi", "--lang", "vi", *common)[0])
+            self.assertEqual(0, call("new", "ip-full", "--full", *common)[0])
+            code, _, err = call("new", "ip-bad", "--full", "--lang", "vi", *common)
+            self.assertEqual((2, True), (code, "English-only" in err))
+            self.assertEqual({"SKILL.md"}, {p.name for p in (base / "skills" / "ip-vi").iterdir()})
+            self.assertTrue((base / "skills" / "ip-full" / "agents" / "openai.yaml").is_file())
+        code, out, err = call("sync-template", "--check")
+        self.assertEqual(0, code, out + err)
+
+    def test_install_workspace_and_sync_branches_in_process(self):
+        """Covers the --workspace path of install and both sync-template modes without touching the repo copies."""
+        import contextlib
+        import io
+        from unittest import mock
+
+        def call(*argv):
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    code = studio.main(list(map(str, argv)))
+                except SystemExit as exc:
+                    code = exc.code
+            return code, out.getvalue(), err.getvalue()
+
+        with tempfile.TemporaryDirectory() as t:
+            ws = Path(t) / "ws"
+            ws.mkdir()
+            self.assertEqual(0, call("install", ROOT / "skills" / "data-quality-audit", "--agent", "claude", "--workspace", ws)[0])
+            self.assertTrue((ws / ".claude" / "skills" / "data-quality-audit" / "SKILL.md").is_file())
+            code, _, err = call("install", ROOT / "skills" / "data-quality-audit", "--agent", "codex", "--workspace", Path(t) / "absent")
+            self.assertEqual((2, True), (code, "workspace directory not found" in err))
+        with mock.patch.object(studio, "mirror_diff", return_value=["SKILL.md"]):
+            code, _, err = call("sync-template", "--check")
+        self.assertEqual((1, True), (code, "template mirror differs: skill-template/SKILL.md" in err))
+        with mock.patch.object(studio.shutil, "rmtree") as rm, mock.patch.object(studio.shutil, "copytree") as cp:
+            code, out, _ = call("sync-template")
+        self.assertEqual((0, 2, 2, True), (code, rm.call_count, cp.call_count, "Synced 2 canonical templates" in out))
+
+
+class AgentskillsExportTests(unittest.TestCase):
+    """`evals <skill> --export agentskills` (SPEC 9.6). Pure function plus CLI, in process so coverage sees it."""
+
+    def call(self, *argv):
+        import contextlib
+        import io
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = studio.main(list(map(str, argv)))
+            except SystemExit as exc:
+                code = exc.code
+        return code, out.getvalue(), err.getvalue()
+
+    def make_eval(self, base, name="demo-skill", cases=None, status="frozen", fixtures=None):
+        folder = Path(base) / "evals" / name
+        (folder / "fixtures").mkdir(parents=True)
+        (folder / "rubric.md").write_text("# rubric\n", encoding="utf-8")
+        for fname, data in (fixtures or {"a.csv": b"id,amount\r\n1,2\r\n", "b.csv": "id,tên\n1,Đức\n".encode("utf-8")}).items():
+            (folder / "fixtures" / fname).write_bytes(data)
+        cases = cases or [
+            {"id": "c1", "kind": "typical", "prompt": "Audit a.csv, tiếng Việt ok", "should_trigger": True, "fixtures": ["fixtures/a.csv"], "expected_behaviors": ["Reads a.csv", "Reports rows"]},
+            {"id": "c2", "kind": "edge", "prompt": "Audit b.csv", "should_trigger": True, "fixtures": ["fixtures/a.csv", "fixtures/b.csv"], "expected_behaviors": ["Handles UTF-8"]},
+            {"id": "c3", "kind": "near-miss", "prompt": "Explain CALCULATE", "should_trigger": False, "fixtures": [], "expected_behaviors": ["Does not trigger"]},
+        ]
+        (folder / "cases.json").write_text(json.dumps({"skill_name": name, "status": status, "cases": cases}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return folder
+
+    def test_export_agentskills_schema(self):
+        real = ROOT / "evals" / "data-quality-audit"
+        source = json.loads((real / "cases.json").read_text(encoding="utf-8"))["cases"]
+        positive = [c for c in source if c["should_trigger"]]
+        with tempfile.TemporaryDirectory() as t:
+            code, findings, stats = studio.export_agentskills(real, "data-quality-audit", Path(t) / "out")
+            self.assertEqual((0, []), (code, findings))
+            target = Path(t) / "out" / "data-quality-audit" / "evals" / "evals.json"
+            raw = target.read_text(encoding="utf-8")
+            self.assertTrue(raw.endswith("}\n"))
+            data = json.loads(raw)
+            self.assertEqual(json.dumps(data, ensure_ascii=False, indent=2) + "\n", raw)
+            self.assertEqual({"skill_name", "evals"}, set(data))
+            self.assertEqual("data-quality-audit", data["skill_name"])
+            self.assertEqual(list(range(1, 6)), [e["id"] for e in data["evals"]])
+            for e, c in zip(data["evals"], positive):
+                self.assertEqual(["id", "prompt", "expected_output", "files", "assertions"], list(e))
+                self.assertEqual(c["prompt"], e["prompt"])
+                self.assertEqual(c["expected_behaviors"], e["assertions"])
+                self.assertEqual("; ".join(c["expected_behaviors"]), e["expected_output"])
+                self.assertEqual(["evals/files/" + Path(f).name for f in c["fixtures"]], e["files"])
+                for f in c["fixtures"]:
+                    copy = target.parent / "files" / Path(f).name
+                    self.assertEqual((real / f).read_bytes(), copy.read_bytes())
+            self.assertEqual(str(target), stats["path"])
+        with tempfile.TemporaryDirectory() as t:
+            code, out, err = self.call("evals", "data-quality-audit", "--export", "agentskills", "--out", Path(t) / "x")
+            self.assertEqual((0, ""), (code, err))
+            self.assertIn("exported 5, excluded 3", out)
+
+    def test_export_excludes_negative_cases(self):
+        with tempfile.TemporaryDirectory() as t:
+            code, _, stats = studio.export_agentskills(ROOT / "evals" / "data-quality-audit", "data-quality-audit", Path(t) / "out")
+            self.assertEqual(0, code)
+            self.assertEqual((5, 3), (stats["exported"], stats["excluded_negative"]))
+            raw = (Path(t) / "out" / "data-quality-audit" / "evals" / "evals.json").read_text(encoding="utf-8")
+            cases = json.loads((ROOT / "evals" / "data-quality-audit" / "cases.json").read_text(encoding="utf-8"))["cases"]
+            for c in cases:
+                self.assertEqual(c["should_trigger"], c["prompt"] in raw, c["id"])
+
+    def test_export_refuses_draft(self):
+        with tempfile.TemporaryDirectory() as t:
+            base = Path(t)
+            self.assertEqual(0, self.call("new", "draft-one", "--description", "Checks drafts. Use when testing exports.", "--output", base / "skills", "--eval-root", base / "evals")[0])
+            code, out, err = self.call("evals", "draft-one", "--eval-root", base / "evals", "--export", "agentskills", "--out", base / "out")
+            self.assertEqual(1, code, out + err)
+            self.assertFalse((base / "out").exists())
+            code, findings, stats = studio.export_agentskills(base / "evals" / "draft-one", "draft-one", base / "out")
+            self.assertEqual((1, True, 0), (code, any("draft" in f["message"] for f in findings), stats["exported"]))
+            self.assertFalse((base / "out").exists())
+
+    def test_export_refuses_broken_cases(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            (folder / "cases.json").write_text("{not json", encoding="utf-8")
+            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual((1, "EV1"), (code, findings[0]["code"]))
+            self.assertFalse((Path(t) / "out").exists())
+            code, out, err = self.call("evals", "demo-skill", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", Path(t) / "out")
+            self.assertEqual(1, code, out + err)
+            self.assertFalse((Path(t) / "out").exists())
+
+    def test_export_refuses_overwrite(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            out = Path(t) / "out"
+            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+            target = out / "demo-skill" / "evals" / "evals.json"
+            target.write_text("MARK\n", encoding="utf-8")
+            code, findings, _ = studio.export_agentskills(folder, "demo-skill", out)
+            self.assertEqual((1, "MARK\n"), (code, target.read_text(encoding="utf-8")))
+            self.assertTrue(findings)
+            code, _, err = self.call("evals", "demo-skill", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", out)
+            self.assertEqual((1, "MARK\n"), (code, target.read_text(encoding="utf-8")))
+            self.assertIn("--force", err)
+            self.assertEqual(0, self.call("evals", "demo-skill", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", out, "--force")[0])
+            self.assertEqual("demo-skill", json.loads(target.read_text(encoding="utf-8"))["skill_name"])
+
+    def test_export_refuses_out_under_skills(self):
+        skills = ROOT / "skills"
+        before = sorted(x.name for x in skills.iterdir())
+        target = skills / "x-export-guard"
+        self.addCleanup(shutil.rmtree, target, ignore_errors=True)  # a broken guard must not leave test data in the real skills/ tree
+        code, out, err = self.call("evals", "data-quality-audit", "--export", "agentskills", "--out", target)
+        self.assertEqual((2, True, False), (code, "must not be under skills/" in err, target.exists()))
+        p = subprocess.run([sys.executable, str(ROOT / "studio.py"), "evals", "data-quality-audit", "--export", "agentskills", "--out", "skills/x-export-guard"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual((2, True, False), (p.returncode, "must not be under skills/" in p.stderr, target.exists()))
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            (Path(t) / "skills").mkdir()
+            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "skills" / "demo-skill")
+            self.assertEqual((2, False), (code, (Path(t) / "skills" / "demo-skill" / "evals").exists()))
+        self.assertEqual(before, sorted(x.name for x in skills.iterdir()))
+
+    def test_x_unsafe_fixture_names_refused(self):
+        for bad in ("../cases.json", "fixtures/../cases.json", "fixtures/../../outside.txt"):
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.make_eval(t)
+                (Path(t) / "evals" / "outside.txt").write_text("x", encoding="utf-8")
+                data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+                data["cases"][0]["fixtures"] = [bad]
+                (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+                code, findings, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+                self.assertEqual((1, 0, False), (code, stats["exported"], (Path(t) / "out").exists()), bad)
+                self.assertTrue(findings, bad)
+
+    def dir_link(self, link, target):
+        """Directory symlink, or a junction on Windows without symlink rights; returns a cleanup callable or None when impossible."""
+        try:
+            os.symlink(target, link, target_is_directory=True)
+            return lambda: os.rmdir(link)
+        except (OSError, NotImplementedError):
+            pass
+        if os.name == "nt":
+            import _winapi
+            _winapi.CreateJunction(str(target), str(link))
+            return lambda: os.rmdir(link)
+        return None
+
+    def test_x_linked_fixture_dir_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            real = folder / "real_fixtures"  # inside the eval folder, so check_evals accepts it and the export guard must catch the link
+            (folder / "fixtures").rename(real)
+            undo = self.dir_link(folder / "fixtures", real)
+            if undo is None:
+                self.skipTest("cannot create links here")
+            try:
+                code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+                self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
+                self.assertTrue(any("symlink" in f["message"] for f in findings), findings)
+            finally:
+                undo()
+
+    def test_x_force_overwrites_without_deleting_foreign_files(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            out = Path(t) / "out"
+            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+            stray = out / "demo-skill" / "evals" / "files" / "mine.txt"
+            stray.write_text("keep", encoding="utf-8")
+            (out / "demo-skill" / "evals" / "files" / "a.csv").write_bytes(b"stale")
+            self.assertEqual(1, studio.export_agentskills(folder, "demo-skill", out)[0])
+            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out, force=True)[0])
+            self.assertEqual("keep", stray.read_text(encoding="utf-8"))
+            self.assertEqual((folder / "fixtures" / "a.csv").read_bytes(), (out / "demo-skill" / "evals" / "files" / "a.csv").read_bytes())
+
+    def test_x_force_refuses_overwriting_its_own_source(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            out = Path(t) / "out"
+            (out / "demo-skill" / "evals").mkdir(parents=True)
+            undo = self.dir_link(out / "demo-skill" / "evals" / "files", folder / "fixtures")
+            if undo is None:
+                self.skipTest("cannot create links here")
+            try:
+                before = (folder / "fixtures" / "a.csv").read_bytes()
+                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                self.assertEqual((1, before), (code, (folder / "fixtures" / "a.csv").read_bytes()))
+                self.assertTrue(any("symlink" in f["message"] for f in findings), findings)
+            finally:
+                undo()
+
+    def test_x_same_file_destination_refused(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            out = Path(t) / "out"
+            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+            with mock.patch.object(studio.os.path, "samefile", return_value=True):
+                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out, force=True)
+            self.assertEqual((1, True), (code, any("source fixture itself" in f["message"] for f in findings)))
+
+    def test_x_write_failure_is_reported(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            with mock.patch.object(studio.shutil, "copyfile", side_effect=OSError("disk full")):
+                code, findings, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual((1, 0, "EX8"), (code, stats["exported"], findings[0]["code"]))
+
+    def test_x_fixture_name_collision_and_nested_names(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t, fixtures={"a.csv": b"1"})
+            (folder / "a.csv").write_bytes(b"2")
+            (folder / "fixtures" / "sub").mkdir()
+            (folder / "fixtures" / "sub" / "n.csv").write_bytes(b"3")
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][0]["fixtures"] = ["fixtures/a.csv", "a.csv"]
+            data["cases"][1]["fixtures"] = ["fixtures/sub/n.csv"]
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
+            self.assertTrue(any("collide" in f["message"] for f in findings))
+            data["cases"][0]["fixtures"] = ["fixtures/a.csv"]
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual(0, code)
+            self.assertEqual(b"3", (Path(t) / "out" / "demo-skill" / "evals" / "files" / "sub" / "n.csv").read_bytes())
+            evals = json.loads(Path(stats["path"]).read_text(encoding="utf-8"))["evals"]
+            self.assertEqual(["evals/files/sub/n.csv"], evals[1]["files"])
+
+    def test_x_cli_flags_and_json_output(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.make_eval(t)
+            common = ("evals", "--all", "--eval-root", Path(t) / "evals")
+            code, out, err = self.call(*common, "--out", Path(t) / "o")
+            self.assertEqual(2, code)
+            self.assertIn("--export", err)
+            self.assertEqual(2, self.call(*common, "--force")[0])
+            code, out, err = self.call(*common, "--export", "agentskills", "--out", Path(t) / "o", "--json")
+            self.assertEqual(0, code, err)
+            report = json.loads(out)
+            self.assertEqual(0, report["model_runs_performed"])
+            self.assertEqual([("demo-skill", 0, 2, 1)], [(r["skill"], r["exit"], r["stats"]["exported"], r["stats"]["excluded_negative"]) for r in report["reports"]])
+            code, out, _ = self.call("evals", "--all", "--eval-root", Path(t) / "evals")
+            self.assertEqual((0, True), (code, "Schema-only evaluation" in out))
+            self.assertEqual(2, self.call("evals", "--export", "agentskills", "--eval-root", Path(t) / "evals")[0])
+            self.assertEqual(2, self.call("evals", "--export", "bogus", "--all")[0])
+
+    def test_x_bad_skill_name_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            code, findings, _ = studio.export_agentskills(folder, "..", Path(t) / "out")
+            self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
+            self.assertTrue(findings)
+
+    def refused(self, folder, base, name="demo-skill"):
+        code, findings, stats = studio.export_agentskills(folder, name, Path(base) / "out")
+        self.assertFalse((Path(base) / "out").exists(), findings)
+        return code, findings, stats
+
+    def test_x_evals_json_bytes_exact(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual(0, code)
+            expected = {"skill_name": "demo-skill", "evals": [
+                {"id": 1, "prompt": "Audit a.csv, tiếng Việt ok", "expected_output": "Reads a.csv; Reports rows", "files": ["evals/files/a.csv"], "assertions": ["Reads a.csv", "Reports rows"]},
+                {"id": 2, "prompt": "Audit b.csv", "expected_output": "Handles UTF-8", "files": ["evals/files/a.csv", "evals/files/b.csv"], "assertions": ["Handles UTF-8"]},
+            ]}
+            raw = Path(stats["path"]).read_bytes()
+            self.assertEqual((json.dumps(expected, ensure_ascii=False, indent=2) + "\n").encode("utf-8"), raw)
+            self.assertIn("tiếng Việt".encode("utf-8"), raw)
+            self.assertNotIn(b"\r", raw)
+
+    def test_x_draft_gate_each_half_refuses(self):
+        def cases(prompt="Audit a.csv", behavior="Reads a.csv"):
+            return [
+                {"id": "c1", "kind": "typical", "prompt": prompt, "should_trigger": True, "fixtures": ["fixtures/a.csv"], "expected_behaviors": [behavior]},
+                {"id": "c2", "kind": "edge", "prompt": "Audit b.csv", "should_trigger": True, "fixtures": ["fixtures/b.csv"], "expected_behaviors": ["Handles UTF-8"]},
+                {"id": "c3", "kind": "near-miss", "prompt": "Explain CALCULATE", "should_trigger": False, "fixtures": [], "expected_behaviors": ["Does not trigger"]},
+            ]
+        variants = {
+            "status draft only": dict(status="draft", cases=cases()),
+            "marker text in prompt only": dict(status="frozen", cases=cases(prompt="<!-- STUDIO-DRAFT --> Audit a.csv")),
+            "marker text in behaviors only": dict(status="frozen", cases=cases(behavior="STUDIO-DRAFT replace me")),
+        }
+        for label, kwargs in variants.items():
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.make_eval(t, **kwargs)
+                code, findings, stats = self.refused(folder, t)
+                self.assertEqual((1, ["EX3"], 0), (code, [f["code"] for f in findings], stats["exported"]), label)
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(0, studio.export_agentskills(self.make_eval(t, status="frozen", cases=cases()), "demo-skill", Path(t) / "out")[0])
+
+    def test_x_all_reports_worst_exit_whatever_the_order(self):
+        for first, second in (("aaa-broken", "zzz-good"), ("aaa-good", "zzz-broken")):
+            with tempfile.TemporaryDirectory() as t:
+                for name in (first, second):
+                    folder = self.make_eval(t, name=name)
+                    if "broken" in name:
+                        (folder / "cases.json").write_text("{not json", encoding="utf-8")
+                common = ("evals", "--all", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", Path(t) / "o")
+                code, out, err = self.call(*common)
+                self.assertEqual(1, code, (first, out, err))
+                self.assertIn("broken", err)
+                good = "aaa-good" if "good" in first else "zzz-good"
+                self.assertTrue((Path(t) / "o" / good / "evals" / "evals.json").is_file())
+                self.assertEqual(1, self.call(*common, "--json", "--force")[0])
+
+    def test_x_cases_missing_keys_refused(self):
+        def trio(*drop):
+            rows = [
+                {"id": "c1", "kind": "typical", "prompt": "Audit a.csv", "should_trigger": True, "fixtures": ["fixtures/a.csv"], "expected_behaviors": ["Reads a.csv"]},
+                {"id": "c2", "kind": "edge", "prompt": "Audit b.csv", "should_trigger": True, "fixtures": ["fixtures/b.csv"], "expected_behaviors": ["Handles UTF-8"]},
+                {"id": "c3", "kind": "near-miss", "prompt": "Explain CALCULATE", "should_trigger": False, "fixtures": [], "expected_behaviors": ["Does not trigger"]},
+            ]
+            for key in drop:
+                del rows[0][key]
+            return rows
+        payloads = {
+            "no cases key": {"skill_name": "demo-skill", "status": "frozen"},
+            "case without expected_behaviors": {"skill_name": "demo-skill", "cases": trio("expected_behaviors")},
+            "case without should_trigger": {"skill_name": "demo-skill", "cases": trio("should_trigger")},
+            "case without prompt": {"skill_name": "demo-skill", "cases": trio("prompt")},
+        }
+        for label, payload in payloads.items():
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.make_eval(t)
+                (folder / "cases.json").write_text(json.dumps(payload), encoding="utf-8")
+                code, findings, stats = self.refused(folder, t)
+                self.assertEqual((1, 0, True), (code, stats["exported"], bool(findings)), label)
+                self.assertEqual(1, self.call("evals", "demo-skill", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", Path(t) / "out")[0], label)
+                self.assertFalse((Path(t) / "out").exists(), label)
+
+    def test_x_prompt_and_behavior_whitespace_preserved(self):
+        prompt, behavior = "  Audit a.csv\n\t", " Reads a.csv "
+        cases = [
+            {"id": "c1", "kind": "typical", "prompt": prompt, "should_trigger": True, "fixtures": ["fixtures/a.csv"], "expected_behaviors": [behavior, "Reports rows"]},
+            {"id": "c2", "kind": "edge", "prompt": "Audit b.csv", "should_trigger": True, "fixtures": ["fixtures/b.csv"], "expected_behaviors": ["Handles UTF-8"]},
+            {"id": "c3", "kind": "near-miss", "prompt": "Explain CALCULATE", "should_trigger": False, "fixtures": [], "expected_behaviors": ["Does not trigger"]},
+        ]
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t, cases=cases)
+            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual(0, code)
+            first = json.loads(Path(stats["path"]).read_text(encoding="utf-8"))["evals"][0]
+            self.assertEqual((prompt, " Reads a.csv ; Reports rows", [behavior, "Reports rows"]), (first["prompt"], first["expected_output"], first["assertions"]))
+
+    def test_x_fixture_names_differing_only_in_case_or_unicode_form_collide(self):
+        composed, decomposed = unicodedata.normalize("NFC", "é.csv"), unicodedata.normalize("NFD", "é.csv")
+        pairs = {"case": ("a.csv", "A.csv"), "unicode form": (composed, decomposed), "case and form": (composed, unicodedata.normalize("NFD", "É.csv"))}
+        for label, (inside, outside) in pairs.items():
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.make_eval(t, fixtures={inside: b"1"})
+                (folder / outside).write_bytes(b"2")  # a different file one level up, so a case-insensitive disk still holds both
+                data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+                data["cases"][0]["fixtures"] = ["fixtures/" + inside, outside]
+                data["cases"][1]["fixtures"] = []
+                (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+                code, findings, _ = self.refused(folder, t)
+                self.assertEqual((1, True), (code, any("collide" in f["message"] for f in findings)), label)
+
+    def test_x_one_file_spelled_in_two_cases_with_different_case_collides(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t, fixtures={"a.csv": b"1"})
+            if not (folder / "fixtures" / "A.csv").exists():
+                self.skipTest("case-sensitive disk: A.csv is a different file here")
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][0]["fixtures"] = ["fixtures/a.csv"]
+            data["cases"][1]["fixtures"] = ["fixtures/A.csv"]  # same file on this disk, two exported names
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            code, findings, _ = self.refused(folder, t)
+            self.assertEqual((1, True), (code, any("collide" in f["message"] for f in findings)))
+
+    def test_x_out_under_eval_root_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            snapshot = sorted(str(x) for x in Path(t).rglob("*"))
+            for out in (Path(t) / "evals", Path(t) / "evals" / "x", folder, folder / "sub"):
+                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out)
+                self.assertEqual((2, True), (code, any("must not be under evals/" in f["message"] for f in findings)), str(out))
+            self.assertEqual(snapshot, sorted(str(x) for x in Path(t).rglob("*")))
+            old = os.getcwd()
+            try:
+                os.chdir(t)
+                code, out, err = self.call("evals", "demo-skill", "--eval-root", "evals", "--export", "agentskills", "--out", "evals")
+                self.assertEqual((2, True), (code, "must not be under evals/" in err), out + err)
+                self.assertEqual(snapshot, sorted(str(x) for x in Path(t).rglob("*")))
+                self.assertEqual(0, self.call("evals", "demo-skill", "--eval-root", "evals", "--export", "agentskills", "--out", "o")[0])
+            finally:
+                os.chdir(old)
+            self.assertTrue((Path(t) / "o" / "demo-skill" / "evals" / "evals.json").is_file())
+
+    def test_x_out_under_repo_evals_dir_refused_for_a_foreign_eval_root(self):
+        with tempfile.TemporaryDirectory() as t:
+            repo = Path(t) / "repo"
+            (repo / "standards").mkdir(parents=True)
+            (repo / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("x", encoding="utf-8")
+            (repo / "templates" / "skill-template").mkdir(parents=True)
+            (repo / "templates" / "skill-template" / "SKILL.md").write_text("x", encoding="utf-8")
+            (repo / "evals").mkdir()
+            other = Path(t) / "other"
+            other.mkdir()
+            self.make_eval(other)
+            old = os.getcwd()
+            try:
+                os.chdir(repo)
+                code, out, err = self.call("evals", "demo-skill", "--eval-root", other / "evals", "--export", "agentskills", "--out", "evals/x")
+                self.assertEqual((2, True, []), (code, "must not be under evals/" in err, list((repo / "evals").iterdir())), out + err)
+            finally:
+                os.chdir(old)
+
+    def test_x_packaged_copy_refuses_out_inside_its_own_skill_dir(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.make_eval(t)
+            pkg = Path(t) / "pkg" / "skill-creator-studio"  # a copy whose parent is not named skills/
+            shutil.copytree(ROOT / "skills" / "skill-creator-studio", pkg, ignore=shutil.ignore_patterns("__pycache__"))
+
+            def run(out):
+                return subprocess.run([sys.executable, "-X", "utf8", str(pkg / "scripts" / "studio.py"), "evals", "demo-skill", "--eval-root", str(Path(t) / "evals"), "--export", "agentskills", "--out", str(out)],
+                                      cwd=t, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            bad = run(pkg / "dist")
+            self.assertEqual((2, True, False), (bad.returncode, "must not be under skills/" in bad.stderr, (pkg / "dist").exists()), bad.stderr)
+            good = run(Path(t) / "out")
+            self.assertEqual((0, True), (good.returncode, (Path(t) / "out" / "demo-skill" / "evals" / "evals.json").is_file()), good.stderr)
+
+    def test_x_colon_in_fixture_name_refused(self):
+        for bad in ("fixtures/a:b.csv", "fixtures/a.csv:hid", "C:fixtures/a.csv", "fixtures/dir:/a.csv"):
+            source, parts, problem = studio.export_fixture_source(Path("."), bad)
+            self.assertEqual((None, [], True), (source, parts, "unsafe fixture path" in problem), bad)
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t, fixtures={"a.csv": b"1", "b.csv": b"2"})
+            try:
+                with open(str(folder / "fixtures" / "a.csv") + ":hid", "wb") as handle:  # an NTFS alternate data stream on Windows
+                    handle.write(b"hidden")
+            except OSError:
+                self.skipTest("cannot create a colon-named fixture here")
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][0]["fixtures"] = ["fixtures/a.csv:hid"]
+            data["cases"][1]["fixtures"] = []
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            code, findings, _ = self.refused(folder, t)
+            self.assertEqual((1, True), (code, any(f["code"] == "EX4" for f in findings)), findings)
+
+    def test_x_failed_write_removes_files_this_run_created(self):
+        from unittest import mock
+        real = shutil.copyfile
+        for label in ("second fixture fails", "evals.json fails"):
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.make_eval(t)
+                out = Path(t) / "out"
+                files = out / "demo-skill" / "evals" / "files"
+                self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+                survivor = files / "b.csv"
+                survivor.write_bytes(b"old")
+                (files / "a.csv").unlink()
+                (out / "demo-skill" / "evals" / "evals.json").unlink()
+                calls = []
+
+                def flaky(src, dst):
+                    calls.append(dst)
+                    if label.startswith("second") and len(calls) == 2:
+                        raise OSError("disk full")
+                    return real(src, dst)
+                with mock.patch.object(studio.shutil, "copyfile", side_effect=flaky):
+                    if label.startswith("evals"):
+                        with mock.patch.object(studio, "open", create=True, side_effect=OSError("denied")):
+                            code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                    else:
+                        code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                self.assertEqual((1, "EX8", 0), (code, findings[0]["code"], stats["exported"]), label)
+                self.assertEqual(["b.csv"], sorted(x.name for x in out.rglob("*") if x.is_file()), label)  # only the file that existed before the run
+                self.assertTrue(survivor.is_file(), label)
+
+
+class ExportFixtureHardeningTests(unittest.TestCase):
+    """The export must refuse a secret-named, zoned, linked or hard-linked fixture from names and lstat alone: no open, stat or copy of it, no file written."""
+
+    call = AgentskillsExportTests.call
+    make_eval = AgentskillsExportTests.make_eval
+
+    def export_traced(self, folder, out, watch):
+        """Run the export; return (code, findings, stats, touched) where touched lists every open/stat/copyfile aimed at a path whose last part is in `watch`."""
+        import builtins
+        from unittest import mock
+        touched = []
+        real_open, real_stat, real_path_stat, real_copy = builtins.open, os.stat, Path.stat, shutil.copyfile
+
+        def seen(arg):
+            try:
+                return os.path.basename(os.fspath(arg)).lower() in watch
+            except TypeError:
+                return False
+
+        def spy_open(file, *args, **kwargs):
+            if seen(file):
+                touched.append(("open", str(file)))
+            return real_open(file, *args, **kwargs)
+
+        def spy_stat(path, *args, **kwargs):
+            if seen(path) and kwargs.get("follow_symlinks", True):  # stat(follow_symlinks=False) is lstat: metadata of the entry itself, allowed
+                touched.append(("stat", str(path)))
+            return real_stat(path, *args, **kwargs)
+
+        def spy_path_stat(self, *args, **kwargs):
+            if seen(self) and kwargs.get("follow_symlinks", True):
+                touched.append(("Path.stat", str(self)))
+            return real_path_stat(self, *args, **kwargs)
+
+        def spy_copy(src, dst, *args, **kwargs):
+            if seen(src):
+                touched.append(("copyfile", str(src)))
+            return real_copy(src, dst, *args, **kwargs)
+        with mock.patch("builtins.open", spy_open), mock.patch.object(os, "stat", spy_stat), \
+                mock.patch.object(Path, "stat", spy_path_stat), mock.patch.object(studio.shutil, "copyfile", spy_copy):
+            code, findings, stats = studio.export_agentskills(folder, "demo-skill", out)
+        return code, findings, stats, touched
+
+    def one_fixture_eval(self, base, name, content=b"CANARY"):
+        """An eval whose only positive case names fixtures/<name>."""
+        folder = self.make_eval(base, fixtures={name: content})
+        data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+        data["cases"][0]["fixtures"] = ["fixtures/" + name]
+        data["cases"][1]["fixtures"] = []
+        (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+        return folder
+
+    def assert_refused_untouched(self, folder, base, watch, label):
+        out = Path(base) / "out"
+        code, findings, stats, touched = self.export_traced(folder, out, watch)
+        self.assertEqual((1, "EX4", 0, []), (code, findings[0]["code"] if findings else "no finding", stats["exported"], touched), "%s: %s" % (label, findings))
+        self.assertFalse(out.exists(), label)
+        return findings
+
+    def test_x_secret_named_fixture_refused_before_any_read(self):
+        for name in (".env", ".env.local", ".ENV", "auth.json", "AUTH.JSON", "canary.pem", "canary.key", "canary.credentials.json", "credentials.json", "secrets.json", "id_rsa"):
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.one_fixture_eval(t, name)
+                findings = self.assert_refused_untouched(folder, t, {name.lower()}, name)
+                self.assertIn("secret or credential name", findings[0]["message"], name)
+
+    def test_x_innocent_look_alike_names_are_still_exported(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t, fixtures={"environment.csv": b"1", "authors.json": b"2", "pem.csv": b"3", "monkey.csv": b"4"})
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][0]["fixtures"] = ["fixtures/environment.csv", "fixtures/authors.json"]
+            data["cases"][1]["fixtures"] = ["fixtures/pem.csv", "fixtures/monkey.csv"]
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual((0, 2), (code, stats["exported"]))
+            self.assertEqual(["authors.json", "environment.csv", "monkey.csv", "pem.csv"], sorted(x.name for x in (Path(t) / "out" / "demo-skill" / "evals" / "files").iterdir()))
+
+    def test_x_secret_named_fixture_in_a_negative_case_is_refused_too(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.one_fixture_eval(t, "a.csv")
+            (folder / "fixtures" / "auth.json").write_bytes(b"CANARY")
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][2]["fixtures"] = ["fixtures/auth.json"]  # c3 is a should_trigger false case: check_evals would still stat it
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            self.assert_refused_untouched(folder, t, {"auth.json"}, "negative case")
+
+    def test_x_fixture_folder_named_like_a_zone_refused(self):
+        for zone in (".secret", ".SECRET", "OneDrive - X", "sharepoint-sync"):
+            with tempfile.TemporaryDirectory() as t:
+                folder = self.one_fixture_eval(t, "a.csv")
+                (folder / "fixtures" / zone).mkdir()
+                (folder / "fixtures" / zone / "canary.csv").write_bytes(b"CANARY")
+                data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+                data["cases"][0]["fixtures"] = ["fixtures/%s/canary.csv" % zone]
+                (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+                findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, zone)
+                self.assertIn("secret or cloud-synced zone", findings[0]["message"], zone)
+
+    def test_x_eval_folder_inside_a_zone_refused_without_reading_cases_json(self):
+        for zone in ("OneDrive - X", ".secret"):
+            with tempfile.TemporaryDirectory() as t:
+                base = Path(t) / zone
+                base.mkdir()
+                folder = self.make_eval(base, fixtures={"canary.csv": b"CANARY"})
+                data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+                data["cases"][0]["fixtures"] = ["fixtures/canary.csv"]
+                data["cases"][1]["fixtures"] = []
+                (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+                findings = self.assert_refused_untouched(folder, t, {"canary.csv", "cases.json"}, zone)
+                self.assertIn("eval folder is inside", findings[0]["message"], zone)
+
+    def test_x_eval_folder_under_a_fake_home_secret_refused(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            home = Path(t) / "home"
+            (home / ".secret").mkdir(parents=True)
+            studio._secret_dirs.cache_clear()
+            try:
+                with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
+                    self.assertEqual("secret-zone", studio.zone_reason(home / ".secret" / "e"))
+                    folder = self.make_eval(home / ".secret", fixtures={"canary.csv": b"CANARY"})
+                    data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+                    data["cases"][0]["fixtures"] = ["fixtures/canary.csv"]
+                    data["cases"][1]["fixtures"] = []
+                    (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+                    self.assert_refused_untouched(folder, t, {"canary.csv", "cases.json"}, "fake HOME/.secret")
+            finally:
+                studio._secret_dirs.cache_clear()
+
+    def test_x_cloud_placeholder_or_resolved_zone_refused(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.one_fixture_eval(t, "canary.csv")
+            with mock.patch.object(studio, "path_is_cloud", lambda path: os.path.basename(os.fspath(path)) == "canary.csv"):
+                findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "placeholder")
+            self.assertIn("cloud placeholder", findings[0]["message"])
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.one_fixture_eval(t, "canary.csv")
+            real_realpath = os.path.realpath
+
+            def through_a_junction(path, *args, **kwargs):  # the fixtures folder "resolves" into a synced folder although no spelling in cases.json says so
+                found = real_realpath(path, *args, **kwargs)
+                return os.path.join(os.path.dirname(found), "OneDrive - Y") if os.path.basename(found) == "fixtures" else found
+            with mock.patch.object(os.path, "realpath", through_a_junction):
+                findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "resolved zone")
+            self.assertIn("resolves into", findings[0]["message"])
+
+    def test_x_symlink_and_hard_link_fixtures_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            outside = Path(t) / "outside.csv"
+            outside.write_bytes(b"CANARY")
+            folder = self.one_fixture_eval(t, "x.csv")
+            (folder / "fixtures" / "x.csv").unlink()
+            link = folder / "fixtures" / "canary.csv"
+            try:
+                os.link(outside, link)
+            except OSError:
+                self.skipTest("hard links are not available here")
+            data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+            data["cases"][0]["fixtures"] = ["fixtures/canary.csv"]
+            (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
+            findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "hard link")
+            self.assertIn("hard link", findings[0]["message"])
+            link.unlink()
+            try:
+                os.symlink(outside, link)
+            except (OSError, NotImplementedError):
+                return
+            findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "symlink")
+            self.assertIn("symlink or junction", findings[0]["message"])
+
+    def test_x_fixture_source_refuses_by_spelling_alone(self):
+        # the per-fixture entry point (also used by the export loop) must not need the eval-level pre-pass: it decides from names, nothing exists on disk here
+        with tempfile.TemporaryDirectory() as t:
+            for zone in ("OneDrive - X", ".secret", "SharePoint"):
+                source, parts, problem = studio.export_fixture_source(Path(t) / zone / "evals" / "demo-skill", "fixtures/a.csv")
+                self.assertEqual((None, [], True), (source, parts, "inside a secret or cloud-synced folder" in problem), zone)
+            for name in (".env", "auth.json", "k.pem"):
+                source, _, problem = studio.export_fixture_source(Path(t) / "e", "fixtures/" + name)
+                self.assertEqual((None, True), (source, "secret or credential name" in problem), name)
+            self.assertEqual("missing/outside eval fixture 'fixtures/a.csv'", studio.export_fixture_source(Path(t) / "e", "fixtures/a.csv")[2])
+
+    def test_x_cases_json_that_is_not_valid_still_reports_ev1(self):
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.make_eval(t)
+            (folder / "cases.json").write_text("{not json", encoding="utf-8")
+            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            self.assertEqual((1, "EV1"), (code, findings[0]["code"]), findings)
 
 
 if __name__ == "__main__":

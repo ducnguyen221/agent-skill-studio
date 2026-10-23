@@ -21,7 +21,8 @@ For every check mark PASS / FAIL / N/A with **file:line**, actual text/command o
 ## Structure & resources
 
 - **SK-01:** entrypoint is a router, not manual; body ~<500 lines; all essential references directly linked, no dead paths.
-- **SK-02:** Markdown reference >100 lines with Contents at beginning.
+- **SK-02:** cutting questions per kept passage: would the agent go wrong without it? does it repeat another file (link instead of copy)? are conditions nested more than two levels?
+- **SK-15:** Markdown reference >100 lines has `## Contents` at the top (`ST5`); body >100 lines should have one (`ST7`); what must always hold sits in the first 5 000 tokens.
 - **SK-09:** scripts clearly `run`/`read`; packages, install/permissions documented; paths portable; assets not secrets or eval fixtures.
 - Check orphan reference files, obsolete copies, duplicate guidance and stale links.
 
@@ -34,6 +35,7 @@ For every check mark PASS / FAIL / N/A with **file:line**, actual text/command o
 - **SK-10:** risky must-hold requirements implemented with host-compatible enforcement; test allow/deny cases.
 - **SK-12:** governing principles at top for long sessions.
 - **SK-13:** no request to expose private internal reasoning.
+- **SK-14:** forcing words (`MUST`, `NEVER`, `ALWAYS`, `CRITICAL`) carry a reason or sit in a low-freedom block (`CT10`, WARN).
 
 ## Evaluations & reliability
 

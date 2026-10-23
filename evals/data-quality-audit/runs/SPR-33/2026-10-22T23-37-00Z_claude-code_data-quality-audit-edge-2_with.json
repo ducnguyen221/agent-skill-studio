@@ -1,0 +1,49 @@
+{
+  "case_id": "data-quality-audit-edge-2",
+  "pair_id": "data-quality-audit/data-quality-audit-edge-2/claude-code",
+  "timestamp": "2026-10-22T23:37:00.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "edge",
+  "should_trigger": true,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "<local>/opcos/spr33/plugin-b85329d (git archive b85329dc60fdad2032eb94111a62133bd8454670, autocrlf=false)",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 40,
+        "tool": "Skill",
+        "via": "Skill",
+        "match": "agent-skill-studio:data-quality-audit"
+      }
+    ],
+    "scripts": [
+      {
+        "line": 58,
+        "tool": "Bash",
+        "match": "python -I \"~/AppData/Local/opcos/spr33/plugin-b85329d/skills/data-quality-audit/scripts/validate_csv.py\" --file \"~/OpcOS/works"
+      }
+    ],
+    "count_on_filtered_copy_equal": true,
+    "transcript_sha256_full": "c15dc3b1967bf3e4476356f234b0be5cb8f5bc13f5535a2742f4e88f0f9e9119",
+    "transcript_sha256_filtered": "9ecc670a77cbececdf2680050f13fd67dd2aa890e2b25a436c28d147e662d681",
+    "line_numbers_refer_to": "original transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr33\\transcripts\\2026-10-22T23-37-00Z_claude-code_data-quality-audit-edge-2_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-22-skill-studio-standard-v1/evidence/transcripts/2026-10-22T23-37-00Z_claude-code_data-quality-audit-edge-2_with.jsonl (OpcOS repo; redacted copy)",
+  "output_excerpt": "Một cặp lặp: dòng 4 của file (`order_id=1, line_no=1, amount=30`) trùng khóa với dòng 2 (`1, 1, 10`). Hai dòng này khác `amount` (10 và 30), nên chúng không phải bản sao nguyên văn. Dòng 3 (`1, 2, 20`) là duy nhất.\n\nKết quả chạy `validate_csv.py` trên `fixtures\\order_lines.csv`: kiểm 3 dòng dữ liệu, trạng thái `fail`, exit code 1. Chỉ có đúng một lỗi, loại `duplicate-key`. Các kiểm tra trường bắt buộc và `amount` là số đều qua.\n\n**Giả định:** tôi lấy `order_id` + `line_no` làm khóa theo yêu cầu của bạn. Nếu thực tế mỗi order_id có thể có nhiều dòng cùng `line_no` (ví dụ theo lô hay theo lần đi",
+  "cwd": "~/OpcOS/workspaces/spr-33-eval/claude-code\\2026-10-22T23-37-00Z_data-quality-audit-edge-2_with",
+  "skill_sha256_loaded": "d4325c8152b383dcf080c1b6716b706c6f7518dbd7bea7c21e34159439b40dc8",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "1f970c7e-68e3-4d8b-a04d-c34dc5e56acd",
+  "ledger_id": "1f970c7e-68e3-4d8b-a04d-c34dc5e56acd",
+  "wall_seconds": 30.1,
+  "timeout_s": 300,
+  "status": "ran",
+  "batch": "SPR-33-TK12-20261023-b85329d",
+  "cost_usd": 0.27832239999999997
+}

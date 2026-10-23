@@ -1,6 +1,6 @@
 # Skill Catalog — Inventory và ownership
 
-| Name | Purpose | Supported target paths | Evaluation | Status |
+| Name | Purpose | Supported target paths (`install --workspace`; `--user`: Codex `~/.agents/skills`, AGY `~/.gemini/config/skills`, Claude không hỗ trợ) | Evaluation | Status |
 |---|---|---|---|---|
 | `skill-creator-studio` | NEW/AUDIT/REFINE portable Skills | Claude `.claude/skills` / Codex+AGY `.agents/skills` | 8 cases (5 nên kích hoạt, 3 không); mô hình đã chạy 18/10 trên Claude Code và Codex, Antigravity `not_run` | Prototype |
 | `data-quality-audit` | CSV schema/key/null/numeric check | Tương tự | 8 cases (5 nên kích hoạt, 3 không); mô hình đã chạy 18/10 trên Claude Code và Codex, Antigravity `not_run` | Prototype |

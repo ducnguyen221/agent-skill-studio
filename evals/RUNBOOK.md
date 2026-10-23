@@ -12,14 +12,18 @@ evals/<skill-name>/
   rubric.md               # tiêu chí chấm độc lập, hard-fail điều kiện
   fixtures/               # dữ liệu synthetic, không có customer data
   baselines/BASELINE.md   # No-skill run, nếu chưa chạy ghi NOT RUN
-  runs/                   # tạo trong lần thực thi thực tế (optional)
+  runs/                   # tạo trong lần thực thi thực tế (optional); lô có tên: runs/SPR-18/, runs/SPR-33/
 ```
+
+Công cụ chung nằm ở `evals/tools/` (chỉ thư viện chuẩn): `activation.py` đếm kích hoạt từ transcript (`verify`, `hash`, `count`, `freeze`, `summarize`), `oracle.py` chấm đầu ra theo `expected/<case-id>.json`, `redact.py` làm bản transcript che email và đường dẫn máy để commit được.
+
+Xuất các ca positive sang định dạng agentskills (không gọi model): `python3 studio.py evals <skill> --export agentskills --out dist/agentskills` ghi `<out>/<skill>/evals/evals.json`; `--out` không được nằm dưới `skills/` hay `evals/`.
 
 ## Trước khi viết Skill
 
 1. Chọn >=3 prompts thực tế: một typical, một edge, một negative trigger (không nên gọi Skill).
 2. Ghi expected behavior và criteria **trước** khi viết nội dung Skill dài.
-3. Chạy không Skill để có baseline, tốt nhất phiên mới; nếu không chạy được, ghi `not_run` thay vì giả kết quả.
+3. Chạy không Skill để có baseline, tốt nhất phiên mới; nếu không chạy được thì không bịa kết quả — định nghĩa: [Không pass giả](../standards/EVALUATION_STANDARD.md#không-pass-giả-not_run).
 
 ## Khi chạy với Claude, Codex hoặc AGY
 
@@ -89,6 +93,14 @@ Giữ các khoá mẫu cũ và thêm: `pair_id` (`<skill>/<case-id>/<runtime>`),
 `status` ∈ `ran` | `not_run` | `contaminated` | `invalid-version` | `invalid-model`. Transcript đầy đủ không nằm trong repo này mà ở hồ sơ sprint
 của OpcOS; log chỉ giữ `hits` và băm.
 
+Lô SPR-33 ghi thêm năm khoá (đọc được từ log mẫu; `activation.py verify|summarize` không dùng chúng):
+
+- `should_trigger`: kỳ vọng của bộ câu (`true` cho câu dương, `false` cho câu âm/near-miss), chép từ `cases.json`; so với `triggered` để tính dương/âm.
+- `loading_mode`: cách skill vào phiên; `plugin-dir` = nạp bằng `--plugin-dir` từ cây `git archive` đã chốt (không dùng plugin cài sẵn của máy).
+- `plugin_dir`: nguồn của cây plugin đó (thư mục thử và commit đã archive, `autocrlf=false`), viết dạng tương đối hoặc `~`, không đường tuyệt đối của máy.
+- `session_id`: mã phiên `claude -p` (tên transcript `<session_id>.jsonl`); khi chạy không qua cầu A2A thì `ledger_id = session_id`.
+- `not_run_reason`: lý do khi `status` khác `ran` (ví dụ chạm giới hạn phiên); khoá chỉ xuất hiện ở phiên không chạy, nên 16/16 log SPR-33 (đều `ran`) không mang khoá này.
+
 ## Antigravity — đo trong IDE (bàn giao cho sprint riêng RQ-117)
 
 Cầu `ask-agy` (headless `--print`) không đo được kích hoạt: một lượt đo 17/10/2026 cho thấy (1) không có transcript (thư mục `brain/` không mọc thêm),
@@ -96,3 +108,7 @@ Cầu `ask-agy` (headless `--print`) không đo được kích hoạt: một lư
 Dùng lại nguyên bộ câu `evals/<skill>/cases.json`, oracle `expected/`, thước `rubric.md` (xem manifest), skill vào `.agents/skills` của workspace thử bằng
 `studio.py install … --agent antigravity --workspace <run-dir>`, và với baseline phải tạm đưa skill toàn máy ra khỏi `~/.gemini/antigravity/skills`
 (việc đổi máy, cần Đức duyệt riêng). Chấm kích hoạt bằng lịch sử tool call của IDE; không coi tên skill trong danh mục là kích hoạt.
+
+## Lô SPR-33 — cùng cách đo, trên Claude Code
+
+Lô 16 lượt (8 case mỗi skill) chạy ngày 22/10/2026 với Claude Code 2.1.308, model `claude-sonnet-5-5`, nạp skill bằng `--plugin-dir` từ bản `git archive` tại SHA lô, đúng lệnh ở dòng Claude Code của bảng trên; log ở `runs/SPR-33/`, đếm bằng `activation.py count … --runtime claude-code` và `summarize`. Số đo và giới hạn: [QA_REPORT.md](../QA_REPORT.md). Codex và Antigravity thật không chạy ở lô này (`not_run:needs-directive`).

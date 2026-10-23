@@ -1,3 +1,8 @@
+---
+title: "Core Standard — Nguyên tắc nền tảng của Agent Skill Studio"
+status: active
+updated: 2026-10-23
+---
 # Core Standard — Nguyên tắc nền tảng của Agent Skill Studio
 
 **Phạm vi:** mọi Skill được tác giả/kiểm định/phân phối bằng repository này. **Phiên bản:** 0.1.0 — 2026-10-12.
@@ -63,7 +68,7 @@ Quy định bắt buộc của Studio:
 - Test metadata có >=3 tình huống thực tế gồm ít nhất một negative trigger.
 - Tất cả fixtures/kết quả kiểm thử không có trong package runtime.
 - Skill có quyền thực thi nguy hiểm chỉ được publish sau khi policy độc lập và allow/deny test thực tế đều PASS.
-- Mọi nhận định về "model tested" phải có log, ngày, phiên bản, prompt và kết quả. Kết quả chưa thực thi phải gắn `not_run`.
+- Mọi nhận định về "model tested" phải có log, ngày, phiên bản, prompt và kết quả. Định nghĩa: [Không pass giả](EVALUATION_STANDARD.md#không-pass-giả-not_run).
 - Có chủ sở hữu, phiên bản, cách rollback và changelog khi Skill được sử dụng cho production.
 
 ## Links

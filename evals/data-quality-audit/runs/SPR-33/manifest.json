@@ -1,0 +1,25 @@
+{
+  "frozen_at": "2026-10-22T23:35:20Z",
+  "files": {
+    "cases.json": "d252520c777afb18fc60b0d0054763809d7ad7a86ad1921d18373772e49f5719",
+    "rubric.md": "58c883ae88baef81833d73390192b2dbfb36d5af859b6ca7a80276eaf4b4c2fe",
+    "expected/csv-clean.json": "5b79db0dfd0de320709ae322d32cd1d38c5f402582f1a23602a69bb1b9c3ea70",
+    "expected/csv-duplicate.json": "f83bfc7b5d6b89cf111633b708d79e0d7c6bf8cb9fa19d56b0d929989f83ef7c",
+    "expected/csv-invalid-numeric.json": "29657e5cab58b1a0dab70465737de565604f23e5258ec37022542048f0f83672",
+    "expected/csv-negative.json": "0ed50cb07642ac5aafd66fd72758e60dae9e854621e8b9a2904d8a43e41edc6c",
+    "expected/data-quality-audit-edge-2.json": "e2f9e21431dc49f8352d25dd635e50b3dc635f70b15328cf37c8262f71146949",
+    "expected/data-quality-audit-input-error.json": "01e0acddbd8570996e8d9a1ae454ff328b14a47f5f8b05ee69510404cd9bcde6",
+    "expected/data-quality-audit-near-miss-convert.json": "d34f78b6cf5105804e235e09a950d679784f00162e92c860f57653992ac81e7a",
+    "expected/data-quality-audit-near-miss-merge.json": "1eed31e43882af217380fe5cda0f9b38372fffd497aa705ad411e5ae27e2a980",
+    "fixtures/clean.csv": "cd384a90e89242e43d82ab05b752efcd6ba26ea78f980b27cf94a42a7e6c394e",
+    "fixtures/customers.csv": "7300954ac70caf681f6ad2f1d106207b4421575a7e18a2b45aa0a0667c29149a",
+    "fixtures/duplicates.csv": "756fccbb7cba70cdca7f4c4c291933e5779d5c67ec294751c79e7038e1a9495b",
+    "fixtures/invalid_numeric.csv": "988b785675e35f47b7caef0c91007ac00bf91f49c327b50ee31bfae54ecce4b2",
+    "fixtures/missing_column.csv": "aac441b2f011b33ba88a30f384ec388988fff9d248e7620cc73007e74720d5c9",
+    "fixtures/order_lines.csv": "1f8a7f033627150c3428edba4d17ef8e02ad4af07e89dc2d346b15a6dcc1ac46",
+    "fixtures/orders.csv": "c0993f9b81892324fd3dc16758810437a6deb6ebb2411913e2db2640aafb2435"
+  },
+  "skill_sha256_repo": "d4325c8152b383dcf080c1b6716b706c6f7518dbd7bea7c21e34159439b40dc8",
+  "skill_sha256_claude_cache": "d4325c8152b383dcf080c1b6716b706c6f7518dbd7bea7c21e34159439b40dc8",
+  "skill_sha256_worktree": "d4325c8152b383dcf080c1b6716b706c6f7518dbd7bea7c21e34159439b40dc8"
+}

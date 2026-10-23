@@ -1,12 +1,21 @@
+---
+title: "Evaluation Standard — Cách chứng minh Skill hoạt động"
+status: active
+updated: 2026-10-23
+---
 # Evaluation Standard — Cách chứng minh Skill hoạt động
 
 ## Contents
-- Phạm vi và nơi lưu evals
+- Phạm vi và nơi lưu
 - Loại bài kiểm thử
 - Thiết kế test cases
 - Cách chạy baseline và A/B
-- Chấm điểm, release gate, rollback
-- Phân biệt automatic static test và model test
+- Release gate nội bộ
+- Log test nên có
+- Không pass giả (`not_run`)
+- Phân vai hai hệ eval
+- Xuất sang agentskills
+- Cách reviewer đánh giá
 
 ## Phạm vi và nơi lưu
 
@@ -42,15 +51,13 @@ Nếu một Skill độc lập không có repo, có thể colocate evals bên tr
 5. So sánh pass/fail, false trigger, blocked actions, chất lượng, chi phí thực nếu đo được; quyết định Keep / Refine / Roll back.
 6. Khi bỏ một rule bị cho là dư thừa, test version có và không có rule để tránh regression.
 
-**Không** dùng một agent tự nhận đã pass nếu không có log/artefact. Một static JSON validator chỉ chứng minh case metadata hợp lệ, **không** chứng minh model đã hoàn thành case.
-
 ## Release gate nội bộ
 
 - **Prototype:** static checks pass và đã có evals template, được dùng thử nội bộ với nhãn prototype.
 - **Candidate:** >=3 scenarios, 1 negative, baseline ghi nhận (hoặc justified unavailable), các nguồn tài liệu đã review, script smoke test pass.
 - **Production:** dữ liệu từ phiên test thực tế trên các runtime mục tiêu; kết quả đạt rubric; không có safety-critical failure; owner signoff và rollback.
 
-Nếu chưa chạy model, ghi `not_run` và không gọi production-tested. Không đặt ngưỡng chất lượng phần trăm phổ quát; mỗi skill xác định hard acceptance riêng tại `rubric.md`.
+Chưa chạy model: xem [Không pass giả](#không-pass-giả-not_run). Không đặt ngưỡng chất lượng phần trăm phổ quát; mỗi skill xác định hard acceptance riêng tại `rubric.md`.
 
 ## Log test nên có
 
@@ -69,7 +76,20 @@ Nếu chưa chạy model, ghi `not_run` và không gọi production-tested. Khô
 }
 ```
 
-Giữ những trường `null` và `not_run` cho đến khi có test thật; **không tự điền score/pass**.
+## Không pass giả (`not_run`)
+
+- Chưa chạy model thì ghi `not_run`; không gọi Skill là production-tested.
+- Một agent tự nhận đã pass mà không có log hay artefact thì không tính. Static JSON validator chỉ chứng minh metadata của case hợp lệ, không chứng minh model đã hoàn thành case.
+- Trong log chạy, giữ trường `null` và `status: "not_run"` cho đến khi có test thật; không tự điền score hay pass.
+
+## Phân vai hai hệ eval
+
+- RED/GREEN của `writing-skills` (agent-agile-team): kiểm áp lực hành vi.
+- A/B của Studio (mục "Cách chạy baseline và A/B"): kiểm kích hoạt và chất lượng đầu ra.
+
+## Xuất sang agentskills
+
+`studio.py evals <skill> --export agentskills` ghi `evals/<skill>/cases.json` sang định dạng agentskills theo ánh xạ SPEC mục 9.6 của SPR-33 (`system/docs/plans/2026-10-22-skill-studio-standard-v1/SPEC.md` trong repo OpcOS). Cú pháp đầy đủ: `studio.py evals <skill>|--all --export agentskills [--out DIR] [--force] [--json]`. Chỉ ca `should_trigger: true` được xuất (ca âm bị loại và được đếm trong dòng `exported N, excluded M`). `--out` mặc định `dist/agentskills` và không được nằm dưới `skills/` hay dưới thư mục eval (`evals/`, đang đóng băng) (thoát 2). Eval nháp hoặc `cases.json` hỏng thoát 1 mà không ghi file; file đích đã có mà thiếu `--force` cũng thoát 1. Tên fixture chứa `:` bị từ chối, hai tên chỉ khác hoa/thường hay dạng Unicode coi là trùng (thoát 1). Lỗi ghi giữa chừng thì file do lượt chạy đó tạo ra được xoá lại. Bộ xuất chỉ chép các fixture mà `cases.json` tham chiếu và từ chối đường bất thường, link hay junction, tên nhạy cảm (theo một danh sách) và đường nằm trong vùng secret hoặc cloud theo tên đường; việc kiểm tên chỉ mang tính heuristic (bí danh Windows như dấu chấm hoặc khoảng trắng cuối, tên dạng 8.3 có thể lọt), nên hãy rà fixture trước khi phát hành gói.
 
 ## Cách reviewer đánh giá
 

@@ -1,22 +1,30 @@
 # Google Antigravity Adapter — Agent Skills, Rules và Discovery
 
-**Checked:** 2026-10-12 · [Official Skills](https://www.antigravity.google/docs/skills) · [Official Rules](https://www.antigravity.google/docs/rules/). Product name trong tài liệu công khai là **Google Antigravity**; "AntiCraft" không phải tên chính thức được xác minh.
+Checked: 2026-10-23 · nguồn đã mở lại: [Official Skills](https://antigravity.google/docs/skills) (đích workspace và toàn cục, thư mục con). [Official Rules](https://www.antigravity.google/docs/rules/): `not_run:chưa mở lại` ở lần này. Product name trong tài liệu công khai là **Google Antigravity**; "AntiCraft" không phải tên chính thức được xác minh.
 
 ## Project / global paths
 
 - Project/workspace Skills: `.agents/skills/<skill-name>/SKILL.md`.
-- Global Skills: `~/.gemini/config/skills/<skill-name>/SKILL.md` theo tài liệu Antigravity.
+- Global Skills (App và IDE): `~/.gemini/config/skills/<skill-name>/SKILL.md` theo tài liệu Antigravity. Tài liệu nêu CLI dùng đích khác, `~/.gemini/antigravity-cli/skills/<skill-name>/`; lệnh `install --user` của Studio **không** ghi vào đích CLI này.
+- Studio: `install --agent antigravity --user` chép vào `~/.gemini/config/skills/<tên>`; `~/.gemini/config` phải có sẵn (thiếu thì thoát 2, không tạo gì).
 - Workspace instruction/rules: `AGENTS.md`, `GEMINI.md`, hoặc `.agents/rules/*.md` tùy surface và activation configuration.
 - Legacy `.agent/skills` còn có thể tương thích, nhưng chuẩn repo mới nên dùng `.agents/skills`.
 
 ## Cài và kích hoạt
 
 ```bash
-python3 studio.py install skills/skill-creator-studio --agent antigravity --workspace .
+mkdir -p ./target-project   # --workspace phải là thư mục có sẵn, thiếu thì thoát 2
+python3 studio.py install skills/skill-creator-studio --agent antigravity --workspace ./target-project
+# cấp người dùng (App/IDE)
+python3 studio.py install skills/skill-creator-studio --agent antigravity --user
 # Trong Antigravity: dùng yêu cầu tương ứng hoặc slash-command nếu surface hỗ trợ
 ```
 
 Nếu đã cài Skill tại `.agents/skills` bằng Codex, không cần cài lại để Antigravity đọc cùng dữ liệu; kiểm tra behavior trên surface được dùng.
+
+## Thư mục con của skill
+
+Tài liệu Antigravity liệt kê `scripts/`, `examples/` và `resources/` bên cạnh `SKILL.md`; không thấy nhắc `references/` hay `assets/`. Studio giữ `references/` và `assets/` (SK-01, progressive disclosure) và `install` chép nguyên cây thư mục. Chưa có bằng chứng chạy thật là Antigravity đọc `references/` hay `assets/` (`not_run`); cần `examples/` hoặc `resources/` thì tạo thêm theo docs.
 
 ## Khác biệt so với Claude/Codex
 
