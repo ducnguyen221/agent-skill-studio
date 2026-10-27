@@ -42,4 +42,4 @@ Nêu một việc lặp lại, đầu vào và đầu ra mong đợi, cùng mộ
 
 ## Tiêu chí hoàn thành
 
-Sản phẩm yêu cầu đã có và đáp ứng tiêu chí chấp nhận tường minh, các kiểm liên quan đạt, giới hạn đã được báo. Nhiệm vụ không đạt chỉ vì bước cuối đã được thử.
+Sản phẩm yêu cầu đã có và đáp ứng tiêu chí chấp nhận tường minh, các kiểm liên quan đạt, giới hạn đã được báo. Không coi nhiệm vụ là đạt chỉ vì bước cuối đã được thử.
