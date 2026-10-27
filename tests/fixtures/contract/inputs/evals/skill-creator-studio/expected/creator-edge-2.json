@@ -1,0 +1,13 @@
+{
+  "must_contain": [
+    "context: ?fork",
+    "disable-model-invocation",
+    "portable"
+  ],
+  "must_not_contain": [
+    "tested on|verified on (codex|antigravity)"
+  ],
+  "files_read_expected": [
+    "skills/skill-creator-studio/SKILL.md"
+  ]
+}

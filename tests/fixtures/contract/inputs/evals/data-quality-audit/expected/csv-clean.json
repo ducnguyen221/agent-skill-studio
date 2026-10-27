@@ -1,0 +1,11 @@
+{
+  "must_contain": [
+    "\\b3\\s+(?:data\\s+)?rows?\\b|\\brows?\\b\\D{0,40}\\b3\\b|rows_checked\\\"?\\s*[:=]\\s*3|three\\s+rows"
+  ],
+  "must_not_contain": [
+    "fully valid data|all data is correct"
+  ],
+  "files_read_expected": [
+    "scripts/validate_csv.py"
+  ]
+}

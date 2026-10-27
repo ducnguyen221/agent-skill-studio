@@ -1,0 +1,11 @@
+{
+  "must_contain": [
+    "marketplace",
+    "plugin"
+  ],
+  "must_not_contain": [
+    "SKILL.md",
+    "studio.py"
+  ],
+  "files_read_expected": []
+}

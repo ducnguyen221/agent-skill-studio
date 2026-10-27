@@ -1,0 +1,1730 @@
+{
+  "schema": 1,
+  "source": "git archive 1211bfa",
+  "cases": {
+    "R-version": {
+      "exit": 0,
+      "stdout_text": "0.1.0\n",
+      "stderr": ""
+    },
+    "R-validate-all-require-evals-json": {
+      "exit": 1
+    },
+    "R-audit-live-json": {
+      "exit": 0
+    },
+    "R-audit-dqa-text": {
+      "exit": 0,
+      "stdout_text": "skills/data-quality-audit: 0 errors; 0 warnings\n\nAUDIT IS READ-ONLY. Semantic review is required for SK-03/04/06/07/08/10/12/14 (SK-14 is only partly machine-checked by CT10); model tests were not run.\n",
+      "stderr": ""
+    },
+    "R-audit-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "audit": true,
+        "reports": [
+          {
+            "skill": "skills/data-quality-audit",
+            "findings": []
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "R-audit-frozen-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": true,
+        "reports": [
+          {
+            "skill": "skills/creator-frozen",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/skills/creator-frozen/SKILL.md",
+                "line": 2,
+                "message": "name 'skill-creator-studio' differs from folder 'creator-frozen'"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "R-validate-frozen-require-evals-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "skills/creator-frozen",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/skills/creator-frozen/SKILL.md",
+                "line": 2,
+                "message": "name 'skill-creator-studio' differs from folder 'creator-frozen'"
+              },
+              {
+                "level": "ERROR",
+                "code": "EV1",
+                "path": "<REPO>/evals/creator-frozen/cases.json",
+                "line": 0,
+                "message": "missing evals/<skill-name>/cases.json"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "R-validate-dqa-require-evals-json": {
+      "exit": 0,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "skills/data-quality-audit",
+            "findings": []
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "R-validate-broken-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "evals/skill-creator-studio/fixtures/broken-skill",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill/SKILL.md",
+                "line": 2,
+                "message": "name must be lowercase kebab-case, 1–64 chars and without '--'"
+              },
+              {
+                "level": "ERROR",
+                "code": "DS1",
+                "path": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill/SKILL.md",
+                "line": 3,
+                "message": "description must be a nonempty string <=1024 chars without XML tags"
+              },
+              {
+                "level": "ERROR",
+                "code": "FM4",
+                "path": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill/SKILL.md",
+                "line": 3,
+                "message": "unknown frontmatter key 'version' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "R-validate-missing-path": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "skills/no-such-skill",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM1",
+                "path": "<REPO>/skills/no-such-skill/SKILL.md",
+                "line": 0,
+                "message": "SKILL.md is missing"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "R-validate-no-argument": {
+      "exit": 2,
+      "stdout_text": "",
+      "stderr": "ERROR"
+    },
+    "R-evals-all-json": {
+      "exit": 0,
+      "stdout_json": {
+        "reports": [
+          {
+            "skill": "data-quality-audit",
+            "findings": []
+          },
+          {
+            "skill": "skill-creator-studio",
+            "findings": []
+          }
+        ],
+        "model_runs_performed": 0
+      },
+      "stderr": ""
+    },
+    "R-doctor-fixture-json": {
+      "exit": 1,
+      "stdout_json": {
+        "schema": 1,
+        "generated_at": "<TS>",
+        "studio_version": "0.1.0",
+        "roots": [
+          "<REPO>/tests/fixtures/doctor"
+        ],
+        "skills": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+            "name": "bad-dir",
+            "lang": "en",
+            "errors": 0,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST8",
+                "level": "WARN",
+                "file": "examples",
+                "line": 0,
+                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-key",
+            "name": "bad-key",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 0,
+            "codes": [
+              {
+                "code": "FM4",
+                "level": "ERROR",
+                "file": "SKILL.md",
+                "line": 4,
+                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+            "name": "bad-long-ref",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST4",
+                "level": "WARN",
+                "file": "references/LONG.md",
+                "line": 0,
+                "message": "reference Markdown is not directly linked from SKILL.md"
+              },
+              {
+                "code": "ST5",
+                "level": "ERROR",
+                "file": "references/LONG.md",
+                "line": 1,
+                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+              }
+            ]
+          }
+        ],
+        "skipped": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+            "reason": "excluded"
+          }
+        ],
+        "totals": {
+          "skills": 3,
+          "errors": 2,
+          "warnings": 2,
+          "notes": 0
+        },
+        "new_vs_baseline": []
+      },
+      "stderr": ""
+    },
+    "R-fmt-check-live-json": {
+      "exit": 0
+    },
+    "R-fmt-check-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "schema": 1,
+        "mode": "check",
+        "files": [
+          {
+            "path": "<REPO>/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md",
+            "kind": "other",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          },
+          {
+            "path": "<REPO>/skills/data-quality-audit/SKILL.md",
+            "kind": "skill",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          }
+        ],
+        "skipped": [],
+        "totals": {
+          "files": 2,
+          "changed": 0,
+          "errors": 0,
+          "warnings": 0,
+          "blocked": 0
+        }
+      },
+      "stderr": ""
+    },
+    "R-new-en": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "b2c0fd9bd44067cfb5eeddcaf4e62029dd3961e57145e4ea8fc8cdaede5be407"
+        }
+      }
+    },
+    "R-new-vi": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "637233f43ac96351ed42c055d5232be621482b2b2d53eac5673b1a61b9bfb185"
+        }
+      }
+    },
+    "R-new-full": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "146e3a88a7d070ac43d49852e1eebd0a1eea48c2444ed24ac3fa5f4e7532c3cd",
+          "skills/demo-skill/agents": "<dir>",
+          "skills/demo-skill/agents/openai.yaml": "0a94fc5704d34509d8f2b2b200b160edf194127e8d7d8a42e4f10856b6f46e50",
+          "skills/demo-skill/assets": "<dir>",
+          "skills/demo-skill/assets/sample-data": "<dir>",
+          "skills/demo-skill/assets/sample-data/example.json": "190ee50e2a78bfcf0782a40514651733da9dbe9392334b2bfad0595232539aee",
+          "skills/demo-skill/assets/templates": "<dir>",
+          "skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "d67cce2e81c9db251907913e85ca4188b227d7bb8d55ddfe295602a810101ab9",
+          "skills/demo-skill/references": "<dir>",
+          "skills/demo-skill/references/PROCESS_TEMPLATE.md": "ae4a595309a518d34687b6ff6c17af5929ed9a16d8ec73a67ac345b314f84263",
+          "skills/demo-skill/scripts": "<dir>",
+          "skills/demo-skill/scripts/check_inputs.py": "d43dd45aa22291b93c308086eb712ec8adee8dfff6f67563f484338a141fe3fa"
+        }
+      }
+    },
+    "R-new-full-vi": {
+      "changed_by": "FR10",
+      "before": {
+        "exit": 2,
+        "stdout_text": "",
+        "stderr": "ERROR",
+        "tree": {
+          "<TMP>/out": {}
+        }
+      },
+      "after": null
+    },
+    "R-package-dqa": {
+      "exit": 0,
+      "stdout_text": "Packaged 4 runtime files -> <TMP>/out/data-quality-audit.zip\nSHA256: <SHA>\nExcluded: evals/, tests/ and cache folders (any letter case); a secret-named file stops the package instead. Model evaluation status is unchanged.\n",
+      "stderr": "",
+      "zip": {
+        "<TMP>/out/data-quality-audit.zip": [
+          "data-quality-audit/SKILL.md",
+          "data-quality-audit/assets/sample-data/orders_valid.csv",
+          "data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md",
+          "data-quality-audit/scripts/validate_csv.py"
+        ]
+      }
+    },
+    "R-install-dqa-claude": {
+      "exit": 0,
+      "stdout_text": "Installed data-quality-audit for claude at <TMP>/out/.claude/skills/data-quality-audit. This copies files; it does not run the agent or its scripts.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          ".claude": "<dir>",
+          ".claude/skills": "<dir>",
+          ".claude/skills/data-quality-audit": "<dir>",
+          ".claude/skills/data-quality-audit/SKILL.md": "ed3aa1acf1db82a504191c3a56e6a4423353fc424c0f95a882d5d5c04fbf9b18",
+          ".claude/skills/data-quality-audit/assets": "<dir>",
+          ".claude/skills/data-quality-audit/assets/sample-data": "<dir>",
+          ".claude/skills/data-quality-audit/assets/sample-data/orders_valid.csv": "7e9e9326b07b93178091cfadf7c6c3d5e67bedfd9baa87c5645ceea799554580",
+          ".claude/skills/data-quality-audit/references": "<dir>",
+          ".claude/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md": "b97f1fbe329cc7b42dcb9ec3c3d8fe3c66691731ebf7e5b63ea94cbf6aa3c53e",
+          ".claude/skills/data-quality-audit/scripts": "<dir>",
+          ".claude/skills/data-quality-audit/scripts/validate_csv.py": "817ef7452acf35d5085b21dbfec7508f46ad5738fcd7bbdf61958fd05b427391"
+        }
+      }
+    },
+    "R-sync-template-check": {
+      "changed_by": "FR3",
+      "before": {
+        "exit": 0
+      },
+      "after": null
+    },
+    "C-version": {
+      "exit": 0,
+      "stdout_text": "0.1.0\n",
+      "stderr": ""
+    },
+    "C-validate-all-require-evals-json": {
+      "exit": 1
+    },
+    "C-audit-live-json": {
+      "exit": 0
+    },
+    "C-audit-dqa-text": {
+      "exit": 0,
+      "stdout_text": "<REPO>/skills/data-quality-audit: 0 errors; 0 warnings\n\nAUDIT IS READ-ONLY. Semantic review is required for SK-03/04/06/07/08/10/12/14 (SK-14 is only partly machine-checked by CT10); model tests were not run.\n",
+      "stderr": ""
+    },
+    "C-audit-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "audit": true,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/data-quality-audit",
+            "findings": []
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "C-audit-frozen-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": true,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/creator-frozen",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/skills/creator-frozen/SKILL.md",
+                "line": 2,
+                "message": "name 'skill-creator-studio' differs from folder 'creator-frozen'"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "C-validate-frozen-require-evals-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/creator-frozen",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/skills/creator-frozen/SKILL.md",
+                "line": 2,
+                "message": "name 'skill-creator-studio' differs from folder 'creator-frozen'"
+              },
+              {
+                "level": "ERROR",
+                "code": "EV1",
+                "path": "<REPO>/evals/creator-frozen/cases.json",
+                "line": 0,
+                "message": "missing evals/<skill-name>/cases.json"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "C-validate-dqa-require-evals-json": {
+      "exit": 0,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/data-quality-audit",
+            "findings": []
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "C-validate-broken-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill/SKILL.md",
+                "line": 2,
+                "message": "name must be lowercase kebab-case, 1–64 chars and without '--'"
+              },
+              {
+                "level": "ERROR",
+                "code": "DS1",
+                "path": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill/SKILL.md",
+                "line": 3,
+                "message": "description must be a nonempty string <=1024 chars without XML tags"
+              },
+              {
+                "level": "ERROR",
+                "code": "FM4",
+                "path": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill/SKILL.md",
+                "line": 3,
+                "message": "unknown frontmatter key 'version' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "C-validate-missing-path": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/no-such-skill",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM1",
+                "path": "<REPO>/skills/no-such-skill/SKILL.md",
+                "line": 0,
+                "message": "SKILL.md is missing"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "C-validate-no-argument": {
+      "exit": 2,
+      "stdout_text": "",
+      "stderr": "ERROR"
+    },
+    "C-evals-all-json": {
+      "exit": 0,
+      "stdout_json": {
+        "reports": [
+          {
+            "skill": "data-quality-audit",
+            "findings": []
+          },
+          {
+            "skill": "skill-creator-studio",
+            "findings": []
+          }
+        ],
+        "model_runs_performed": 0
+      },
+      "stderr": ""
+    },
+    "C-doctor-fixture-json": {
+      "exit": 1,
+      "stdout_json": {
+        "schema": 1,
+        "generated_at": "<TS>",
+        "studio_version": "0.1.0",
+        "roots": [
+          "<REPO>/tests/fixtures/doctor"
+        ],
+        "skills": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+            "name": "bad-dir",
+            "lang": "en",
+            "errors": 0,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST8",
+                "level": "WARN",
+                "file": "examples",
+                "line": 0,
+                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-key",
+            "name": "bad-key",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 0,
+            "codes": [
+              {
+                "code": "FM4",
+                "level": "ERROR",
+                "file": "SKILL.md",
+                "line": 4,
+                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+            "name": "bad-long-ref",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST4",
+                "level": "WARN",
+                "file": "references/LONG.md",
+                "line": 0,
+                "message": "reference Markdown is not directly linked from SKILL.md"
+              },
+              {
+                "code": "ST5",
+                "level": "ERROR",
+                "file": "references/LONG.md",
+                "line": 1,
+                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+              }
+            ]
+          }
+        ],
+        "skipped": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+            "reason": "excluded"
+          }
+        ],
+        "totals": {
+          "skills": 3,
+          "errors": 2,
+          "warnings": 2,
+          "notes": 0
+        },
+        "new_vs_baseline": []
+      },
+      "stderr": ""
+    },
+    "C-fmt-check-live-json": {
+      "exit": 0
+    },
+    "C-fmt-check-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "schema": 1,
+        "mode": "check",
+        "files": [
+          {
+            "path": "<REPO>/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md",
+            "kind": "other",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          },
+          {
+            "path": "<REPO>/skills/data-quality-audit/SKILL.md",
+            "kind": "skill",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          }
+        ],
+        "skipped": [],
+        "totals": {
+          "files": 2,
+          "changed": 0,
+          "errors": 0,
+          "warnings": 0,
+          "blocked": 0
+        }
+      },
+      "stderr": ""
+    },
+    "C-new-en": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "b2c0fd9bd44067cfb5eeddcaf4e62029dd3961e57145e4ea8fc8cdaede5be407"
+        }
+      }
+    },
+    "C-new-vi": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "637233f43ac96351ed42c055d5232be621482b2b2d53eac5673b1a61b9bfb185"
+        }
+      }
+    },
+    "C-new-full": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "146e3a88a7d070ac43d49852e1eebd0a1eea48c2444ed24ac3fa5f4e7532c3cd",
+          "skills/demo-skill/agents": "<dir>",
+          "skills/demo-skill/agents/openai.yaml": "0a94fc5704d34509d8f2b2b200b160edf194127e8d7d8a42e4f10856b6f46e50",
+          "skills/demo-skill/assets": "<dir>",
+          "skills/demo-skill/assets/sample-data": "<dir>",
+          "skills/demo-skill/assets/sample-data/example.json": "190ee50e2a78bfcf0782a40514651733da9dbe9392334b2bfad0595232539aee",
+          "skills/demo-skill/assets/templates": "<dir>",
+          "skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "d67cce2e81c9db251907913e85ca4188b227d7bb8d55ddfe295602a810101ab9",
+          "skills/demo-skill/references": "<dir>",
+          "skills/demo-skill/references/PROCESS_TEMPLATE.md": "ae4a595309a518d34687b6ff6c17af5929ed9a16d8ec73a67ac345b314f84263",
+          "skills/demo-skill/scripts": "<dir>",
+          "skills/demo-skill/scripts/check_inputs.py": "d43dd45aa22291b93c308086eb712ec8adee8dfff6f67563f484338a141fe3fa"
+        }
+      }
+    },
+    "C-new-full-vi": {
+      "changed_by": "FR10",
+      "before": {
+        "exit": 2,
+        "stdout_text": "",
+        "stderr": "ERROR",
+        "tree": {
+          "<TMP>/out": {}
+        }
+      },
+      "after": null
+    },
+    "C-package-dqa": {
+      "exit": 0,
+      "stdout_text": "Packaged 4 runtime files -> <TMP>/out/data-quality-audit.zip\nSHA256: <SHA>\nExcluded: evals/, tests/ and cache folders (any letter case); a secret-named file stops the package instead. Model evaluation status is unchanged.\n",
+      "stderr": "",
+      "zip": {
+        "<TMP>/out/data-quality-audit.zip": [
+          "data-quality-audit/SKILL.md",
+          "data-quality-audit/assets/sample-data/orders_valid.csv",
+          "data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md",
+          "data-quality-audit/scripts/validate_csv.py"
+        ]
+      }
+    },
+    "C-install-dqa-claude": {
+      "exit": 0,
+      "stdout_text": "Installed data-quality-audit for claude at <TMP>/out/.claude/skills/data-quality-audit. This copies files; it does not run the agent or its scripts.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          ".claude": "<dir>",
+          ".claude/skills": "<dir>",
+          ".claude/skills/data-quality-audit": "<dir>",
+          ".claude/skills/data-quality-audit/SKILL.md": "ed3aa1acf1db82a504191c3a56e6a4423353fc424c0f95a882d5d5c04fbf9b18",
+          ".claude/skills/data-quality-audit/assets": "<dir>",
+          ".claude/skills/data-quality-audit/assets/sample-data": "<dir>",
+          ".claude/skills/data-quality-audit/assets/sample-data/orders_valid.csv": "7e9e9326b07b93178091cfadf7c6c3d5e67bedfd9baa87c5645ceea799554580",
+          ".claude/skills/data-quality-audit/references": "<dir>",
+          ".claude/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md": "b97f1fbe329cc7b42dcb9ec3c3d8fe3c66691731ebf7e5b63ea94cbf6aa3c53e",
+          ".claude/skills/data-quality-audit/scripts": "<dir>",
+          ".claude/skills/data-quality-audit/scripts/validate_csv.py": "817ef7452acf35d5085b21dbfec7508f46ad5738fcd7bbdf61958fd05b427391"
+        }
+      }
+    },
+    "C-sync-template-check": {
+      "changed_by": "FR3",
+      "before": {
+        "exit": 0
+      },
+      "after": null
+    },
+    "E-version": {
+      "exit": 0,
+      "stdout_text": "0.1.0\n",
+      "stderr": ""
+    },
+    "E-validate-all-require-evals-json": {
+      "exit": 1
+    },
+    "E-audit-live-json": {
+      "exit": 0
+    },
+    "E-audit-dqa-text": {
+      "exit": 0,
+      "stdout_text": "<REPO>/skills/data-quality-audit: 0 errors; 0 warnings\n\nAUDIT IS READ-ONLY. Semantic review is required for SK-03/04/06/07/08/10/12/14 (SK-14 is only partly machine-checked by CT10); model tests were not run.\n",
+      "stderr": ""
+    },
+    "E-audit-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "audit": true,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/data-quality-audit",
+            "findings": []
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "E-audit-frozen-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": true,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/creator-frozen",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/skills/creator-frozen/SKILL.md",
+                "line": 2,
+                "message": "name 'skill-creator-studio' differs from folder 'creator-frozen'"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "E-validate-frozen-require-evals-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/creator-frozen",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/skills/creator-frozen/SKILL.md",
+                "line": 2,
+                "message": "name 'skill-creator-studio' differs from folder 'creator-frozen'"
+              },
+              {
+                "level": "ERROR",
+                "code": "EV1",
+                "path": "<REPO>/evals/creator-frozen/cases.json",
+                "line": 0,
+                "message": "missing evals/<skill-name>/cases.json"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "E-validate-dqa-require-evals-json": {
+      "exit": 0,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/data-quality-audit",
+            "findings": []
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "E-validate-broken-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill/SKILL.md",
+                "line": 2,
+                "message": "name must be lowercase kebab-case, 1–64 chars and without '--'"
+              },
+              {
+                "level": "ERROR",
+                "code": "DS1",
+                "path": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill/SKILL.md",
+                "line": 3,
+                "message": "description must be a nonempty string <=1024 chars without XML tags"
+              },
+              {
+                "level": "ERROR",
+                "code": "FM4",
+                "path": "<REPO>/evals/skill-creator-studio/fixtures/broken-skill/SKILL.md",
+                "line": 3,
+                "message": "unknown frontmatter key 'version' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "E-validate-missing-path": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/no-such-skill",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM1",
+                "path": "<REPO>/skills/no-such-skill/SKILL.md",
+                "line": 0,
+                "message": "SKILL.md is missing"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "E-validate-no-argument": {
+      "exit": 2,
+      "stdout_text": "",
+      "stderr": "ERROR"
+    },
+    "E-evals-all-json": {
+      "exit": 0,
+      "stdout_json": {
+        "reports": [
+          {
+            "skill": "data-quality-audit",
+            "findings": []
+          },
+          {
+            "skill": "skill-creator-studio",
+            "findings": []
+          }
+        ],
+        "model_runs_performed": 0
+      },
+      "stderr": ""
+    },
+    "E-doctor-fixture-json": {
+      "exit": 1,
+      "stdout_json": {
+        "schema": 1,
+        "generated_at": "<TS>",
+        "studio_version": "0.1.0",
+        "roots": [
+          "<REPO>/tests/fixtures/doctor"
+        ],
+        "skills": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+            "name": "bad-dir",
+            "lang": "en",
+            "errors": 0,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST8",
+                "level": "WARN",
+                "file": "examples",
+                "line": 0,
+                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-key",
+            "name": "bad-key",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 0,
+            "codes": [
+              {
+                "code": "FM4",
+                "level": "ERROR",
+                "file": "SKILL.md",
+                "line": 4,
+                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+            "name": "bad-long-ref",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST4",
+                "level": "WARN",
+                "file": "references/LONG.md",
+                "line": 0,
+                "message": "reference Markdown is not directly linked from SKILL.md"
+              },
+              {
+                "code": "ST5",
+                "level": "ERROR",
+                "file": "references/LONG.md",
+                "line": 1,
+                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+              }
+            ]
+          }
+        ],
+        "skipped": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+            "reason": "excluded"
+          }
+        ],
+        "totals": {
+          "skills": 3,
+          "errors": 2,
+          "warnings": 2,
+          "notes": 0
+        },
+        "new_vs_baseline": []
+      },
+      "stderr": ""
+    },
+    "E-fmt-check-live-json": {
+      "exit": 0
+    },
+    "E-fmt-check-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "schema": 1,
+        "mode": "check",
+        "files": [
+          {
+            "path": "<REPO>/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md",
+            "kind": "other",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          },
+          {
+            "path": "<REPO>/skills/data-quality-audit/SKILL.md",
+            "kind": "skill",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          }
+        ],
+        "skipped": [],
+        "totals": {
+          "files": 2,
+          "changed": 0,
+          "errors": 0,
+          "warnings": 0,
+          "blocked": 0
+        }
+      },
+      "stderr": ""
+    },
+    "E-new-en": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "b2c0fd9bd44067cfb5eeddcaf4e62029dd3961e57145e4ea8fc8cdaede5be407"
+        }
+      }
+    },
+    "E-new-vi": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "637233f43ac96351ed42c055d5232be621482b2b2d53eac5673b1a61b9bfb185"
+        }
+      }
+    },
+    "E-new-full": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "146e3a88a7d070ac43d49852e1eebd0a1eea48c2444ed24ac3fa5f4e7532c3cd",
+          "skills/demo-skill/agents": "<dir>",
+          "skills/demo-skill/agents/openai.yaml": "0a94fc5704d34509d8f2b2b200b160edf194127e8d7d8a42e4f10856b6f46e50",
+          "skills/demo-skill/assets": "<dir>",
+          "skills/demo-skill/assets/sample-data": "<dir>",
+          "skills/demo-skill/assets/sample-data/example.json": "190ee50e2a78bfcf0782a40514651733da9dbe9392334b2bfad0595232539aee",
+          "skills/demo-skill/assets/templates": "<dir>",
+          "skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "d67cce2e81c9db251907913e85ca4188b227d7bb8d55ddfe295602a810101ab9",
+          "skills/demo-skill/references": "<dir>",
+          "skills/demo-skill/references/PROCESS_TEMPLATE.md": "ae4a595309a518d34687b6ff6c17af5929ed9a16d8ec73a67ac345b314f84263",
+          "skills/demo-skill/scripts": "<dir>",
+          "skills/demo-skill/scripts/check_inputs.py": "d43dd45aa22291b93c308086eb712ec8adee8dfff6f67563f484338a141fe3fa"
+        }
+      }
+    },
+    "E-new-full-vi": {
+      "changed_by": "FR10",
+      "before": {
+        "exit": 2,
+        "stdout_text": "",
+        "stderr": "ERROR",
+        "tree": {
+          "<TMP>/out": {}
+        }
+      },
+      "after": null
+    },
+    "E-new-default-output": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <REPO>/skills/demo-skill\nExternal evals: <REPO>/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<REPO>/skills/demo-skill": {
+          "SKILL.md": "b2c0fd9bd44067cfb5eeddcaf4e62029dd3961e57145e4ea8fc8cdaede5be407"
+        },
+        "<REPO>/evals/demo-skill": {
+          "baselines": "<dir>",
+          "baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "fixtures": "<dir>",
+          "rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be"
+        }
+      }
+    },
+    "E-package-dqa": {
+      "exit": 0,
+      "stdout_text": "Packaged 4 runtime files -> <TMP>/out/data-quality-audit.zip\nSHA256: <SHA>\nExcluded: evals/, tests/ and cache folders (any letter case); a secret-named file stops the package instead. Model evaluation status is unchanged.\n",
+      "stderr": "",
+      "zip": {
+        "<TMP>/out/data-quality-audit.zip": [
+          "data-quality-audit/SKILL.md",
+          "data-quality-audit/assets/sample-data/orders_valid.csv",
+          "data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md",
+          "data-quality-audit/scripts/validate_csv.py"
+        ]
+      }
+    },
+    "E-install-dqa-claude": {
+      "exit": 0,
+      "stdout_text": "Installed data-quality-audit for claude at <TMP>/out/.claude/skills/data-quality-audit. This copies files; it does not run the agent or its scripts.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          ".claude": "<dir>",
+          ".claude/skills": "<dir>",
+          ".claude/skills/data-quality-audit": "<dir>",
+          ".claude/skills/data-quality-audit/SKILL.md": "ed3aa1acf1db82a504191c3a56e6a4423353fc424c0f95a882d5d5c04fbf9b18",
+          ".claude/skills/data-quality-audit/assets": "<dir>",
+          ".claude/skills/data-quality-audit/assets/sample-data": "<dir>",
+          ".claude/skills/data-quality-audit/assets/sample-data/orders_valid.csv": "7e9e9326b07b93178091cfadf7c6c3d5e67bedfd9baa87c5645ceea799554580",
+          ".claude/skills/data-quality-audit/references": "<dir>",
+          ".claude/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md": "b97f1fbe329cc7b42dcb9ec3c3d8fe3c66691731ebf7e5b63ea94cbf6aa3c53e",
+          ".claude/skills/data-quality-audit/scripts": "<dir>",
+          ".claude/skills/data-quality-audit/scripts/validate_csv.py": "817ef7452acf35d5085b21dbfec7508f46ad5738fcd7bbdf61958fd05b427391"
+        }
+      }
+    },
+    "E-sync-template-check": {
+      "changed_by": "FR3",
+      "before": {
+        "exit": 0
+      },
+      "after": null
+    },
+    "S-version": {
+      "exit": 0,
+      "stdout_text": "0.1.0\n",
+      "stderr": ""
+    },
+    "S-validate-self-json": {
+      "exit": 0
+    },
+    "S-validate-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/data-quality-audit",
+            "findings": []
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "S-validate-frozen-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/creator-frozen",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/skills/creator-frozen/SKILL.md",
+                "line": 2,
+                "message": "name 'skill-creator-studio' differs from folder 'creator-frozen'"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "S-validate-all-outside-repo": {
+      "exit": 2,
+      "stdout_text": "",
+      "stderr": "ERROR"
+    },
+    "S-evals-all-outside-repo": {
+      "exit": 2,
+      "stdout_text": "",
+      "stderr": "ERROR"
+    },
+    "S-new-en": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "b2c0fd9bd44067cfb5eeddcaf4e62029dd3961e57145e4ea8fc8cdaede5be407"
+        }
+      }
+    },
+    "S-new-vi": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "637233f43ac96351ed42c055d5232be621482b2b2d53eac5673b1a61b9bfb185"
+        }
+      }
+    },
+    "S-new-full": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "146e3a88a7d070ac43d49852e1eebd0a1eea48c2444ed24ac3fa5f4e7532c3cd",
+          "skills/demo-skill/agents": "<dir>",
+          "skills/demo-skill/agents/openai.yaml": "0a94fc5704d34509d8f2b2b200b160edf194127e8d7d8a42e4f10856b6f46e50",
+          "skills/demo-skill/assets": "<dir>",
+          "skills/demo-skill/assets/sample-data": "<dir>",
+          "skills/demo-skill/assets/sample-data/example.json": "190ee50e2a78bfcf0782a40514651733da9dbe9392334b2bfad0595232539aee",
+          "skills/demo-skill/assets/templates": "<dir>",
+          "skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "d67cce2e81c9db251907913e85ca4188b227d7bb8d55ddfe295602a810101ab9",
+          "skills/demo-skill/references": "<dir>",
+          "skills/demo-skill/references/PROCESS_TEMPLATE.md": "ae4a595309a518d34687b6ff6c17af5929ed9a16d8ec73a67ac345b314f84263",
+          "skills/demo-skill/scripts": "<dir>",
+          "skills/demo-skill/scripts/check_inputs.py": "d43dd45aa22291b93c308086eb712ec8adee8dfff6f67563f484338a141fe3fa"
+        }
+      }
+    },
+    "S-doctor-self-parent-json": {
+      "exit": 0
+    },
+    "S-doctor-fixture-json": {
+      "exit": 1,
+      "stdout_json": {
+        "schema": 1,
+        "generated_at": "<TS>",
+        "studio_version": "0.1.0",
+        "roots": [
+          "<REPO>/tests/fixtures/doctor"
+        ],
+        "skills": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+            "name": "bad-dir",
+            "lang": "en",
+            "errors": 0,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST8",
+                "level": "WARN",
+                "file": "examples",
+                "line": 0,
+                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-key",
+            "name": "bad-key",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 0,
+            "codes": [
+              {
+                "code": "FM4",
+                "level": "ERROR",
+                "file": "SKILL.md",
+                "line": 4,
+                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+            "name": "bad-long-ref",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST4",
+                "level": "WARN",
+                "file": "references/LONG.md",
+                "line": 0,
+                "message": "reference Markdown is not directly linked from SKILL.md"
+              },
+              {
+                "code": "ST5",
+                "level": "ERROR",
+                "file": "references/LONG.md",
+                "line": 1,
+                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+              }
+            ]
+          }
+        ],
+        "skipped": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+            "reason": "excluded"
+          }
+        ],
+        "totals": {
+          "skills": 3,
+          "errors": 2,
+          "warnings": 2,
+          "notes": 0
+        },
+        "new_vs_baseline": []
+      },
+      "stderr": ""
+    },
+    "S-fmt-check-self-json": {
+      "exit": 0
+    },
+    "S-fmt-check-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "schema": 1,
+        "mode": "check",
+        "files": [
+          {
+            "path": "<REPO>/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md",
+            "kind": "other",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          },
+          {
+            "path": "<REPO>/skills/data-quality-audit/SKILL.md",
+            "kind": "skill",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          }
+        ],
+        "skipped": [],
+        "totals": {
+          "files": 2,
+          "changed": 0,
+          "errors": 0,
+          "warnings": 0,
+          "blocked": 0
+        }
+      },
+      "stderr": ""
+    },
+    "Z-version": {
+      "exit": 0,
+      "stdout_text": "0.1.0\n",
+      "stderr": ""
+    },
+    "Z-validate-self-json": {
+      "exit": 0
+    },
+    "Z-validate-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/data-quality-audit",
+            "findings": []
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "Z-validate-frozen-json": {
+      "exit": 1,
+      "stdout_json": {
+        "audit": false,
+        "reports": [
+          {
+            "skill": "<REPO>/skills/creator-frozen",
+            "findings": [
+              {
+                "level": "ERROR",
+                "code": "FM2",
+                "path": "<REPO>/skills/creator-frozen/SKILL.md",
+                "line": 2,
+                "message": "name 'skill-creator-studio' differs from folder 'creator-frozen'"
+              }
+            ]
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    "Z-validate-all-outside-repo": {
+      "exit": 2,
+      "stdout_text": "",
+      "stderr": "ERROR"
+    },
+    "Z-evals-all-outside-repo": {
+      "exit": 2,
+      "stdout_text": "",
+      "stderr": "ERROR"
+    },
+    "Z-new-en": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "b2c0fd9bd44067cfb5eeddcaf4e62029dd3961e57145e4ea8fc8cdaede5be407"
+        }
+      }
+    },
+    "Z-new-vi": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "637233f43ac96351ed42c055d5232be621482b2b2d53eac5673b1a61b9bfb185"
+        }
+      }
+    },
+    "Z-new-full": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "0203bab0f485a82b01cc1bc0571c201f53768497b13ff8359195374cfd440653",
+          "evals/demo-skill/cases.json": "719e688728987d8ddffb92b551e138fd030a780cbb810fbf725f7c683ecd3d70",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "e9398a9ac893dd505c17d8435aa8c016a27693623804a6758beaa7b10cceb1be",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "146e3a88a7d070ac43d49852e1eebd0a1eea48c2444ed24ac3fa5f4e7532c3cd",
+          "skills/demo-skill/agents": "<dir>",
+          "skills/demo-skill/agents/openai.yaml": "0a94fc5704d34509d8f2b2b200b160edf194127e8d7d8a42e4f10856b6f46e50",
+          "skills/demo-skill/assets": "<dir>",
+          "skills/demo-skill/assets/sample-data": "<dir>",
+          "skills/demo-skill/assets/sample-data/example.json": "190ee50e2a78bfcf0782a40514651733da9dbe9392334b2bfad0595232539aee",
+          "skills/demo-skill/assets/templates": "<dir>",
+          "skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "d67cce2e81c9db251907913e85ca4188b227d7bb8d55ddfe295602a810101ab9",
+          "skills/demo-skill/references": "<dir>",
+          "skills/demo-skill/references/PROCESS_TEMPLATE.md": "ae4a595309a518d34687b6ff6c17af5929ed9a16d8ec73a67ac345b314f84263",
+          "skills/demo-skill/scripts": "<dir>",
+          "skills/demo-skill/scripts/check_inputs.py": "d43dd45aa22291b93c308086eb712ec8adee8dfff6f67563f484338a141fe3fa"
+        }
+      }
+    },
+    "Z-doctor-self-parent-json": {
+      "exit": 0
+    },
+    "Z-doctor-fixture-json": {
+      "exit": 1,
+      "stdout_json": {
+        "schema": 1,
+        "generated_at": "<TS>",
+        "studio_version": "0.1.0",
+        "roots": [
+          "<REPO>/tests/fixtures/doctor"
+        ],
+        "skills": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+            "name": "bad-dir",
+            "lang": "en",
+            "errors": 0,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST8",
+                "level": "WARN",
+                "file": "examples",
+                "line": 0,
+                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-key",
+            "name": "bad-key",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 0,
+            "codes": [
+              {
+                "code": "FM4",
+                "level": "ERROR",
+                "file": "SKILL.md",
+                "line": 4,
+                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+              }
+            ]
+          },
+          {
+            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+            "name": "bad-long-ref",
+            "lang": "en",
+            "errors": 1,
+            "warnings": 1,
+            "codes": [
+              {
+                "code": "ST4",
+                "level": "WARN",
+                "file": "references/LONG.md",
+                "line": 0,
+                "message": "reference Markdown is not directly linked from SKILL.md"
+              },
+              {
+                "code": "ST5",
+                "level": "ERROR",
+                "file": "references/LONG.md",
+                "line": 1,
+                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+              }
+            ]
+          }
+        ],
+        "skipped": [
+          {
+            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+            "reason": "excluded"
+          }
+        ],
+        "totals": {
+          "skills": 3,
+          "errors": 2,
+          "warnings": 2,
+          "notes": 0
+        },
+        "new_vs_baseline": []
+      },
+      "stderr": ""
+    },
+    "Z-fmt-check-self-json": {
+      "exit": 0
+    },
+    "Z-fmt-check-dqa-json": {
+      "exit": 0,
+      "stdout_json": {
+        "schema": 1,
+        "mode": "check",
+        "files": [
+          {
+            "path": "<REPO>/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md",
+            "kind": "other",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          },
+          {
+            "path": "<REPO>/skills/data-quality-audit/SKILL.md",
+            "kind": "skill",
+            "changed": false,
+            "backup": null,
+            "findings": []
+          }
+        ],
+        "skipped": [],
+        "totals": {
+          "files": 2,
+          "changed": 0,
+          "errors": 0,
+          "warnings": 0,
+          "blocked": 0
+        }
+      },
+      "stderr": ""
+    },
+    "L-validate-all-require-evals": {
+      "exit": 0
+    },
+    "L-evals-all": {
+      "exit": 0
+    },
+    "L-package-skill-creator-studio": {
+      "exit": 0
+    }
+  }
+}

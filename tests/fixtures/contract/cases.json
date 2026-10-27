@@ -1,0 +1,1543 @@
+{
+ "schema": 1,
+ "note": "Frozen from git archive 1211bfa. Cases with changed_by are deliberate changes (SPEC mục 7); their golden entry keeps before until the sprint task fills after.",
+ "cases": [
+  {
+   "id": "R-version",
+   "via": "R",
+   "args": [
+    "--version"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-validate-all-require-evals-json",
+   "via": "R",
+   "args": [
+    "validate",
+    "--all",
+    "--require-evals",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "R-audit-live-json",
+   "via": "R",
+   "args": [
+    "audit",
+    "skills/skill-creator-studio",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "R-audit-dqa-text",
+   "via": "R",
+   "args": [
+    "audit",
+    "skills/data-quality-audit"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-audit-dqa-json",
+   "via": "R",
+   "args": [
+    "audit",
+    "skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-audit-frozen-json",
+   "via": "R",
+   "args": [
+    "audit",
+    "skills/creator-frozen",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-validate-frozen-require-evals-json",
+   "via": "R",
+   "args": [
+    "validate",
+    "skills/creator-frozen",
+    "--require-evals",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-validate-dqa-require-evals-json",
+   "via": "R",
+   "args": [
+    "validate",
+    "skills/data-quality-audit",
+    "--require-evals",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-validate-broken-json",
+   "via": "R",
+   "args": [
+    "validate",
+    "evals/skill-creator-studio/fixtures/broken-skill",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-validate-missing-path",
+   "via": "R",
+   "args": [
+    "validate",
+    "skills/no-such-skill",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-validate-no-argument",
+   "via": "R",
+   "args": [
+    "validate"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-evals-all-json",
+   "via": "R",
+   "args": [
+    "evals",
+    "--all",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-doctor-fixture-json",
+   "via": "R",
+   "args": [
+    "doctor",
+    "--roots",
+    "tests/fixtures/doctor",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-fmt-check-live-json",
+   "via": "R",
+   "args": [
+    "fmt",
+    "--check",
+    "skills/skill-creator-studio",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "R-fmt-check-dqa-json",
+   "via": "R",
+   "args": [
+    "fmt",
+    "--check",
+    "skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "R-new-en",
+   "via": "R",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "R-new-vi",
+   "via": "R",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--lang",
+    "vi"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "R-new-full",
+   "via": "R",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--full"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "R-new-full-vi",
+   "via": "R",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--full",
+    "--lang",
+    "vi"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ],
+   "changed_by": "FR10"
+  },
+  {
+   "id": "R-package-dqa",
+   "via": "R",
+   "args": [
+    "package",
+    "skills/data-quality-audit",
+    "--out",
+    "{OUT}"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "zip"
+   ],
+   "zips": [
+    "{OUT}/data-quality-audit.zip"
+   ]
+  },
+  {
+   "id": "R-install-dqa-claude",
+   "via": "R",
+   "args": [
+    "install",
+    "skills/data-quality-audit",
+    "--agent",
+    "claude",
+    "--workspace",
+    "{OUT}"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "R-sync-template-check",
+   "via": "R",
+   "args": [
+    "sync-template",
+    "--check"
+   ],
+   "compare": [
+    "exit"
+   ],
+   "changed_by": "FR3"
+  },
+  {
+   "id": "C-version",
+   "via": "C",
+   "args": [
+    "--version"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-validate-all-require-evals-json",
+   "via": "C",
+   "args": [
+    "validate",
+    "--all",
+    "--require-evals",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "C-audit-live-json",
+   "via": "C",
+   "args": [
+    "audit",
+    "{REPO}/skills/skill-creator-studio",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "C-audit-dqa-text",
+   "via": "C",
+   "args": [
+    "audit",
+    "{REPO}/skills/data-quality-audit"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-audit-dqa-json",
+   "via": "C",
+   "args": [
+    "audit",
+    "{REPO}/skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-audit-frozen-json",
+   "via": "C",
+   "args": [
+    "audit",
+    "{REPO}/skills/creator-frozen",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-validate-frozen-require-evals-json",
+   "via": "C",
+   "args": [
+    "validate",
+    "{REPO}/skills/creator-frozen",
+    "--require-evals",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-validate-dqa-require-evals-json",
+   "via": "C",
+   "args": [
+    "validate",
+    "{REPO}/skills/data-quality-audit",
+    "--require-evals",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-validate-broken-json",
+   "via": "C",
+   "args": [
+    "validate",
+    "{REPO}/evals/skill-creator-studio/fixtures/broken-skill",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-validate-missing-path",
+   "via": "C",
+   "args": [
+    "validate",
+    "{REPO}/skills/no-such-skill",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-validate-no-argument",
+   "via": "C",
+   "args": [
+    "validate"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-evals-all-json",
+   "via": "C",
+   "args": [
+    "evals",
+    "--all",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-doctor-fixture-json",
+   "via": "C",
+   "args": [
+    "doctor",
+    "--roots",
+    "{REPO}/tests/fixtures/doctor",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-fmt-check-live-json",
+   "via": "C",
+   "args": [
+    "fmt",
+    "--check",
+    "{REPO}/skills/skill-creator-studio",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "C-fmt-check-dqa-json",
+   "via": "C",
+   "args": [
+    "fmt",
+    "--check",
+    "{REPO}/skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "C-new-en",
+   "via": "C",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "C-new-vi",
+   "via": "C",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--lang",
+    "vi"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "C-new-full",
+   "via": "C",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--full"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "C-new-full-vi",
+   "via": "C",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--full",
+    "--lang",
+    "vi"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ],
+   "changed_by": "FR10"
+  },
+  {
+   "id": "C-package-dqa",
+   "via": "C",
+   "args": [
+    "package",
+    "{REPO}/skills/data-quality-audit",
+    "--out",
+    "{OUT}"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "zip"
+   ],
+   "zips": [
+    "{OUT}/data-quality-audit.zip"
+   ]
+  },
+  {
+   "id": "C-install-dqa-claude",
+   "via": "C",
+   "args": [
+    "install",
+    "{REPO}/skills/data-quality-audit",
+    "--agent",
+    "claude",
+    "--workspace",
+    "{OUT}"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "C-sync-template-check",
+   "via": "C",
+   "args": [
+    "sync-template",
+    "--check"
+   ],
+   "compare": [
+    "exit"
+   ],
+   "changed_by": "FR3"
+  },
+  {
+   "id": "E-version",
+   "via": "E",
+   "args": [
+    "--version"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-validate-all-require-evals-json",
+   "via": "E",
+   "args": [
+    "validate",
+    "--all",
+    "--require-evals",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "E-audit-live-json",
+   "via": "E",
+   "args": [
+    "audit",
+    "{REPO}/skills/skill-creator-studio",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "E-audit-dqa-text",
+   "via": "E",
+   "args": [
+    "audit",
+    "{REPO}/skills/data-quality-audit"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-audit-dqa-json",
+   "via": "E",
+   "args": [
+    "audit",
+    "{REPO}/skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-audit-frozen-json",
+   "via": "E",
+   "args": [
+    "audit",
+    "{REPO}/skills/creator-frozen",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-validate-frozen-require-evals-json",
+   "via": "E",
+   "args": [
+    "validate",
+    "{REPO}/skills/creator-frozen",
+    "--require-evals",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-validate-dqa-require-evals-json",
+   "via": "E",
+   "args": [
+    "validate",
+    "{REPO}/skills/data-quality-audit",
+    "--require-evals",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-validate-broken-json",
+   "via": "E",
+   "args": [
+    "validate",
+    "{REPO}/evals/skill-creator-studio/fixtures/broken-skill",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-validate-missing-path",
+   "via": "E",
+   "args": [
+    "validate",
+    "{REPO}/skills/no-such-skill",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-validate-no-argument",
+   "via": "E",
+   "args": [
+    "validate"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-evals-all-json",
+   "via": "E",
+   "args": [
+    "evals",
+    "--all",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-doctor-fixture-json",
+   "via": "E",
+   "args": [
+    "doctor",
+    "--roots",
+    "{REPO}/tests/fixtures/doctor",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-fmt-check-live-json",
+   "via": "E",
+   "args": [
+    "fmt",
+    "--check",
+    "{REPO}/skills/skill-creator-studio",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "E-fmt-check-dqa-json",
+   "via": "E",
+   "args": [
+    "fmt",
+    "--check",
+    "{REPO}/skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "E-new-en",
+   "via": "E",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "E-new-vi",
+   "via": "E",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--lang",
+    "vi"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "E-new-full",
+   "via": "E",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--full"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "E-new-full-vi",
+   "via": "E",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--full",
+    "--lang",
+    "vi"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ],
+   "changed_by": "FR10"
+  },
+  {
+   "id": "E-new-default-output",
+   "via": "E",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{REPO}/skills/demo-skill",
+    "{REPO}/evals/demo-skill"
+   ],
+   "fresh": true
+  },
+  {
+   "id": "E-package-dqa",
+   "via": "E",
+   "args": [
+    "package",
+    "{REPO}/skills/data-quality-audit",
+    "--out",
+    "{OUT}"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "zip"
+   ],
+   "zips": [
+    "{OUT}/data-quality-audit.zip"
+   ]
+  },
+  {
+   "id": "E-install-dqa-claude",
+   "via": "E",
+   "args": [
+    "install",
+    "{REPO}/skills/data-quality-audit",
+    "--agent",
+    "claude",
+    "--workspace",
+    "{OUT}"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "E-sync-template-check",
+   "via": "E",
+   "args": [
+    "sync-template",
+    "--check"
+   ],
+   "compare": [
+    "exit"
+   ],
+   "changed_by": "FR3"
+  },
+  {
+   "id": "S-version",
+   "via": "S",
+   "args": [
+    "--version"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "S-validate-self-json",
+   "via": "S",
+   "args": [
+    "validate",
+    "{SELF}",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "S-validate-dqa-json",
+   "via": "S",
+   "args": [
+    "validate",
+    "{REPO}/skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "S-validate-frozen-json",
+   "via": "S",
+   "args": [
+    "validate",
+    "{REPO}/skills/creator-frozen",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "S-validate-all-outside-repo",
+   "via": "S",
+   "args": [
+    "validate",
+    "--all"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "S-evals-all-outside-repo",
+   "via": "S",
+   "args": [
+    "evals",
+    "--all"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "S-new-en",
+   "via": "S",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "S-new-vi",
+   "via": "S",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--lang",
+    "vi"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "S-new-full",
+   "via": "S",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--full"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "S-doctor-self-parent-json",
+   "via": "S",
+   "args": [
+    "doctor",
+    "--roots",
+    "{SELFPARENT}",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "S-doctor-fixture-json",
+   "via": "S",
+   "args": [
+    "doctor",
+    "--roots",
+    "{REPO}/tests/fixtures/doctor",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "S-fmt-check-self-json",
+   "via": "S",
+   "args": [
+    "fmt",
+    "--check",
+    "{SELF}",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "S-fmt-check-dqa-json",
+   "via": "S",
+   "args": [
+    "fmt",
+    "--check",
+    "{REPO}/skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "Z-version",
+   "via": "Z",
+   "args": [
+    "--version"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "Z-validate-self-json",
+   "via": "Z",
+   "args": [
+    "validate",
+    "{SELF}",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "Z-validate-dqa-json",
+   "via": "Z",
+   "args": [
+    "validate",
+    "{REPO}/skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "Z-validate-frozen-json",
+   "via": "Z",
+   "args": [
+    "validate",
+    "{REPO}/skills/creator-frozen",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "Z-validate-all-outside-repo",
+   "via": "Z",
+   "args": [
+    "validate",
+    "--all"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "Z-evals-all-outside-repo",
+   "via": "Z",
+   "args": [
+    "evals",
+    "--all"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ]
+  },
+  {
+   "id": "Z-new-en",
+   "via": "Z",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "Z-new-vi",
+   "via": "Z",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--lang",
+    "vi"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "Z-new-full",
+   "via": "Z",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills",
+    "--eval-root",
+    "{OUT}/evals",
+    "--full"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "Z-doctor-self-parent-json",
+   "via": "Z",
+   "args": [
+    "doctor",
+    "--roots",
+    "{SELFPARENT}",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "Z-doctor-fixture-json",
+   "via": "Z",
+   "args": [
+    "doctor",
+    "--roots",
+    "{REPO}/tests/fixtures/doctor",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "Z-fmt-check-self-json",
+   "via": "Z",
+   "args": [
+    "fmt",
+    "--check",
+    "{SELF}",
+    "--json"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "Z-fmt-check-dqa-json",
+   "via": "Z",
+   "args": [
+    "fmt",
+    "--check",
+    "{REPO}/skills/data-quality-audit",
+    "--json"
+   ],
+   "compare": [
+    "exit",
+    "stdout_json",
+    "stderr"
+   ]
+  },
+  {
+   "id": "L-validate-all-require-evals",
+   "via": "L",
+   "args": [
+    "validate",
+    "--all",
+    "--require-evals"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "L-evals-all",
+   "via": "L",
+   "args": [
+    "evals",
+    "--all"
+   ],
+   "compare": [
+    "exit"
+   ]
+  },
+  {
+   "id": "L-package-skill-creator-studio",
+   "via": "L",
+   "args": [
+    "package",
+    "skills/skill-creator-studio",
+    "--out",
+    "{OUT}"
+   ],
+   "compare": [
+    "exit"
+   ]
+  }
+ ]
+}
