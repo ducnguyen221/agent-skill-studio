@@ -361,6 +361,7 @@ def catalog_problems(root) -> list[str]:
 
 
 RESULT_VALUES = ("passed", "below-threshold", "partial", "not_run")
+DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 BATCH_SHA_RE = re.compile(r"[0-9a-f]{40}")
 AB_THRESHOLDS = (("positive_triggered", lambda v: v >= 4, ">= 4"), ("negative_triggered", lambda v: v == 0, "== 0"),
                  ("worse", lambda v: v == 0, "== 0"), ("better", lambda v: v >= 3, ">= 3"), ("pairs", lambda v: v == 5, "== 5"))
@@ -440,7 +441,11 @@ def model_evaluated_problems(catalog_path, root):
             problems.append("%s ab_report %r must be under %s/runs/%s/" % (tag, ab_report, str(skill["evals"]).rstrip("/"), sprint))
         elif flag is True and ab_report is None:
             problems.append("%s model_evaluated=true needs evaluated.ab_report" % tag)
-        ab_name = "ab-%s.json" % ev.get("date", "")
+        date = ev.get("date")
+        if (date is not None or any(v == "ran" for v in harnesses.values())) and not (isinstance(date, str) and DATE_RE.fullmatch(date)):
+            problems.append("%s evaluated.date %r must be a string YYYY-MM-DD (it names ab-<date>.json)" % (tag, date))
+            continue
+        ab_name = "ab-%s.json" % (date or "")
         ab_path = runs_dir / ab_name
         ab = None
         if any(v == "ran" for v in harnesses.values()):

@@ -120,6 +120,26 @@ class Rfs2CatalogPathsStayInTree(CatalogGateBase):
                 self.assertTrue(any("relative" in p and key in p for p in problems), problems)
                 spy.assert_not_called()
 
+    def test_date_that_is_not_a_plain_date_is_ev20_and_no_file_outside_is_read(self):
+        """bắt-lỗi (red at 698f552: the file ab-<date>.json outside runs_dir is read, no «YYYY-MM-DD» message): RF-S2 `evaluated.date` must be YYYY-MM-DD before it names a file."""
+        outside = self.tmp / "outside"
+        outside.mkdir()
+        (outside / "x.json").write_text(json.dumps({"per_runtime": {}}), encoding="utf-8")
+        for value in ("../../x", "..", "2026-10-18/../../x", "2026-1-18", "2026-10-18\n", 20261018, None):
+            with self.subTest(date=value):
+                self.setUp()
+                def edit(catalog, value=value):
+                    for skill in catalog["skills"]:
+                        if skill["name"] == "data-quality-audit":
+                            skill["evaluated"]["date"] = value
+                self.edit_catalog(edit)
+                reads = []
+                real = E.evals._load_json
+                with mock.patch.object(E.evals, "_load_json", side_effect=lambda p: (reads.append(Path(p)), real(p))[1]):
+                    problems = E.evals.catalog_problems(self.repo)
+                self.assertTrue(any("YYYY-MM-DD" in p for p in problems), problems)
+                self.assertFalse([r for r in reads if r.name.startswith("ab-") and "data-quality-audit" in r.as_posix() and r.name != "ab-2026-10-18.json" or r.name == "x.json"], reads)
+
     def test_runs_dir_is_walked_before_it_is_counted(self):
         """bắt-lỗi (red at df4043b: the summarize call is not preceded by a walk of runs_dir): RF-S2 the runs_dir itself goes through the safe walk."""
         seen = []
