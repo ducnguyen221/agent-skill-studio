@@ -178,7 +178,7 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
 
 class StudioTests(unittest.TestCase):
     def run_cli(self, *args):
-        return subprocess.run([sys.executable, str(ROOT / "studio.py"), *map(str, args)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "studio.py"), *map(str, args)], cwd=ROOT, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def test_canonical_skills_have_no_static_errors(self):
         for path in studio.skill_dirs(ROOT):
