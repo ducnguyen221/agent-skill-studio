@@ -366,7 +366,36 @@
           "<TMP>/out": {}
         }
       },
-      "after": null
+      "after": {
+        "exit": 0,
+        "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+        "stderr": "",
+        "tree": {
+          "<TMP>/out": {
+            "evals": "<dir>",
+            "evals/demo-skill": "<dir>",
+            "evals/demo-skill/baselines": "<dir>",
+            "evals/demo-skill/baselines/BASELINE.md": "4ab2f268b6eac844d715431e5e7a4d650a3dd571bd6c42056a6353a5877783d7",
+            "evals/demo-skill/cases.json": "a26166d7edb0acaf659ef014a7236823a79f1a063e632c881ee27c0c5eeb2aae",
+            "evals/demo-skill/fixtures": "<dir>",
+            "evals/demo-skill/rubric.md": "dae02becfd410cc1cb0ac5cf030e80d42d40d3b7f01398680ffba5b142d5df6e",
+            "skills": "<dir>",
+            "skills/demo-skill": "<dir>",
+            "skills/demo-skill/SKILL.md": "9861d8597f2e599b0ecbaf2eae34efbd9c24600d6c8ca5883f8b93035d8f5136",
+            "skills/demo-skill/agents": "<dir>",
+            "skills/demo-skill/agents/openai.yaml": "0a94fc5704d34509d8f2b2b200b160edf194127e8d7d8a42e4f10856b6f46e50",
+            "skills/demo-skill/assets": "<dir>",
+            "skills/demo-skill/assets/sample-data": "<dir>",
+            "skills/demo-skill/assets/sample-data/example.json": "190ee50e2a78bfcf0782a40514651733da9dbe9392334b2bfad0595232539aee",
+            "skills/demo-skill/assets/templates": "<dir>",
+            "skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "d67cce2e81c9db251907913e85ca4188b227d7bb8d55ddfe295602a810101ab9",
+            "skills/demo-skill/references": "<dir>",
+            "skills/demo-skill/references/PROCESS_TEMPLATE.md": "ae4a595309a518d34687b6ff6c17af5929ed9a16d8ec73a67ac345b314f84263",
+            "skills/demo-skill/scripts": "<dir>",
+            "skills/demo-skill/scripts/check_inputs.py": "d43dd45aa22291b93c308086eb712ec8adee8dfff6f67563f484338a141fe3fa"
+          }
+        }
+      }
     },
     "R-package-dqa": {
       "exit": 0,
@@ -774,7 +803,36 @@
           "<TMP>/out": {}
         }
       },
-      "after": null
+      "after": {
+        "exit": 0,
+        "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+        "stderr": "",
+        "tree": {
+          "<TMP>/out": {
+            "evals": "<dir>",
+            "evals/demo-skill": "<dir>",
+            "evals/demo-skill/baselines": "<dir>",
+            "evals/demo-skill/baselines/BASELINE.md": "4ab2f268b6eac844d715431e5e7a4d650a3dd571bd6c42056a6353a5877783d7",
+            "evals/demo-skill/cases.json": "a26166d7edb0acaf659ef014a7236823a79f1a063e632c881ee27c0c5eeb2aae",
+            "evals/demo-skill/fixtures": "<dir>",
+            "evals/demo-skill/rubric.md": "dae02becfd410cc1cb0ac5cf030e80d42d40d3b7f01398680ffba5b142d5df6e",
+            "skills": "<dir>",
+            "skills/demo-skill": "<dir>",
+            "skills/demo-skill/SKILL.md": "9861d8597f2e599b0ecbaf2eae34efbd9c24600d6c8ca5883f8b93035d8f5136",
+            "skills/demo-skill/agents": "<dir>",
+            "skills/demo-skill/agents/openai.yaml": "0a94fc5704d34509d8f2b2b200b160edf194127e8d7d8a42e4f10856b6f46e50",
+            "skills/demo-skill/assets": "<dir>",
+            "skills/demo-skill/assets/sample-data": "<dir>",
+            "skills/demo-skill/assets/sample-data/example.json": "190ee50e2a78bfcf0782a40514651733da9dbe9392334b2bfad0595232539aee",
+            "skills/demo-skill/assets/templates": "<dir>",
+            "skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "d67cce2e81c9db251907913e85ca4188b227d7bb8d55ddfe295602a810101ab9",
+            "skills/demo-skill/references": "<dir>",
+            "skills/demo-skill/references/PROCESS_TEMPLATE.md": "ae4a595309a518d34687b6ff6c17af5929ed9a16d8ec73a67ac345b314f84263",
+            "skills/demo-skill/scripts": "<dir>",
+            "skills/demo-skill/scripts/check_inputs.py": "d43dd45aa22291b93c308086eb712ec8adee8dfff6f67563f484338a141fe3fa"
+          }
+        }
+      }
     },
     "C-package-dqa": {
       "exit": 0,
@@ -1182,7 +1240,36 @@
           "<TMP>/out": {}
         }
       },
-      "after": null
+      "after": {
+        "exit": 0,
+        "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+        "stderr": "",
+        "tree": {
+          "<TMP>/out": {
+            "evals": "<dir>",
+            "evals/demo-skill": "<dir>",
+            "evals/demo-skill/baselines": "<dir>",
+            "evals/demo-skill/baselines/BASELINE.md": "4ab2f268b6eac844d715431e5e7a4d650a3dd571bd6c42056a6353a5877783d7",
+            "evals/demo-skill/cases.json": "a26166d7edb0acaf659ef014a7236823a79f1a063e632c881ee27c0c5eeb2aae",
+            "evals/demo-skill/fixtures": "<dir>",
+            "evals/demo-skill/rubric.md": "dae02becfd410cc1cb0ac5cf030e80d42d40d3b7f01398680ffba5b142d5df6e",
+            "skills": "<dir>",
+            "skills/demo-skill": "<dir>",
+            "skills/demo-skill/SKILL.md": "9861d8597f2e599b0ecbaf2eae34efbd9c24600d6c8ca5883f8b93035d8f5136",
+            "skills/demo-skill/agents": "<dir>",
+            "skills/demo-skill/agents/openai.yaml": "0a94fc5704d34509d8f2b2b200b160edf194127e8d7d8a42e4f10856b6f46e50",
+            "skills/demo-skill/assets": "<dir>",
+            "skills/demo-skill/assets/sample-data": "<dir>",
+            "skills/demo-skill/assets/sample-data/example.json": "190ee50e2a78bfcf0782a40514651733da9dbe9392334b2bfad0595232539aee",
+            "skills/demo-skill/assets/templates": "<dir>",
+            "skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "d67cce2e81c9db251907913e85ca4188b227d7bb8d55ddfe295602a810101ab9",
+            "skills/demo-skill/references": "<dir>",
+            "skills/demo-skill/references/PROCESS_TEMPLATE.md": "ae4a595309a518d34687b6ff6c17af5929ed9a16d8ec73a67ac345b314f84263",
+            "skills/demo-skill/scripts": "<dir>",
+            "skills/demo-skill/scripts/check_inputs.py": "d43dd45aa22291b93c308086eb712ec8adee8dfff6f67563f484338a141fe3fa"
+          }
+        }
+      }
     },
     "E-new-default-output": {
       "exit": 0,

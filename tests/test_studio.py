@@ -649,13 +649,14 @@ class TemplateTests(unittest.TestCase):
             self.assertIn("invalid choice: 'fr'", run.stderr)
             self.assertFalse(skill.exists())
 
-    def test_new_full_lang_vi_exit2(self):
+    def test_new_full_lang_vi_exit0(self):
+        """SPR-02 FR10 (was test_new_full_lang_vi_exit2): `--full --lang vi` is accepted and makes the full skill with a Vietnamese SKILL.md; the details are in tests/test_new_full_vi.py."""
         with tempfile.TemporaryDirectory() as t:
             run, skill = self.new_skill(t, "demo-fv", "--full", "--lang", "vi")
-            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
-            self.assertIn("full template is English-only", run.stderr)
-            self.assertFalse(skill.exists())
-            self.assertFalse((Path(t) / "evals" / "demo-fv").exists())
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            self.assertTrue((skill / "references" / "PROCESS_TEMPLATE.md").is_file())
+            self.assertFalse((skill / "SKILL.vi.md").exists())
+            self.assertTrue((Path(t) / "evals" / "demo-fv").is_dir())
 
     def test_minimal_templates_stay_under_20_nonblank_lines(self):
         """SC4: both default templates stay small; the Vietnamese one mirrors the English headings."""
@@ -943,8 +944,8 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual(0, call("new", "ip-min", *common)[0])
             self.assertEqual(0, call("new", "ip-vi", "--lang", "vi", *common)[0])
             self.assertEqual(0, call("new", "ip-full", "--full", *common)[0])
-            code, _, err = call("new", "ip-bad", "--full", "--lang", "vi", *common)
-            self.assertEqual((2, True), (code, "English-only" in err))
+            self.assertEqual(0, call("new", "ip-full-vi", "--full", "--lang", "vi", *common)[0])  # SPR-02 FR10: was exit 2 "English-only"
+            self.assertFalse((base / "skills" / "ip-full-vi" / "SKILL.vi.md").exists())
             self.assertEqual({"SKILL.md"}, {p.name for p in (base / "skills" / "ip-vi").iterdir()})
             self.assertTrue((base / "skills" / "ip-full" / "agents" / "openai.yaml").is_file())
 

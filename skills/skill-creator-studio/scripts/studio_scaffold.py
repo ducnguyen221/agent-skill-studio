@@ -16,7 +16,7 @@ import studio_fs as fs
 
 
 def get_template(full: bool = False, lang: str = "en") -> Path:
-    """Minimal template: the SKILL.md / SKILL.vi.md file. Full template: the skill-template-full directory."""
+    """Minimal template: the SKILL.md / SKILL.vi.md file. Full template: the skill-template-full directory (its SKILL.vi.md is chosen by cmd_new)."""
     base = Path(__file__).resolve().parent.parent / "assets"
     if full:
         return base / "skill-template-full"
@@ -44,9 +44,6 @@ def cmd_new(args) -> int:
     if not args.description or len(args.description) > 1024 or "\n" in args.description:
         print("ERROR: --description is required, single line and <=1024 characters", file=sys.stderr)
         return 2
-    if args.full and args.lang != "en":
-        print("ERROR: full template is English-only; drop --full or use --lang en", file=sys.stderr)
-        return 2
     root = fs.repo_root(Path(__file__))
     output = Path(args.output).expanduser() if args.output else (root / "skills" if root else Path.cwd() / "skills")
     target = (output / name).resolve()
@@ -54,12 +51,15 @@ def cmd_new(args) -> int:
         print("ERROR: refusing to overwrite existing %s" % target, file=sys.stderr)
         return 1
     template = get_template(args.full, args.lang)
-    if not ((template / "SKILL.md") if args.full else template).is_file():
-        print("ERROR: bundled template missing at %s" % template, file=sys.stderr)
+    wanted = (template / ("SKILL.vi.md" if args.lang == "vi" else "SKILL.md")) if args.full else template
+    if not wanted.is_file():
+        print("ERROR: bundled template missing at %s" % wanted, file=sys.stderr)
         return 2
     target.parent.mkdir(parents=True, exist_ok=True)
     if args.full:
-        shutil.copytree(template, target)
+        shutil.copytree(template, target, ignore=shutil.ignore_patterns("SKILL.vi.md"))  # the Vietnamese body is a source for SKILL.md, never a file of the new skill
+        if args.lang == "vi":
+            shutil.copyfile(wanted, target / "SKILL.md")
     else:
         target.mkdir()
         shutil.copyfile(template, target / "SKILL.md")

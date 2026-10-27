@@ -147,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--output", help="parent directory (default repo skills/)")
     p.add_argument("--eval-root", help="external evals directory (default repo evals/)")
     p.add_argument("--lang", choices=C.TEMPLATE_LANGS, default="en", help="language of the template body (default en); frontmatter stays English")
-    p.add_argument("--full", action="store_true", help="scaffold the full English-only template (references/, scripts/, assets/, agents/)")
+    p.add_argument("--full", action="store_true", help="scaffold the full template (references/, scripts/, assets/, agents/); the body follows --lang")
     p.set_defaults(func=scaffold.cmd_new)
     for action in ("check", "validate", "audit"):
         if action == "check":
