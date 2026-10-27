@@ -46,10 +46,14 @@ def find_skills(args):
         return fs.skill_dirs(root)
     if not args.skill:
         raise ValueError("provide a skill path or --all")
+    if getattr(args, "typed", False):
+        return [validate.resolve_check_path(args.skill)]
     return [Path(args.skill).expanduser()]
 
 
-def cmd_check(args, audit: bool = False) -> int:
+def cmd_check(args, audit: bool = False, typed: bool = False) -> int:
+    """validate / audit / check. `typed` (check) adds "type": "skill" to each report; a non-skill document is refused by find_skills."""
+    args.typed = typed
     try:
         folders = find_skills(args)
     except ValueError as exc:
@@ -60,7 +64,10 @@ def cmd_check(args, audit: bool = False) -> int:
     external = Path(args.eval_root) if args.eval_root else (root / "evals" if root else None)
     for folder in folders:
         findings = validate.validate_skill(folder, eval_root=external, require_evals=args.require_evals, target=getattr(args, "target", "portable"))
-        reports.append({"skill": str(folder), "findings": findings})
+        report = {"skill": str(folder), "findings": findings}
+        if typed:
+            report = {"skill": report["skill"], "type": "skill", "findings": findings}
+        reports.append(report)
     if args.json:
         print(json.dumps({"audit": audit, "reports": reports}, ensure_ascii=False, indent=2))
     else:
@@ -135,15 +142,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--lang", choices=C.TEMPLATE_LANGS, default="en", help="language of the template body (default en); frontmatter stays English")
     p.add_argument("--full", action="store_true", help="scaffold the full English-only template (references/, scripts/, assets/, agents/)")
     p.set_defaults(func=scaffold.cmd_new)
-    for action in ("validate", "audit"):
-        p = sub.add_parser(action, help="static %s, never edits files" % action)
-        p.add_argument("skill", nargs="?", help="Skill folder")
+    for action in ("check", "validate", "audit"):
+        if action == "check":
+            help_text = "static check of a document, never edits files (a skill folder or SKILL.md; validate and audit stay as aliases)"
+        else:
+            help_text = "static %s, never edits files" % action
+        p = sub.add_parser(action, help=help_text)
+        p.add_argument("skill", nargs="?", help="Skill folder or SKILL.md" if action == "check" else "Skill folder")
         p.add_argument("--all", action="store_true", help="all canonical repo skills")
         p.add_argument("--require-evals", action="store_true", help="require matching external eval manifest")
         p.add_argument("--eval-root", help="where external evals are stored")
         p.add_argument("--target", choices=C.TARGETS, default="portable", help="portable (default) or claude-code (also accepts Claude Code only keys as FM6 warnings)")
         p.add_argument("--json", action="store_true")
-        p.set_defaults(func=lambda args, audit=(action == "audit"): cmd_check(args, audit))
+        p.set_defaults(func=lambda args, audit=(action == "audit"), typed=(action == "check"): cmd_check(args, audit, typed))
     p = sub.add_parser("evals", help="validate eval manifest schemas (no model calls); with --export agentskills also write evals.json")
     p.add_argument("skill", nargs="?", help="Skill name")
     p.add_argument("--all", action="store_true")

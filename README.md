@@ -49,7 +49,7 @@ Agent Skill Studio/
 ├── AGENTS.md                    # Chỉ dẫn repo chung cho Codex/Antigravity
 ├── CLAUDE.md                    # Claude Code: import AGENTS.md và thêm adapter
 ├── GEMINI.md                    # Antigravity-specific notes, không sao chép rule chung
-├── studio.py                    # CLI: new / validate / audit / evals / package / install / doctor / fmt
+├── studio.py                    # CLI: new / check / validate / audit / evals / package / install / doctor / fmt
 ├── .claude-plugin/              # Manifest plugin Claude Code (plugin.json, marketplace.json)
 ├── .codex-plugin/               # Manifest plugin Codex (plugin.json)
 ├── standards/
@@ -128,6 +128,8 @@ Yêu cầu: **Python 3.9+**, không cần `pip install` cho CLI lõi. Tất cả
 python3 studio.py --help
 # xem các skill mẫu và trạng thái
 python3 studio.py audit --all
+# kiểm một skill (thư mục hoặc SKILL.md) bằng lệnh `check`; `validate` và `audit` là bí danh giữ nguyên cờ, mã thoát và JSON (thêm `"type": "skill"` ở mỗi report chỉ với `check`)
+python3 studio.py check skills/skill-creator-studio
 # kiểm tra các skill sản xuất và bộ evals ngoại vi
 python3 studio.py validate --all --require-evals
 python3 studio.py evals --all

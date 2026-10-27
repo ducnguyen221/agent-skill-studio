@@ -200,3 +200,38 @@ def print_findings(folder: Path, findings: list[dict]) -> None:
     for item in findings:
         location = item["path"] + ((":%s" % item["line"]) if item["line"] else "")
         print("  %-5s %-4s %s — %s" % (item["level"], item["code"], location, item["message"]))
+
+
+RULES_FILE_NAMES = ("agents.md", "claude.md", "gemini.md")
+CHECK_FUTURE_TYPES = ("workflow", "rules")
+
+
+def resolve_check_path(arg: str) -> Path:
+    """The skill folder `check <arg>` runs `validate_skill` on (FR5.2, FR5.3). A folder, a missing path or `<folder>/SKILL.md` is a skill and
+    is left to `validate_skill` as it is. Any other file is read for its `type:`; a `workflow` or `rules` type, or an AGENTS.md, CLAUDE.md
+    or GEMINI.md name, is a type whose check does not exist yet. ValueError carries the message (the caller prints it and exits 2)."""
+    path = Path(arg).expanduser()
+    if path.name == "SKILL.md":
+        return path.parent
+    if not path.is_file():
+        return path
+    if path.name.casefold() in RULES_FILE_NAMES:
+        raise ValueError("check for type rules is not available yet (%s)" % path)
+    if fs.is_link(path):
+        raise ValueError("%s is a symlink or junction; check does not read it" % path)
+    if fs.path_is_cloud(path):
+        raise ValueError("%s is a cloud placeholder; check does not read it" % path)
+    unknown = "cannot tell the document type of %s (expected a skill folder or SKILL.md, or a .md file with `type:` in its frontmatter)" % path
+    if path.suffix.casefold() != ".md":
+        raise ValueError(unknown)
+    try:
+        text, too_big = fs.read_capped(path, C.DOCTOR_MAX_FILE_BYTES)
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("%s cannot be read as UTF-8 text: %s" % (path, exc))
+    if too_big:
+        raise ValueError("%s is larger than %d bytes; check does not read it" % (path, C.DOCTOR_MAX_FILE_BYTES))
+    meta, _findings, _end = fs.parse_frontmatter(text, path)
+    kind = meta.get("type")
+    if kind in CHECK_FUTURE_TYPES:
+        raise ValueError("check for type %s is not available yet (%s)" % (kind, path))
+    raise ValueError(unknown)
