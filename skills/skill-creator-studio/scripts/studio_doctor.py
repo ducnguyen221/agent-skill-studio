@@ -69,7 +69,7 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
             raise ValueError("root too broad; pass narrower roots (not a drive root, the home folder or a folder above it): %s" % label)
         if not fs.zone_reason(path, markers):  # decided from the name, before anything touches the path
             probe = Path(os.path.realpath(path)) if fs.is_link(path) else path  # a root given as a link is the user's explicit choice: judged by what it resolves to, as iter_skill_dirs does
-            if not fs._is_dir_quiet(probe):
+            if not (fs.path_is_cloud(probe) or fs._is_dir_quiet(probe)):  # a cloud placeholder root exists: iter_skill_dirs skips it with reason cloud
                 raise ValueError("root not found or not a directory: %s" % label)
         found.append(path)
     return found
