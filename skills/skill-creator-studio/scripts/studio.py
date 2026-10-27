@@ -281,7 +281,9 @@ def _long_name_text(text: str) -> str:
 
 def zone_reason(path, markers=CLOUD_MARKERS) -> str | None:
     """'cloud' for a path naming one of `markers` (OneDrive, SharePoint and any --skip-marker; case-insensitive), 'secret-zone' for ~/.secret
-    or any folder called .secret (any case, any platform), else None. Compares strings only: it never stats, lists or opens `path` (RK15)."""
+    or any folder called .secret (any case, any platform), else None. It never stats or opens `path` (RK15). One exception, Windows only: a spelling with an 8.3
+    short name ('~' + digit) is expanded by asking the OS for the long form (GetLongPathNameW), which reads directory entries (names only) of the folders along
+    the path, cloud folders included; nothing is opened and no file content is read."""
     given = os.path.abspath(os.fspath(path))
     texts = [os.path.normcase(given).casefold()]
     long_form = os.path.normcase(_long_name_text(given)).casefold()
@@ -646,10 +648,11 @@ def walk_files(base: Path, markers=CLOUD_MARKERS, max_files: int | None = None, 
     A symlink or junction (any reparse point) is listed as a link and never entered, a folder named like a cloud/secret zone and
     anything carrying cloud attributes are listed but never entered or opened, and nothing else is stat-ed per entry except folders about to be entered.
     The walk stops after `max_files` entries (default DOCTOR_MAX_FILES_PER_SKILL) and does not enter folders `max_depth` levels down
-    (default DOCTOR_MAX_SKILL_DEPTH); either sets the last value, True. An entry whose name is in `skip_names` is left out unlisted and unentered."""
+    (default DOCTOR_MAX_SKILL_DEPTH); either sets the last value, True. An entry whose name is in `skip_names` (letter case ignored) is left out unlisted and unentered."""
     max_files = DOCTOR_MAX_FILES_PER_SKILL if max_files is None else max_files
     max_depth = DOCTOR_MAX_SKILL_DEPTH if max_depth is None else max_depth
     found, links, dirs, cloud, stack, cut = [], set(), set(), set(), [(base, 0)], False
+    skip_names = {name.casefold() for name in skip_names}  # Evals/ and TESTS/ are the same folder as evals/ and tests/ on Windows and macOS
     while stack and not cut:
         current, depth = stack.pop()
         try:
@@ -658,7 +661,7 @@ def walk_files(base: Path, markers=CLOUD_MARKERS, max_files: int | None = None, 
         except OSError:
             continue
         for entry in entries:
-            if entry.name in skip_names:
+            if entry.name.casefold() in skip_names:
                 continue
             if len(found) >= max_files:
                 cut = True
@@ -900,10 +903,10 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     for t, source in copies.items():
         if t.exists() and source.exists() and os.path.samefile(t, source):
             return refuse(1, "EX6", "export destination is the source fixture itself: %s" % t, t)
-    clash = [x for x in [target] + list(copies) if x.exists()]
+    clash = [x for x in [target] + list(copies) if os.path.lexists(x)]  # a dangling link is a name already taken
     if clash and not force:
         return refuse(1, "EX5", "export file exists: %s; choose another --out or explicitly --force" % clash[0], clash[0])
-    fresh = [x for x in [target] + list(copies) if not x.exists()]
+    fresh = [x for x in [target] + list(copies) if not os.path.lexists(x)]  # only names this run creates are cleaned up again
     temp_name = ""
     try:
         for t, source in copies.items():
@@ -1651,8 +1654,8 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
             files.append(p)
     kept = []
     for p in files:
-        if p.name in REJECT_NAMES or p.name.startswith(".env.") or p.suffix.lower() in REJECT_SUFFIXES:
-            findings.append(emit("ERROR", "SEC", p, 0, "secret/credential-like file must not be shipped"))
+        if secret_file_name(p.name) or p.suffix.lower() in REJECT_SUFFIXES:  # the same name rule as --export, any letter case
+            findings.append(emit("ERROR", "SEC", p, 0, "secret/credential-like file must not be shipped; remove it from the Skill (nothing is packaged or installed)"))
             continue
         try:
             info = os.lstat(p)
@@ -1707,7 +1710,7 @@ def cmd_package(args) -> int:
         print("ERROR: PACK: %s; nothing was packaged" % exc, file=sys.stderr)
         return 1
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
-    print("Packaged %d runtime files -> %s\nSHA256: %s\nExcluded: evals/, tests/, secrets, caches. Model evaluation status is unchanged." % (len(files), target, digest))
+    print("Packaged %d runtime files -> %s\nSHA256: %s\nExcluded: evals/, tests/ and cache folders (any letter case); a secret-named file stops the package instead. Model evaluation status is unchanged." % (len(files), target, digest))
     return 0
 
 
@@ -1721,20 +1724,29 @@ def root_link_in_chain(skill_root: Path, stop: Path):
     return None
 
 
+class MoveAsideError(OSError):
+    """The copy at `dst` is complete but the old folder could not be fully removed: it may be partly gone. The message names the copy."""
+
+
 def move_aside(src: Path, dst: Path) -> None:
-    """Move the folder `src` to `dst` (same device: rename). Across devices (rename raises OSError) copy first, then delete `src`; a failed copy removes the
-    half-made `dst` and re-raises, so `src` stays whole."""
+    """Move the folder `src` to `dst` (same device: rename). Only when the rename fails because `dst` is on another device (EXDEV, Windows error 17) is the
+    folder copied first and `src` deleted after; any other rename failure (a locked file, a permission) is raised at once with `src` untouched. A failed copy
+    removes the half-made `dst` and re-raises, so `src` stays whole; a failed delete after a good copy raises MoveAsideError."""
     try:
         os.rename(src, dst)
         return
-    except OSError:
-        pass
+    except OSError as exc:
+        if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != 17:
+            raise
     try:
         shutil.copytree(src, dst, symlinks=True)
     except BaseException:
         shutil.rmtree(dst, ignore_errors=True)
         raise
-    shutil.rmtree(src)
+    try:
+        shutil.rmtree(src)
+    except OSError as exc:
+        raise MoveAsideError(exc.errno, "the backup is complete at %s but the old Skill could not be fully removed (%s); it may be partly deleted" % (dst, exc.strerror or type(exc).__name__)) from exc
 
 
 def cmd_install(args) -> int:
@@ -1798,6 +1810,9 @@ def cmd_install(args) -> int:
         try:
             backups_dir.mkdir(exist_ok=True)
             move_aside(dest, backup)
+        except MoveAsideError as exc:
+            print("ERROR: %s. Nothing new was installed; restore from the backup if the Skill folder is incomplete." % exc.strerror, file=sys.stderr)
+            return 1
         except OSError as exc:
             print("ERROR: could not back up the existing installation (%s); the old Skill was left in place" % (exc.strerror or type(exc).__name__), file=sys.stderr)
             return 1
@@ -1884,7 +1899,10 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
         except OSError as exc:
             raise ValueError("cannot read --roots-file %s: %s" % (roots_file, exc.strerror or type(exc).__name__))
         for number, raw in enumerate(lines, 1):
-            line = re.sub(r"\s+#.*$", "", raw.strip())  # a comment starts at '#' at the line start or after whitespace; 'a#b' stays a path
+            line = raw.strip()
+            comment = re.search(r"(?<=\s)#", line)  # a comment starts at '#' at the line start or after whitespace; 'a#b' stays a path (one linear scan)
+            if comment:
+                line = line[:comment.start()].rstrip()
             if line and not line.startswith("#"):
                 items.append((line, "--roots-file line %d" % number))
     if not items:
@@ -2575,6 +2593,7 @@ def _write_fixed(path: Path, data: bytes, backup: bool) -> str | None:
     the backup, or None when none was asked for."""
     if not os.access(path, os.W_OK):
         raise PermissionError(13, "file is read-only", os.fspath(path))
+    checked = os.lstat(path)  # the identity every read of `path` below must match (Windows has no O_NOFOLLOW)
     made_backup, temp, handle, done = None, None, None, False
     try:
         if backup:
@@ -2588,7 +2607,7 @@ def _write_fixed(path: Path, data: bytes, backup: bool) -> str | None:
                     target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
                     count += 1
             made_backup = target  # set only once the exclusive create has succeeded, so a failure never removes a file we did not make
-            with sink, open_nofollow_read(path, single_link=False) as source:
+            with sink, open_nofollow_read(path, checked, single_link=False) as source:
                 shutil.copyfileobj(source, sink)
             try:
                 shutil.copystat(path, target)
@@ -2654,7 +2673,7 @@ def cmd_fmt(args) -> int:
     results, errors, warnings, changed, backups = [], 0, 0, 0, 0
     for path in files:
         try:
-            with open_nofollow_read(path, single_link=False) as handle:
+            with open_nofollow_read(path, os.lstat(path), single_link=False) as handle:  # lstat now, so Windows compares the opened handle with the listed file
                 raw = handle.read()
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
