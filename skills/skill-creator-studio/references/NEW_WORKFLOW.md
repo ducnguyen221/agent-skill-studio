@@ -72,7 +72,7 @@ Critical rules → purpose → when/when not → numbered steps with done-when a
 
 Run static validation, semantic review, model A/B test and packaging. If `STUDIO-DRAFT` remains or evals still empty, release is blocked. Review permissions for high-risk scripts. Never invent a pass status.
 
-- Command: `python3 scripts/studio.py validate <path> --require-evals`, then `python3 scripts/studio.py evals --all`, then the model A/B test from the external evals runbook, then `python3 scripts/studio.py package <path>`.
+- Command: `python3 scripts/studio.py validate <path> --require-evals --eval-root <evals folder>`, then `python3 scripts/studio.py evals --all --eval-root <evals folder>` (inside the Studio repository `--eval-root` may be left out), then the model A/B test from the external evals runbook, then `python3 scripts/studio.py package <path>`.
 - Expect: validation and the evals check exit 0, the A/B result is recorded with its evidence, and the package is built.
 - Stop if: `STUDIO-DRAFT` remains, the evals are still empty, or a high-risk script has not been reviewed for permissions; return to Step 5.
 

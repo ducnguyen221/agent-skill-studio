@@ -45,7 +45,7 @@ For actions with side effects, propose exact diff, user approval scope, rollback
 
 Run `validate` -> `evals` schema -> actual agent tasks; inspect generated files if any. A new error means return to step 2/3. No final "success" claim without a traceable check.
 
-- Command: `python3 scripts/studio.py validate <path>`, then `python3 scripts/studio.py evals --all`, then the actual agent tasks; inspect any generated files.
+- Command: `python3 scripts/studio.py validate <path>`, then `python3 scripts/studio.py evals --all --eval-root <evals folder>` (inside the Studio repository `--eval-root` may be left out), then the actual agent tasks; inspect any generated files.
 - Expect: validation and the evals schema check exit 0, and the agent tasks give the expected result.
 - Stop if: a new error appears; return to Step 2 or Step 3. Claim no success without a traceable check.
 
