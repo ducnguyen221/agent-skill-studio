@@ -5,7 +5,6 @@ Internal module of `studio.py`; do not run it. It reaches other studio modules t
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import re
@@ -287,26 +286,50 @@ def _load_json(path):
     return json.loads(_read_text(path))
 
 
-def _activation_path() -> Path | None:
-    """evals/tools/activation.py of the engine's own repository when it is a plain file there; None otherwise."""
+def gate_root() -> Path | None:
+    """The repository the `model_evaluated` gate runs in: the engine's own repository when it has an evals/ folder (a plain one), else None
+    (an engine copied out of a repository, or one installed into a tree without evals/, has nothing to count)."""
     root = engine_repo_root()
-    if root is None:
+    if root is None or not fs._is_dir_quiet(root / "evals"):
         return None
-    path = root / "evals" / "tools" / "activation.py"
-    if not path.is_file() or fs.is_link(path) or fs.path_is_cloud(path):
-        return None
-    return path
+    return root
 
 
-def _load_activation():
-    """The module of evals/tools/activation.py, loaded from the engine's repository only: not from the cwd, not from an environment variable."""
-    path = _activation_path()
-    if path is None:
-        raise RuntimeError("evals/tools/activation.py is missing in the repository of the engine")
-    spec = importlib.util.spec_from_file_location("activation_impl", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def summarize(runs_dir) -> dict:
+    """Per runtime, the with-skill run logs that ran: {runtime: {pos, pos_trig, neg, neg_trig}}. The one counting rule of the gate and of
+    evals/tools/activation.py (which calls this). Logs are read without following a link, up to DOCTOR_MAX_FILE_BYTES; an unreadable one is skipped."""
+    rows: dict = {}
+    for f in sorted(Path(runs_dir).glob("*.json")):
+        try:
+            log = _load_json(f)
+        except (ValueError, OSError):
+            continue
+        if not isinstance(log, dict) or "runtime" not in log or "with_skill" not in log or log.get("status") != "ran":
+            continue
+        if log["with_skill"] is not True:
+            continue
+        r = rows.setdefault(log["runtime"], {"pos": 0, "pos_trig": 0, "neg": 0, "neg_trig": 0})
+        positive = log.get("kind") != "near-miss"
+        r["pos" if positive else "neg"] += 1
+        if log.get("triggered"):
+            r["pos_trig" if positive else "neg_trig"] += 1
+    return rows
+
+
+def _relative_problem(value) -> str | None:
+    """Why a catalog value cannot name a folder below the repository (not a string, absolute, a drive, '..', ':' or a dangerous Windows name), else None."""
+    if not isinstance(value, str) or not value.strip():
+        return "is not a non-empty string"
+    text = value.replace("\\", "/")
+    if text.startswith("/") or Path(value).is_absolute() or os.path.isabs(value):
+        return "is an absolute path"
+    for part in text.split("/"):
+        if part == "..":
+            return "contains '..'"
+        reason = fs.unsafe_windows_name(part)
+        if reason:
+            return "has an unsafe component (%s)" % reason
+    return None
 
 
 def _runs_unsafe(runs_root: Path) -> str | None:
@@ -331,8 +354,6 @@ def catalog_problems(root) -> list[str]:
         return ["registry/catalog.json is missing in the repository %s; the model_evaluated gate cannot run" % root]
     if fs.is_link(catalog) or fs.path_is_cloud(catalog):
         return ["registry/catalog.json is a link or a cloud placeholder; it is not read"]
-    if _activation_path() is None:
-        return ["evals/tools/activation.py is missing in the repository of the engine (or is a link or a cloud placeholder); the model_evaluated gate cannot count run logs"]
     try:
         return model_evaluated_problems(catalog, root)
     except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
@@ -357,6 +378,10 @@ def model_evaluated_problems(catalog_path, root):
             problems.append("%s model_evaluated=%r must be a JSON bool" % (tag, flag))
         if (skill.get("status") == "model-evaluated") != (flag is True):
             problems.append("%s status %r does not match model_evaluated=%r (model-evaluated only for true)" % (tag, skill.get("status"), flag))
+        bad = _relative_problem(skill["evals"])
+        if bad:  # catalog values name folders below the repository; nothing outside it is walked or read (FR6.4)
+            problems.append("%s evals %r must be a plain relative folder name: it %s" % (tag, skill["evals"], bad))
+            continue
         runs_root = Path(root) / skill["evals"] / "runs"
         if runs_root.is_dir():  # nothing under runs/ is opened, listed further or counted until the whole tree is known to be plain files (FR6.4)
             reason = _runs_unsafe(runs_root)
@@ -387,12 +412,24 @@ def model_evaluated_problems(catalog_path, root):
         if not sprint or not isinstance(harnesses, dict):
             problems.append("%s evaluated needs sprint and harnesses" % tag)
             continue
+        bad = _relative_problem(sprint)
+        if bad:
+            problems.append("%s evaluated.sprint %r must be a plain relative folder name: it %s" % (tag, sprint, bad))
+            continue
         if flag is True and set(harnesses) != targets:
             problems.append("%s evaluated.harnesses keys %s != targets %s" % (tag, sorted(harnesses), sorted(targets)))
         if set(harnesses) - targets:
             problems.append("%s evaluated.harnesses has harness outside targets: %s" % (tag, sorted(set(harnesses) - targets)))
         runs_dir = runs_root / sprint
-        counted = _load_activation().summarize(runs_dir) if runs_dir.is_dir() else {}
+        if runs_dir.is_dir():  # the folder that is counted is walked itself, and no link may lie between it and the repository
+            reason = _runs_unsafe(runs_dir)
+            link = fs.link_in_chain(runs_dir, root)
+            if link is not None and Path(link) == Path(root):
+                link = None
+            if reason or link is not None:
+                problems.append("%s runs dir not safe to count: %s" % (tag, reason or "link %s" % link))
+                continue
+        counted = summarize(runs_dir) if runs_dir.is_dir() else {}
         ran_logs = _ran_logs(runs_dir) if runs_dir.is_dir() else {}
         cases_file = Path(root) / skill["evals"] / "cases.json"
         cases = _load_json(cases_file).get("cases", []) if cases_file.is_file() else []

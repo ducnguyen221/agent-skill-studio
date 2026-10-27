@@ -375,24 +375,16 @@ def verify(manifest, eval_dir, main_skill_dir, cache_skill_dir):
 
 
 def summarize(runs_dir):
-    """Table from run logs: per runtime, positive/negative triggered counts of with_skill runs."""
-    rows = {}
-    for f in sorted(Path(runs_dir).glob("*.json")):
-        try:
-            log = json.loads(f.read_text(encoding="utf-8"))
-        except ValueError:
-            continue
-        if not isinstance(log, dict) or "runtime" not in log or "with_skill" not in log or log.get("status") != "ran":
-            continue
-        if log["with_skill"] is not True:
-            continue
-        r = rows.setdefault(log["runtime"], {"pos": 0, "pos_trig": 0, "neg": 0, "neg_trig": 0})
-        positive = log.get("kind") != "near-miss"
-        trig = bool(log.get("triggered"))
-        r["pos" if positive else "neg"] += 1
-        if trig:
-            r["pos_trig" if positive else "neg_trig"] += 1
-    return rows
+    """Table from run logs: per runtime, positive/negative triggered counts of with_skill runs.
+
+    The counting rule lives once, in the engine (`studio_evals.summarize`, which the `evals --all` gate also uses). The engine is
+    found by a fixed path from this file, `<repo>/skills/skill-creator-studio/scripts/`, never from the cwd or an environment variable.
+    """
+    engine_dir = str(Path(__file__).resolve().parents[2] / "skills" / "skill-creator-studio" / "scripts")
+    if engine_dir not in sys.path:
+        sys.path.insert(0, engine_dir)
+    import studio_evals
+    return studio_evals.summarize(runs_dir)
 
 
 def main(argv=None):

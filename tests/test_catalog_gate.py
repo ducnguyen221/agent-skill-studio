@@ -118,18 +118,15 @@ class EnginePassesAndFailsTests(CatalogGateBase):
         self.assertIn("catalog.json", found[0]["message"])
         self.assertNotIn("Traceback", err)
 
-    def test_missing_activation_tool_in_the_repository_is_ev20(self):
-        """bắt-lỗi (red at 37fb2f9: exit 0): FR6.4 / RF26 a catalog but no evals/tools/activation.py -> EV20, exit 1, no traceback."""
+    def test_missing_activation_tool_is_not_a_problem_any_more(self):
+        """tương-đương: SPR-02 fix round 1 (RF-S1) the gate counts logs in the engine, so a repository without evals/tools/activation.py gives no EV20."""
         (self.repo / "evals" / "tools" / "activation.py").unlink()
         code, out, err = self.evals_all("--json")
-        found = self.ev20(out)
-        self.assertEqual(1, code)
-        self.assertEqual(1, len(found))
-        self.assertIn("activation.py", found[0]["message"])
-        self.assertNotIn("Traceback", err)
+        self.assertEqual((0, ""), (code, err))
+        self.assertEqual([], self.ev20(out))
 
     def test_activation_tool_in_the_working_directory_is_never_loaded(self):
-        """bắt-lỗi (red at 37fb2f9: exit 0): FR6.4 the repository of the engine has no activation.py; one that waits in the cwd (and on PYTHONPATH) is not loaded: EV20 stays and the planted file leaves no mark."""
+        """tương-đương: FR6.4 a planted activation.py waiting in the cwd (and on PYTHONPATH) is never loaded, with or without the real one in the repository."""
         (self.repo / "evals" / "tools" / "activation.py").unlink()
         planted = self.tmp / "elsewhere"
         (planted / "evals" / "tools").mkdir(parents=True)
@@ -137,8 +134,8 @@ class EnginePassesAndFailsTests(CatalogGateBase):
         (planted / "evals" / "tools" / "activation.py").write_text(
             "from pathlib import Path\nPath(%r).write_text('loaded')\ndef summarize(runs_dir):\n    return {}\n" % str(mark), encoding="utf-8")
         code, out, _ = self.evals_all("--json", cwd=planted, env_extra={"PYTHONPATH": str(planted / "evals" / "tools")})
-        self.assertEqual(1, code)
-        self.assertEqual(1, len(self.ev20(out)))
+        self.assertEqual(0, code)
+        self.assertEqual([], self.ev20(out))
         self.assertFalse(mark.exists(), "the planted activation.py was loaded")
 
     def test_activation_tool_in_the_working_directory_is_not_used_beside_the_real_one(self):
@@ -179,7 +176,7 @@ class CatalogProblemsUnitTests(CatalogGateBase):
 
     def _spy_activation(self):
         spy = mock.Mock(return_value={})
-        return mock.patch.object(E.evals, "_load_activation", return_value=mock.Mock(summarize=spy)), spy
+        return mock.patch.object(E.evals, "summarize", spy), spy
 
     def test_cloud_placeholder_in_runs_is_ev20_and_summarize_is_not_called(self):
         """bắt-lỗi (red at 37fb2f9: `catalog_problems` does not exist): FR6.4 / RF23 an entry that Windows marks as cloud under runs/ -> «runs dir not safe to count», `summarize` never called (mock: every listed entry is cloud)."""

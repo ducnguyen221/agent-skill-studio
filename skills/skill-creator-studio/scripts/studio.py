@@ -121,7 +121,7 @@ def cmd_evals(args) -> int:
     for path in paths:
         findings = evals.check_evals(path)
         reports.append({"skill": path.name, "findings": findings})
-    gate_root, gate_dir = (evals.engine_repo_root() if args.all else None), None  # the gate follows the engine's repository, never the cwd; outside a repository it is skipped (FR6.2)
+    gate_root, gate_dir = (evals.gate_root() if args.all else None), None  # the gate follows the engine's repository, never the cwd; outside a repository, or in one without evals/, it is skipped (FR6.2)
     if gate_root is not None:
         catalog = gate_root / "registry" / "catalog.json"
         problems = evals.catalog_problems(gate_root)
