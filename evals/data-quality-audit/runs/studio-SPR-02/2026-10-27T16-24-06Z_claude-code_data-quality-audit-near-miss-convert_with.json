@@ -1,0 +1,32 @@
+{
+  "case_id": "data-quality-audit-near-miss-convert",
+  "pair_id": "data-quality-audit/data-quality-audit-near-miss-convert/claude-code",
+  "timestamp": "2026-10-27T16:24:06.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "near-miss",
+  "should_trigger": false,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "<local>/opcos/batch-f1e3f71/plugin (git archive f1e3f717d653df24844306425afc46a6fd95643c, autocrlf=false)",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "e4b6f1b241daa5f8157664198672bbd7e66fd02804b68dc4879eb983db9d7607",
+    "line_numbers_refer_to": "original transcript",
+    "redacted_copy": "ledger evidence/transcripts-TK14/data-quality-audit_data-quality-audit-near-miss-convert.jsonl (OpcOS repo, not committed here)"
+  },
+  "output_excerpt": "Đây là `fixtures/orders.csv` đã chuyển sang JSON. Tôi đổi `order_id` và `amount` thành số, còn `customer_id` giữ là chuỗi. Tôi chưa ghi ra file nào.\n\n```json\n[\n  { \"order_id\": 1, \"customer_id\": \"c1\", \"amount\": 10 },\n  { \"order_id\": 2, \"customer_id\": \"c2\", \"amount\": 20 },\n  { \"order_id\": 3, \"customer_id\": \"c1\", \"amount\": 30 }\n]\n```\n\nFile có 3 dòng dữ liệu, không thiếu giá trị và không trùng `order_id`. Nếu bạn muốn lưu ra `orders.json`, hoặc giữ `order_id` dạng chuỗi, tôi sẽ làm tiếp.",
+  "cwd": "<local>/opcos/batch-f1e3f71/runs/data-quality-audit-near-miss-convert",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "b8e69c7e-13b0-422d-87d0-afa9a76739cb",
+  "ledger_id": "b8e69c7e-13b0-422d-87d0-afa9a76739cb",
+  "wall_seconds": 12.2,
+  "timeout_s": 600,
+  "status": "ran",
+  "batch": "SPR-02-TK14-f1e3f71",
+  "cost_usd": 0.2783741
+}

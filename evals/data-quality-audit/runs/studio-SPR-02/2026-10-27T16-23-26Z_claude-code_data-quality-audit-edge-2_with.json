@@ -1,0 +1,32 @@
+{
+  "case_id": "data-quality-audit-edge-2",
+  "pair_id": "data-quality-audit/data-quality-audit-edge-2/claude-code",
+  "timestamp": "2026-10-27T16:23:26.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "edge",
+  "should_trigger": true,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "<local>/opcos/batch-f1e3f71/plugin (git archive f1e3f717d653df24844306425afc46a6fd95643c, autocrlf=false)",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "75d3e44c3e9725397c1c53b6c51e61c3533880a513890f5945e0806a6adbc86f",
+    "line_numbers_refer_to": "original transcript",
+    "redacted_copy": "ledger evidence/transcripts-TK14/data-quality-audit_data-quality-audit-edge-2.jsonl (OpcOS repo, not committed here)"
+  },
+  "output_excerpt": "Có một cặp key trùng: `(order_id=1, line_no=1)` xuất hiện 2 lần trong `fixtures/order_lines.csv`.\n\n| Dòng file | order_id | line_no | amount |\n|---|---|---|---|\n| 2 | 1 | 1 | 10 |\n| 4 | 1 | 1 | 30 |\n\nHai dòng này cùng key nhưng khác `amount` (10 so với 30). Đây là xung đột dữ liệu, không phải bản sao thừa, nên không thể tự bỏ dòng nào. Dòng 3 `(1, 2)` là duy nhất.\n\nTôi chưa sửa file. Cần người quyết định giữ giá trị nào, hoặc `line_no` của dòng 4 có phải là 3 do nhập nhầm hay không.",
+  "cwd": "<local>/opcos/batch-f1e3f71/runs/data-quality-audit-edge-2",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "b766894b-0b04-420c-b528-215c086c8ffd",
+  "ledger_id": "b766894b-0b04-420c-b528-215c086c8ffd",
+  "wall_seconds": 13.3,
+  "timeout_s": 600,
+  "status": "ran",
+  "batch": "SPR-02-TK14-f1e3f71",
+  "cost_usd": 0.27752790000000005
+}

@@ -1,0 +1,32 @@
+{
+  "case_id": "csv-negative",
+  "pair_id": "data-quality-audit/csv-negative/claude-code",
+  "timestamp": "2026-10-27T16:23:06.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "near-miss",
+  "should_trigger": false,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "<local>/opcos/batch-f1e3f71/plugin (git archive f1e3f717d653df24844306425afc46a6fd95643c, autocrlf=false)",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "2d28fc68ed4be5cbb401664fc6c1382f0d23d34bd7920be1d71fbb274216f5ac",
+    "line_numbers_refer_to": "original transcript",
+    "redacted_copy": "ledger evidence/transcripts-TK14/data-quality-audit_csv-negative.jsonl (OpcOS repo, not committed here)"
+  },
+  "output_excerpt": "`CALCULATE` evaluates an expression (usually a measure) in a **modified filter context**. It is the main way DAX changes which rows a calculation sees.\n\n```\nCALCULATE( <expression>, <filter1>, <filter2>, ... )\n```\n\n**Filter context.** Every DAX measure is computed inside a filter context: the set of filters from slicers, rows and columns of a visual, and page filters. The same measure `[Total Sales]` gives a different number in each cell of a matrix because each cell has different filters.\n\n**What CALCULATE does.**\n1. It takes the current filter context.\n2. It applies your filter arguments on ",
+  "cwd": "<local>/opcos/batch-f1e3f71/runs/csv-negative",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "bd4c13ab-4999-4636-b3fd-7987ab3be46b",
+  "ledger_id": "bd4c13ab-4999-4636-b3fd-7987ab3be46b",
+  "wall_seconds": 9.8,
+  "timeout_s": 600,
+  "status": "ran",
+  "batch": "SPR-02-TK14-f1e3f71",
+  "cost_usd": 0.25257209999999997
+}

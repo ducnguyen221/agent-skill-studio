@@ -1,0 +1,32 @@
+{
+  "case_id": "creator-negative-task",
+  "pair_id": "skill-creator-studio/creator-negative-task/claude-code",
+  "timestamp": "2026-10-27T16:27:34.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "near-miss",
+  "should_trigger": false,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "<local>/opcos/batch-f1e3f71/plugin (git archive f1e3f717d653df24844306425afc46a6fd95643c, autocrlf=false)",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "2fbfa49afdf337d5cca04effd389da8ec8d7fafd7e0a393c3b402a4abc03b116",
+    "line_numbers_refer_to": "original transcript",
+    "redacted_copy": "ledger evidence/transcripts-TK14/skill-creator-studio_creator-negative-task.jsonl (OpcOS repo, not committed here)"
+  },
+  "output_excerpt": "```python\ndef sort_ascending(nums: list[int]) -> list[int]:\n    \"\"\"Return a new list with the integers sorted in ascending order.\"\"\"\n    return sorted(nums)\n```\n\nThis returns a new list and leaves the input unchanged. To sort in place, use `nums.sort()`.\n\nIf you need a hand-written algorithm instead of the built-in, here is a merge sort (O(n log n), stable):\n\n```python\ndef merge_sort(nums: list[int]) -> list[int]:\n    if len(nums) <= 1:\n        return nums[:]\n    mid = len(nums) // 2\n    left, right = merge_sort(nums[:mid]), merge_sort(nums[mid:])\n    out, i, j = [], 0, 0\n    while i < len(lef",
+  "cwd": "<local>/opcos/batch-f1e3f71/runs/creator-negative-task",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "72cd79fd-fc0a-45aa-8915-fd89d0ab8528",
+  "ledger_id": "72cd79fd-fc0a-45aa-8915-fd89d0ab8528",
+  "wall_seconds": 9.6,
+  "timeout_s": 600,
+  "status": "ran",
+  "batch": "SPR-02-TK14-f1e3f71",
+  "cost_usd": 0.2529481
+}
