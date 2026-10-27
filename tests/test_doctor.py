@@ -24,6 +24,7 @@ import _engine  # noqa: E402
 studio = _engine.engine
 studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
 studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_validate = _engine.validate  # SPR-02 TK4b
 
 SKILL = "---\nname: %s\ndescription: Checks a toy example. Use when testing the doctor command.\n%s---\n\n# Title\n\nShort body.\n"
 
@@ -325,10 +326,10 @@ class DoctorTests(unittest.TestCase):
             sk = make_skill(Path(tmp), "dir-skill")
             for name in ("examples", "agents", "tests", "references", "scripts", "assets", "evals", ".git"):
                 (sk / name).mkdir()
-            found = [f for f in studio.validate_skill(sk) if f["code"] == "ST8"]
+            found = [f for f in studio_validate.validate_skill(sk) if f["code"] == "ST8"]
             self.assertEqual([f["level"] for f in found], ["WARN"])
             self.assertIn("examples", found[0]["message"])
-            self.assertEqual(len([f for f in studio.validate_skill(sk, profile="opcos") if f["code"] == "ST8"]), 1)
+            self.assertEqual(len([f for f in studio_validate.validate_skill(sk, profile="opcos") if f["code"] == "ST8"]), 1)
         report = json.loads(run("--roots", str(FIX), "--json")[1])
         by_name = {s["name"]: {c["code"] for c in s["codes"]} for s in report["skills"]}
         self.assertIn("ST8", by_name["bad-dir"])
@@ -342,9 +343,9 @@ class DoctorTests(unittest.TestCase):
             body_start = head.index(b"---\n\n") + len(b"---\n")  # the validator body starts at the blank line after the closing ---
             fill = studio_const.CODEX_BODY_MAX_BYTES - len(head[body_start:])
             (sk / "SKILL.md").write_bytes(head + b"x" * fill)
-            self.assertEqual([f for f in studio.validate_skill(sk) if f["code"] == "ST3"], [], "exactly the limit is allowed")
+            self.assertEqual([f for f in studio_validate.validate_skill(sk) if f["code"] == "ST3"], [], "exactly the limit is allowed")
             (sk / "SKILL.md").write_bytes(head + b"x" * (fill + 1))
-            found = [f for f in studio.validate_skill(sk) if f["code"] == "ST3"]
+            found = [f for f in studio_validate.validate_skill(sk) if f["code"] == "ST3"]
             self.assertEqual([f["level"] for f in found], ["WARN"])
 
     def test_doctor_writes_only_out(self):
@@ -449,7 +450,7 @@ class DoctorTests(unittest.TestCase):
                 return real_stat(path, *a, **k)
 
             with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}), mock.patch.object(os, "stat", watch_stat):
-                found = [f for f in studio.validate_skill(sk, profile="opcos", allow_links_under=home) if f["code"] == "ST6"]
+                found = [f for f in studio_validate.validate_skill(sk, profile="opcos", allow_links_under=home) if f["code"] == "ST6"]
             self.assertEqual([f["level"] for f in found], ["ERROR", "ERROR"], "a link into a forbidden zone stays an ERROR even for the opcos profile")
             for path in touched:
                 low = path.replace("\\", "/").lower()
@@ -464,7 +465,7 @@ class DoctorTests(unittest.TestCase):
             sk = make_skill(root, "plain", "source: a\n")
             (sk / "SKILL.md").write_bytes((sk / "SKILL.md").read_bytes() + b"\n[n](../shared/note.md)\n")
             for kwargs in ({}, {"allow_links_under": root}, {"profile": "portable", "allow_links_under": root}):
-                found = studio.validate_skill(sk, **kwargs)
+                found = studio_validate.validate_skill(sk, **kwargs)
                 self.assertEqual(sorted((f["code"], f["level"]) for f in found if f["code"] in ("FM4", "ST6", "MD1")),
                                  [("FM4", "ERROR"), ("ST6", "ERROR")], kwargs)
 
@@ -474,7 +475,7 @@ class DoctorTests(unittest.TestCase):
             (sk / "references").mkdir()
             (sk / "references" / ".env.md").write_bytes(b"x\n" * 300)  # would be an ST5 ERROR if it were read
             (sk / "references" / "ok.md").write_bytes(b"short\n")
-            self.assertEqual([f for f in studio.validate_skill(sk) if f["code"] == "ST5"], [])
+            self.assertEqual([f for f in studio_validate.validate_skill(sk) if f["code"] == "ST5"], [])
             self.assertTrue(studio_fs.is_sensitive_name(".env.local") and studio_fs.is_sensitive_name("Auth.JSON") and studio_fs.is_sensitive_name("x.credentials.json"))
             self.assertTrue(studio_fs.is_sensitive_name("a.pem") and studio_fs.is_sensitive_name("b.key"))
             self.assertFalse(studio_fs.is_sensitive_name("SKILL.md") or studio_fs.is_sensitive_name("environment.md"))
@@ -507,7 +508,7 @@ CHILD = (
     "with tempfile.TemporaryDirectory() as t:\n"
     "    d = Path(t) / 'bench'; d.mkdir()\n"
     "    (d / 'SKILL.md').write_bytes((head % extra + body).encode('utf-8'))\n"
-    "    start = time.perf_counter(); s.validate_skill(d); print('%.3f' % (time.perf_counter() - start))\n"
+    "    start = time.perf_counter(); sys.modules['studio_validate'].validate_skill(d); print('%.3f' % (time.perf_counter() - start))\n"
 )
 
 
@@ -640,7 +641,7 @@ class DoctorHardeningTests(unittest.TestCase):
                     self.assertNotIn("tk9-nohost", low, (extra, name, path))
                     self.assertNotIn("tk9-absolute", low, (extra, name, path))
             code, out, _ = run("--roots", str(root), "--json", "--profile", "opcos")
-            plain = studio.validate_skill(sk, profile="opcos", allow_links_under=root)
+            plain = studio_validate.validate_skill(sk, profile="opcos", allow_links_under=root)
             self.assertEqual(len([f for f in plain if f["code"] == "ST6"]), len(links), "an absolute link is an ERROR even where the scanned root would allow a link")
 
     def test_doctor_does_not_echo_secret_file_content(self):
@@ -770,7 +771,7 @@ class DoctorHardeningTests(unittest.TestCase):
             for path, size in big_reads:
                 self.assertTrue(isinstance(size, int) and 0 < size <= cap + 1, "read(%r) on %s would load the whole file" % (size, path))
             # without a cap (plain validate) behaviour is unchanged
-            self.assertIn("ST5", [f["code"] for f in studio.validate_skill(big_ref)])
+            self.assertIn("ST5", [f["code"] for f in studio_validate.validate_skill(big_ref)])
 
     def test_validate_skill_is_fast_on_hostile_bodies(self):
         for case in ("brackets", "comments", "emptylinks", "meta", "vi_lines", "many_links", "one_line_links", "backticks"):
@@ -812,10 +813,10 @@ class DoctorHardeningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             sk = make_skill(Path(tmp), "wide-body")
             (sk / "SKILL.md").write_bytes((sk / "SKILL.md").read_bytes() + ("é" * 5000).encode("utf-8"))  # ~5 000 characters, ~10 000 bytes
-            self.assertEqual([f["level"] for f in studio.validate_skill(sk) if f["code"] == "ST3"], ["WARN"])
+            self.assertEqual([f["level"] for f in studio_validate.validate_skill(sk) if f["code"] == "ST3"], ["WARN"])
             narrow = make_skill(Path(tmp), "narrow-body")
             (narrow / "SKILL.md").write_bytes((narrow / "SKILL.md").read_bytes() + b"x" * 7000)
-            self.assertEqual([f for f in studio.validate_skill(narrow) if f["code"] == "ST3"], [])
+            self.assertEqual([f for f in studio_validate.validate_skill(narrow) if f["code"] == "ST3"], [])
 
 
 
@@ -826,11 +827,11 @@ CHILD3 = (
     "bodies = {'run': 'x' + '`' * 20000, 'run30': 'x' + '`' * 30000, 'alt': '`a' * 20000, 'pairs': '`` `' * 10000, 'triples': '``` ' * 8000}\n"
     "body = bodies[sys.argv[2]]\n"
     "head = '---\\nname: bench\\ndescription: Bench. Use when benching.\\n---\\n\\n# T\\n\\n'\n"
-    "t0 = time.perf_counter(); s.lint_forcing_words(body, 0, Path('m')); a = time.perf_counter() - t0\n"
-    "t0 = time.perf_counter(); s.prose_lines(body); b = time.perf_counter() - t0\n"
+    "t0 = time.perf_counter(); sys.modules['studio_lint'].lint_forcing_words(body, 0, Path('m')); a = time.perf_counter() - t0\n"
+    "t0 = time.perf_counter(); sys.modules['studio_lint'].prose_lines(body); b = time.perf_counter() - t0\n"
     "with tempfile.TemporaryDirectory() as t:\n"
     "    d = Path(t) / 'bench'; d.mkdir(); (d / 'SKILL.md').write_bytes((head + body).encode('utf-8'))\n"
-    "    t0 = time.perf_counter(); s.validate_skill(d); c = time.perf_counter() - t0\n"
+    "    t0 = time.perf_counter(); sys.modules['studio_validate'].validate_skill(d); c = time.perf_counter() - t0\n"
     "    out = io.StringIO(); t0 = time.perf_counter()\n"
     "    with contextlib.redirect_stdout(out): s.main(['doctor', '--roots', t, '--json'])\n"
     "    e = time.perf_counter() - t0\n"
@@ -1038,16 +1039,16 @@ class DoctorRound3Tests(unittest.TestCase):
             deep.mkdir(parents=True)
             (deep / "bottom.txt").write_bytes(b"x")
             with mock.patch.object(studio_const, "DOCTOR_MAX_FILES_PER_SKILL", 50), watching() as calls:
-                found = studio.validate_skill(sk)
+                found = studio_validate.validate_skill(sk)
             self.assertIn("SZ1", [f["code"] for f in found])
             self.assertTrue([f for f in found if f["code"] == "SZ1" and "50" in f["message"]])
             listed = [p for n, p, _ in calls if n == "scandir" and is_under(p, sk / "references")]
             self.assertLessEqual(len(listed), 2)
             with mock.patch.object(studio_const, "DOCTOR_MAX_SKILL_DEPTH", 3), watching() as calls:
-                found = studio.validate_skill(sk)
+                found = studio_validate.validate_skill(sk)
             self.assertIn("SZ1", [f["code"] for f in found])
             self.assertFalse([p for n, p, _ in calls if n == "scandir" and p.endswith("d5")], "a folder below the depth cap is not listed")
-            quiet = studio.validate_skill(sk)
+            quiet = studio_validate.validate_skill(sk)
             self.assertNotIn("SZ1", [f["code"] for f in quiet], "default caps are far above this skill")
 
     def test_input_file_that_resolves_to_a_secret_name_is_refused(self):

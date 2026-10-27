@@ -24,6 +24,9 @@ import _engine  # noqa: E402
 studio = _engine.engine
 studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
 studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_evals = _engine.evals  # SPR-02 TK4b
+studio_lint = _engine.lint  # SPR-02 TK4b
+studio_validate = _engine.validate  # SPR-02 TK4b
 
 
 _ACT_SPEC = importlib.util.spec_from_file_location("activation_impl", ROOT / "evals" / "tools" / "activation.py")
@@ -218,20 +221,20 @@ class StudioTests(unittest.TestCase):
 
     def test_canonical_skills_have_no_static_errors(self):
         for path in studio_fs.skill_dirs(ROOT):
-            findings = studio.validate_skill(path, eval_root=ROOT / "evals", require_evals=True)
+            findings = studio_validate.validate_skill(path, eval_root=ROOT / "evals", require_evals=True)
             self.assertEqual([], [x for x in findings if x["level"] == "ERROR"], path.as_posix())
 
     def test_every_evals_manifest_is_structurally_valid(self):
         for path in (ROOT / "evals").iterdir():
             if path.is_dir() and any((path / m).exists() for m in ("cases.json", "rubric.md", "fixtures", "baselines", "expected")):
-                self.assertFalse([x for x in studio.check_evals(path) if x["level"] == "ERROR"])
+                self.assertFalse([x for x in studio_evals.check_evals(path) if x["level"] == "ERROR"])
 
     def test_frontmatter_name_and_unsupported_fields_rejected(self):
         with tempfile.TemporaryDirectory() as t:
             skill = Path(t) / "correct-name"
             skill.mkdir()
             (skill / "SKILL.md").write_text('---\nname: Wrong_Name\ndescription: "A test skill. Use when testing name compliance."\ntriggers: all\n---\n\n# Test\n', encoding="utf-8")
-            codes = {f["code"] for f in studio.validate_skill(skill) if f["level"] == "ERROR"}
+            codes = {f["code"] for f in studio_validate.validate_skill(skill) if f["level"] == "ERROR"}
             self.assertIn("FM2", codes)
             self.assertIn("FM4", codes)
 
@@ -240,7 +243,7 @@ class StudioTests(unittest.TestCase):
             skill = Path(t) / "sample-safe"
             skill.mkdir()
             (skill / "SKILL.md").write_text('---\nname: sample-safe\ndescription: "Validates names. Use when testing a link."\n---\n\nRead [unsafe](../secret.txt).\n', encoding="utf-8")
-            codes = {f["code"] for f in studio.validate_skill(skill) if f["level"] == "ERROR"}
+            codes = {f["code"] for f in studio_validate.validate_skill(skill) if f["level"] == "ERROR"}
             self.assertIn("ST6", codes)
 
     def test_new_refuses_overwrite_and_creates_external_empty_evals(self):
@@ -263,7 +266,7 @@ class StudioTests(unittest.TestCase):
             self.assertTrue(all(c["fixtures"] == [] for c in cases))
             self.assertTrue(all(c["expected_behaviors"] and all(b.startswith("STUDIO-DRAFT: ") for b in c["expected_behaviors"]) for c in cases))
             self.assertNotIn(">=3 eval cases", p.stdout)
-            self.assertFalse([f for f in studio.check_evals(evals / "test-deep-skill") if f["level"] == "ERROR"])
+            self.assertFalse([f for f in studio_evals.check_evals(evals / "test-deep-skill") if f["level"] == "ERROR"])
             self.assertEqual(1, self.run_cli(*args).returncode, "second creation should refuse overwrite")
             self.assertEqual(1, self.run_cli("package", out / "test-deep-skill", "--out", base / "dist").returncode, "draft cannot publish")
 
@@ -273,7 +276,7 @@ class StudioTests(unittest.TestCase):
             ef.mkdir()
             (ef / "cases.json").write_text(json.dumps({"skill_name": "x", "cases": [
                 {"id": "a", "prompt": "p", "should_trigger": True, "expected_behaviors": []}]}), encoding="utf-8")
-            msgs = [f["message"] for f in studio.check_evals(ef) if f["code"] == "EV4"]
+            msgs = [f["message"] for f in studio_evals.check_evals(ef) if f["code"] == "EV4"]
             self.assertTrue(any("expected_behaviors" in m for m in msgs), msgs)
 
     def run_evals_all(self, er):
@@ -731,7 +734,7 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual(["SKILL.md"], sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file()))
             self.assertLessEqual(nonblank(skill / "SKILL.md"), 20)
             self.assertIn("STUDIO-DRAFT", (skill / "SKILL.md").read_text(encoding="utf-8"))
-            self.assertEqual([], [f for f in studio.validate_skill(skill) if f["level"] == "ERROR"])
+            self.assertEqual([], [f for f in studio_validate.validate_skill(skill) if f["level"] == "ERROR"])
             pack = self.run_cli("package", skill, "--out", Path(t) / "dist")
             self.assertEqual(1, pack.returncode, pack.stdout + pack.stderr)
             self.assertIn("PACK", pack.stdout)
@@ -745,7 +748,7 @@ class TemplateTests(unittest.TestCase):
                 self.assertTrue((skill / rel).is_file(), rel)
             self.assertFalse((skill / "references" / "WORKFLOW_GUIDE.md").exists())
             self.assertNotIn("WORKFLOW_GUIDE", (skill / "SKILL.md").read_text(encoding="utf-8"))
-            findings = studio.validate_skill(skill)
+            findings = studio_validate.validate_skill(skill)
             self.assertEqual([], [f for f in findings if f["level"] == "ERROR"])
             self.assertNotIn("CT10", {f["code"] for f in findings})
 
@@ -756,11 +759,11 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual(["SKILL.md"], sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file()))
             front, body = self.split(skill / "SKILL.md")
             self.assertTrue(front.isascii(), front)
-            self.assertEqual("vi", studio.detect_lang(body))
+            self.assertEqual("vi", studio_lint.detect_lang(body))
             self.assertEqual(body, unicodedata.normalize("NFC", body))
             self.assertIn("## Gotchas", body)
             self.assertIn("## References", body)
-            findings = studio.validate_skill(skill)
+            findings = studio_validate.validate_skill(skill)
             self.assertEqual([], [f for f in findings if f["code"].startswith("VI")])
             self.assertEqual([], [f for f in findings if f["level"] == "ERROR"])
 
@@ -769,7 +772,7 @@ class TemplateTests(unittest.TestCase):
             run, skill = self.new_skill(t, "demo-en")
             self.assertEqual(0, run.returncode, run.stdout + run.stderr)
             front, body = self.split(skill / "SKILL.md")
-            self.assertEqual("en", studio.detect_lang(body))
+            self.assertEqual("en", studio_lint.detect_lang(body))
             self.assertIn("what an agent would get wrong", body)
             run2, skill2 = self.new_skill(t, "demo-en2", "--lang", "en")
             self.assertEqual(0, run2.returncode, run2.stdout + run2.stderr)
@@ -888,7 +891,7 @@ class TemplateTests(unittest.TestCase):
     def test_full_and_minimal_templates_validate_clean(self):
         """Round-2 fix 1: the full template is named like its folder, so validate has no FM2."""
         for folder in ("skill-template", "skill-template-full"):
-            findings = studio.validate_skill(ROOT / "skills" / "skill-creator-studio" / "assets" / folder)
+            findings = studio_validate.validate_skill(ROOT / "skills" / "skill-creator-studio" / "assets" / folder)
             self.assertEqual([], [f for f in findings if f["level"] == "ERROR"], folder)
             run = self.run_cli("validate", ROOT / "skills" / "skill-creator-studio" / "assets" / folder)
             self.assertEqual(0, run.returncode, run.stdout + run.stderr)
@@ -903,7 +906,7 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual(1, len(re.findall(r"^name: demo-nm$", text, re.M)), text[:200])
             self.assertNotIn("demo-nm-full", text)
             self.assertNotIn("name: skill-template", text)
-            self.assertEqual([], [f for f in studio.validate_skill(skill) if f["code"] == "FM2"])
+            self.assertEqual([], [f for f in studio_validate.validate_skill(skill) if f["code"] == "FM2"])
 
     def test_install_without_scope_flag_means_workspace_dot(self):
         """No --workspace/--user is --workspace . (the current directory), not its parent."""
@@ -1138,7 +1141,7 @@ class AgentskillsExportTests(unittest.TestCase):
         source = json.loads((real / "cases.json").read_text(encoding="utf-8"))["cases"]
         positive = [c for c in source if c["should_trigger"]]
         with tempfile.TemporaryDirectory() as t:
-            code, findings, stats = studio.export_agentskills(real, "data-quality-audit", Path(t) / "out")
+            code, findings, stats = studio_evals.export_agentskills(real, "data-quality-audit", Path(t) / "out")
             self.assertEqual((0, []), (code, findings))
             target = Path(t) / "out" / "data-quality-audit" / "evals" / "evals.json"
             raw = target.read_text(encoding="utf-8")
@@ -1165,7 +1168,7 @@ class AgentskillsExportTests(unittest.TestCase):
 
     def test_export_excludes_negative_cases(self):
         with tempfile.TemporaryDirectory() as t:
-            code, _, stats = studio.export_agentskills(ROOT / "evals" / "data-quality-audit", "data-quality-audit", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(ROOT / "evals" / "data-quality-audit", "data-quality-audit", Path(t) / "out")
             self.assertEqual(0, code)
             self.assertEqual((5, 3), (stats["exported"], stats["excluded_negative"]))
             raw = (Path(t) / "out" / "data-quality-audit" / "evals" / "evals.json").read_text(encoding="utf-8")
@@ -1180,7 +1183,7 @@ class AgentskillsExportTests(unittest.TestCase):
             code, out, err = self.call("evals", "draft-one", "--eval-root", base / "evals", "--export", "agentskills", "--out", base / "out")
             self.assertEqual(1, code, out + err)
             self.assertFalse((base / "out").exists())
-            code, findings, stats = studio.export_agentskills(base / "evals" / "draft-one", "draft-one", base / "out")
+            code, findings, stats = studio_evals.export_agentskills(base / "evals" / "draft-one", "draft-one", base / "out")
             self.assertEqual((1, True, 0), (code, any("draft" in f["message"] for f in findings), stats["exported"]))
             self.assertFalse((base / "out").exists())
 
@@ -1188,7 +1191,7 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             (folder / "cases.json").write_text("{not json", encoding="utf-8")
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, "EV1"), (code, findings[0]["code"]))
             self.assertFalse((Path(t) / "out").exists())
             code, out, err = self.call("evals", "demo-skill", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", Path(t) / "out")
@@ -1199,10 +1202,10 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             out = Path(t) / "out"
-            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+            self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
             target = out / "demo-skill" / "evals" / "evals.json"
             target.write_text("MARK\n", encoding="utf-8")
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", out)
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", out)
             self.assertEqual((1, "MARK\n"), (code, target.read_text(encoding="utf-8")))
             self.assertTrue(findings)
             code, _, err = self.call("evals", "demo-skill", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", out)
@@ -1223,7 +1226,7 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             (Path(t) / "skills").mkdir()
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "skills" / "demo-skill")
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "skills" / "demo-skill")
             self.assertEqual((2, False), (code, (Path(t) / "skills" / "demo-skill" / "evals").exists()))
         self.assertEqual(before, sorted(x.name for x in skills.iterdir()))
 
@@ -1235,7 +1238,7 @@ class AgentskillsExportTests(unittest.TestCase):
                 data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
                 data["cases"][0]["fixtures"] = [bad]
                 (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
-                code, findings, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+                code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
                 self.assertEqual((1, 0, False), (code, stats["exported"], (Path(t) / "out").exists()), bad)
                 self.assertTrue(findings, bad)
 
@@ -1263,7 +1266,7 @@ class AgentskillsExportTests(unittest.TestCase):
             if undo is None:
                 self.skipTest("cannot create links here")
             try:
-                code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+                code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
                 self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
                 self.assertTrue(any("symlink" in f["message"] for f in findings), findings)
             finally:
@@ -1273,12 +1276,12 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             out = Path(t) / "out"
-            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+            self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
             stray = out / "demo-skill" / "evals" / "files" / "mine.txt"
             stray.write_text("keep", encoding="utf-8")
             (out / "demo-skill" / "evals" / "files" / "a.csv").write_bytes(b"stale")
-            self.assertEqual(1, studio.export_agentskills(folder, "demo-skill", out)[0])
-            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out, force=True)[0])
+            self.assertEqual(1, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
+            self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out, force=True)[0])
             self.assertEqual("keep", stray.read_text(encoding="utf-8"))
             self.assertEqual((folder / "fixtures" / "a.csv").read_bytes(), (out / "demo-skill" / "evals" / "files" / "a.csv").read_bytes())
 
@@ -1292,7 +1295,7 @@ class AgentskillsExportTests(unittest.TestCase):
                 self.skipTest("cannot create links here")
             try:
                 before = (folder / "fixtures" / "a.csv").read_bytes()
-                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
                 self.assertEqual((1, before), (code, (folder / "fixtures" / "a.csv").read_bytes()))
                 self.assertTrue(any("symlink" in f["message"] for f in findings), findings)
             finally:
@@ -1303,9 +1306,9 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             out = Path(t) / "out"
-            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+            self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
             with mock.patch.object(studio.os.path, "samefile", return_value=True):
-                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
             self.assertEqual((1, True), (code, any("source fixture itself" in f["message"] for f in findings)))
 
     def test_x_write_failure_is_reported(self):
@@ -1313,7 +1316,7 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             with mock.patch.object(studio.shutil, "copyfileobj", side_effect=OSError("disk full")):
-                code, findings, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+                code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, 0, "EX8"), (code, stats["exported"], findings[0]["code"]))
 
     def test_x_fixture_name_collision_and_nested_names(self):
@@ -1326,12 +1329,12 @@ class AgentskillsExportTests(unittest.TestCase):
             data["cases"][0]["fixtures"] = ["fixtures/a.csv", "a.csv"]
             data["cases"][1]["fixtures"] = ["fixtures/sub/n.csv"]
             (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
             self.assertTrue(any("collide" in f["message"] for f in findings))
             data["cases"][0]["fixtures"] = ["fixtures/a.csv"]
             (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
-            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual(0, code)
             self.assertEqual(b"3", (Path(t) / "out" / "demo-skill" / "evals" / "files" / "sub" / "n.csv").read_bytes())
             evals = json.loads(Path(stats["path"]).read_text(encoding="utf-8"))["evals"]
@@ -1358,19 +1361,19 @@ class AgentskillsExportTests(unittest.TestCase):
     def test_x_bad_skill_name_refused(self):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
-            code, findings, _ = studio.export_agentskills(folder, "..", Path(t) / "out")
+            code, findings, _ = studio_evals.export_agentskills(folder, "..", Path(t) / "out")
             self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
             self.assertTrue(findings)
 
     def refused(self, folder, base, name="demo-skill"):
-        code, findings, stats = studio.export_agentskills(folder, name, Path(base) / "out")
+        code, findings, stats = studio_evals.export_agentskills(folder, name, Path(base) / "out")
         self.assertFalse((Path(base) / "out").exists(), findings)
         return code, findings, stats
 
     def test_x_evals_json_bytes_exact(self):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
-            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual(0, code)
             expected = {"skill_name": "demo-skill", "evals": [
                 {"id": 1, "prompt": "Audit a.csv, tiếng Việt ok", "expected_output": "Reads a.csv; Reports rows", "files": ["evals/files/a.csv"], "assertions": ["Reads a.csv", "Reports rows"]},
@@ -1399,7 +1402,7 @@ class AgentskillsExportTests(unittest.TestCase):
                 code, findings, stats = self.refused(folder, t)
                 self.assertEqual((1, ["EX3"], 0), (code, [f["code"] for f in findings], stats["exported"]), label)
         with tempfile.TemporaryDirectory() as t:
-            self.assertEqual(0, studio.export_agentskills(self.make_eval(t, status="frozen", cases=cases()), "demo-skill", Path(t) / "out")[0])
+            self.assertEqual(0, studio_evals.export_agentskills(self.make_eval(t, status="frozen", cases=cases()), "demo-skill", Path(t) / "out")[0])
 
     def test_x_all_reports_worst_exit_whatever_the_order(self):
         for first, second in (("aaa-broken", "zzz-good"), ("aaa-good", "zzz-broken")):
@@ -1450,7 +1453,7 @@ class AgentskillsExportTests(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t, cases=cases)
-            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual(0, code)
             first = json.loads(Path(stats["path"]).read_text(encoding="utf-8"))["evals"][0]
             self.assertEqual((prompt, " Reads a.csv ; Reports rows", [behavior, "Reports rows"]), (first["prompt"], first["expected_output"], first["assertions"]))
@@ -1486,7 +1489,7 @@ class AgentskillsExportTests(unittest.TestCase):
             folder = self.make_eval(t)
             snapshot = sorted(str(x) for x in Path(t).rglob("*"))
             for out in (Path(t) / "evals", Path(t) / "evals" / "x", folder, folder / "sub"):
-                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out)
+                code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", out)
                 self.assertEqual((2, True), (code, any("must not be under evals/" in f["message"] for f in findings)), str(out))
             self.assertEqual(snapshot, sorted(str(x) for x in Path(t).rglob("*")))
             old = os.getcwd()
@@ -1535,7 +1538,7 @@ class AgentskillsExportTests(unittest.TestCase):
 
     def test_x_colon_in_fixture_name_refused(self):
         for bad in ("fixtures/a:b.csv", "fixtures/a.csv:hid", "C:fixtures/a.csv", "fixtures/dir:/a.csv"):
-            source, parts, problem = studio.export_fixture_source(Path("."), bad)
+            source, parts, problem = studio_evals.export_fixture_source(Path("."), bad)
             self.assertEqual((None, [], True), (source, parts, "unsafe fixture path" in problem), bad)
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t, fixtures={"a.csv": b"1", "b.csv": b"2"})
@@ -1559,7 +1562,7 @@ class AgentskillsExportTests(unittest.TestCase):
                 folder = self.make_eval(t)
                 out = Path(t) / "out"
                 files = out / "demo-skill" / "evals" / "files"
-                self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+                self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
                 survivor = files / "b.csv"
                 survivor.write_bytes(b"old")
                 (files / "a.csv").unlink()
@@ -1574,9 +1577,9 @@ class AgentskillsExportTests(unittest.TestCase):
                 with mock.patch.object(studio.shutil, "copyfileobj", side_effect=flaky):
                     if label.startswith("evals"):
                         with mock.patch.object(studio.tempfile, "mkstemp", side_effect=OSError("denied")):
-                            code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                            code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
                     else:
-                        code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                        code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
                 self.assertEqual((1, "EX8", 0), (code, findings[0]["code"], stats["exported"]), label)
                 self.assertEqual(["b.csv"], sorted(x.name for x in out.rglob("*") if x.is_file()), label)  # only the file that existed before the run
                 self.assertTrue(survivor.is_file(), label)
@@ -1622,7 +1625,7 @@ class ExportFixtureHardeningTests(unittest.TestCase):
             return real_copy(src, dst, *args, **kwargs)
         with mock.patch("builtins.open", spy_open), mock.patch.object(os, "stat", spy_stat), \
                 mock.patch.object(Path, "stat", spy_path_stat), mock.patch.object(studio.shutil, "copyfile", spy_copy):
-            code, findings, stats = studio.export_agentskills(folder, "demo-skill", out)
+            code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out)
         return code, findings, stats, touched
 
     def one_fixture_eval(self, base, name, content=b"CANARY"):
@@ -1655,7 +1658,7 @@ class ExportFixtureHardeningTests(unittest.TestCase):
             data["cases"][0]["fixtures"] = ["fixtures/environment.csv", "fixtures/authors.json"]
             data["cases"][1]["fixtures"] = ["fixtures/pem.csv", "fixtures/monkey.csv"]
             (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
-            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((0, 2), (code, stats["exported"]))
             self.assertEqual(["authors.json", "environment.csv", "monkey.csv", "pem.csv"], sorted(x.name for x in (Path(t) / "out" / "demo-skill" / "evals" / "files").iterdir()))
 
@@ -1757,18 +1760,18 @@ class ExportFixtureHardeningTests(unittest.TestCase):
         # the per-fixture entry point (also used by the export loop) must not need the eval-level pre-pass: it decides from names, nothing exists on disk here
         with tempfile.TemporaryDirectory() as t:
             for zone in ("OneDrive - X", ".secret", "SharePoint"):
-                source, parts, problem = studio.export_fixture_source(Path(t) / zone / "evals" / "demo-skill", "fixtures/a.csv")
+                source, parts, problem = studio_evals.export_fixture_source(Path(t) / zone / "evals" / "demo-skill", "fixtures/a.csv")
                 self.assertEqual((None, [], True), (source, parts, "inside a secret or cloud-synced folder" in problem), zone)
             for name in (".env", "auth.json", "k.pem"):
-                source, _, problem = studio.export_fixture_source(Path(t) / "e", "fixtures/" + name)
+                source, _, problem = studio_evals.export_fixture_source(Path(t) / "e", "fixtures/" + name)
                 self.assertEqual((None, True), (source, "secret or credential name" in problem), name)
-            self.assertEqual("missing/outside eval fixture 'fixtures/a.csv'", studio.export_fixture_source(Path(t) / "e", "fixtures/a.csv")[2])
+            self.assertEqual("missing/outside eval fixture 'fixtures/a.csv'", studio_evals.export_fixture_source(Path(t) / "e", "fixtures/a.csv")[2])
 
     def test_x_cases_json_that_is_not_valid_still_reports_ev1(self):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             (folder / "cases.json").write_text("{not json", encoding="utf-8")
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, "EV1"), (code, findings[0]["code"]), findings)
 
 
@@ -1850,7 +1853,7 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
                 make_swap(source, outside)
             return real(path)
         with mock.patch.object(studio_fs, "is_link", spy):
-            result = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            result = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
         self.assertTrue(done, "swap hook never fired")
         return result
 

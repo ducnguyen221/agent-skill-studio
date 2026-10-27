@@ -23,6 +23,7 @@ studio = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(studio)
 studio_const = sys.modules["studio_const"]  # sibling modules the engine just imported (SPR-02 TK4a)
 studio_fs = sys.modules["studio_fs"]
+studio_validate = sys.modules["studio_validate"]
 
 GOOD_DESC = "Does a small job. Use when testing the validator."
 VI_LINE = "Bước này kiểm tra dữ liệu đầu vào và ghi kết quả ra bảng."
@@ -54,7 +55,7 @@ class Fr7Case(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
 
     def validate(self, folder, **kw):
-        return studio.validate_skill(folder, **kw)
+        return studio_validate.validate_skill(folder, **kw)
 
 
 class IndentedFenceTest(Fr7Case):

@@ -2,8 +2,8 @@
 
 The engine is `skills/skill-creator-studio/scripts/studio.py`. The root `studio.py` is only a shim, so tests never load it as a
 module; they run it as a subprocess when they test the command line. The engine's sibling modules (`studio_*.py`) are loaded
-by the engine itself; `const` and `fs` below are those same module objects, so `patch.object` on them is seen by every caller.
-TK4b/TK4c add the other modules here.
+by the engine itself; `const`, `fs`, `evals`, `lint` and `validate` below are those same module objects, so `patch.object` on them is seen by every caller.
+TK4c adds the remaining modules here.
 """
 from __future__ import annotations
 
@@ -29,6 +29,9 @@ def _load():
 engine = _load()
 const = sys.modules["studio_const"]
 fs = sys.modules["studio_fs"]
+evals = sys.modules["studio_evals"]
+lint = sys.modules["studio_lint"]
+validate = sys.modules["studio_validate"]
 
 
 def clear_caches(module=None) -> None:  # `module` is kept for old callers; the cache lives in studio_fs

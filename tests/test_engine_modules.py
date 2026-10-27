@@ -102,8 +102,10 @@ class EngineModuleRulesTests(unittest.TestCase):
 
     def test_loaded_engine_has_no_attribute_of_the_sibling_modules(self):
         """tương-đương: on the loaded engine object, patching a name that moved raises AttributeError."""
-        moved = _public(vars(_engine.const)) | _public(vars(_engine.fs))
-        moved -= {"annotations", "os", "re", "ast", "errno", "functools", "stat", "Path", "C"}
+        moved = set()
+        for path in MODULES:
+            moved |= _public(_top_level_definitions(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))))
+        self.assertGreater(len(moved), 100)
         present = sorted(n for n in moved if hasattr(_engine.engine, n))
         self.assertEqual(present, [])
 

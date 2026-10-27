@@ -9,6 +9,7 @@ import io
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ CODE = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
 _SPEC = importlib.util.spec_from_file_location("studio_fr7_should_impl", CODE)
 studio = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(studio)
+studio_validate = sys.modules["studio_validate"]
 
 SKILL = "---\nname: %s\ndescription: Checks a toy example. Use when testing the doctor command.\n---\n\n# Title\n\nShort body.\n"
 
@@ -49,7 +51,7 @@ class OversizedSkillTest(ShouldCase):
         folder = make_skill(self.tmp / "roots", "big-skill")
         with open(folder / "SKILL.md", "a", encoding="utf-8", newline="\n") as handle:
             handle.write("More text.\n" * 40)
-        found = [f for f in studio.validate_skill(folder, max_file_bytes=200) if f["code"] == "SZ1"]
+        found = [f for f in studio_validate.validate_skill(folder, max_file_bytes=200) if f["code"] == "SZ1"]
         self.assertEqual([f["level"] for f in found], ["ERROR"])
         code, _, _ = doctor("--roots", str(self.tmp / "roots"), "--fail-on", "error")
         self.assertEqual(code, 0, "the doctor cap is 1 MB, far above this skill")

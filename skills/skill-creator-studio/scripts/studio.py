@@ -34,7 +34,10 @@ if not sys.path or sys.path[0] != _HERE:
     sys.path.insert(0, _HERE)
 
 import studio_const as C  # noqa: E402
+import studio_evals as evals  # noqa: E402
 import studio_fs as fs  # noqa: E402
+import studio_lint as lint  # noqa: E402
+import studio_validate as validate  # noqa: E402
 
 # One engine, one folder: a sibling module already loaded from another folder (a stale or copied engine in this process) would
 # mix two code bases, so refuse to run (FR4.5).
@@ -43,774 +46,6 @@ for _mod in [m for name, m in sorted(sys.modules.items()) if name.startswith("st
         sys.stderr.write("ERROR: engine module %s loaded from %s, expected %s\n"
                          % (_mod.__name__, Path(_mod.__file__).resolve().parent, Path(__file__).resolve().parent))
         sys.exit(2)
-
-
-def check_evals(folder: Path) -> list[dict]:
-    f = folder / "cases.json"
-    results: list[dict] = []
-    if not f.is_file():
-        return [fs.emit("ERROR", "EV1", f, 0, "missing evals/<skill-name>/cases.json")]
-    try:
-        obj = json.loads(f.read_text(encoding="utf-8"))
-    except (ValueError, OSError) as exc:
-        return [fs.emit("ERROR", "EV1", f, 0, "cannot read evals JSON: %s" % exc)]
-    if not isinstance(obj, dict) or not isinstance(obj.get("cases"), list):
-        return [fs.emit("ERROR", "EV1", f, 0, "evals JSON requires an object with cases: []")]
-    cases = obj["cases"]
-    if len(cases) < 3:
-        results.append(fs.emit("ERROR", "EV2", f, 0, "at least 3 realistic test cases required; found %d" % len(cases)))
-    if not any(isinstance(c, dict) and c.get("should_trigger") is False for c in cases):
-        results.append(fs.emit("ERROR", "EV3", f, 0, "add a negative prompt (should_trigger: false)"))
-    if not any(isinstance(c, dict) and c.get("should_trigger") is True for c in cases):
-        results.append(fs.emit("ERROR", "EV3", f, 0, "add a positive prompt (should_trigger: true)"))
-    ids = set()
-    for i, case in enumerate(cases):
-        if not isinstance(case, dict):
-            results.append(fs.emit("ERROR", "EV4", f, 0, "case %d must be an object" % (i + 1)))
-            continue
-        ident = case.get("id")
-        if not isinstance(ident, str) or not ident:
-            results.append(fs.emit("ERROR", "EV4", f, 0, "case %d missing string id" % (i + 1)))
-        elif ident in ids:
-            results.append(fs.emit("ERROR", "EV4", f, 0, "duplicate case id '%s'" % ident))
-        ids.add(ident)
-        if not isinstance(case.get("prompt"), str) or not case["prompt"].strip():
-            results.append(fs.emit("ERROR", "EV4", f, 0, "case %d missing prompt" % (i + 1)))
-        if not isinstance(case.get("should_trigger"), bool):
-            results.append(fs.emit("ERROR", "EV4", f, 0, "case %d should_trigger must be boolean" % (i + 1)))
-        if not isinstance(case.get("expected_behaviors"), list) or not case["expected_behaviors"] or not all(isinstance(x, str) and x.strip() for x in case["expected_behaviors"]):
-            results.append(fs.emit("ERROR", "EV4", f, 0, "case %d requires at least one nonempty expected_behaviors entry" % (i + 1)))
-        fixtures = case.get("fixtures", [])
-        if not isinstance(fixtures, list):
-            results.append(fs.emit("ERROR", "EV4", f, 0, "case %d fixtures must be a list" % (i + 1)))
-        else:
-            for relative in fixtures:
-                if not isinstance(relative, str):
-                    results.append(fs.emit("ERROR", "EV5", f, 0, "fixture path must be string"))
-                    continue
-                target = folder / relative
-                if not fs.valid_resolved_under(target, folder) or not target.is_file():
-                    results.append(fs.emit("ERROR", "EV5", f, 0, "missing/outside eval fixture '%s'" % relative))
-    if not (folder / "rubric.md").is_file():
-        results.append(fs.emit("WARN", "EV6", folder, 0, "rubric.md missing; expected behavior may lack independent grading"))
-    return results
-
-
-def export_skills_dirs(eval_dir: Path) -> list[Path]:
-    """Every `skills/` directory an export must never write into: this repo's, the cwd repo's, the one this script is packaged under, and the sibling of the evals root."""
-    here = Path(__file__).resolve()
-    found = [root / "skills" for root in (fs.repo_root(here), fs.repo_root(Path.cwd())) if root]
-    found += [parent for parent in here.parents if parent.name == "skills"]
-    if here.parent.name == "scripts" and (here.parent.parent / "SKILL.md").is_file():
-        found.append(here.parent.parent)  # a packaged skill copied somewhere that is not called skills/
-    found.append(eval_dir.resolve().parent.parent / "skills")
-    return found
-
-
-def export_eval_dirs(eval_dir: Path) -> list[Path]:
-    """Every evals root an export must never write into (frozen test data): the root holding this eval, and the evals/ of this repo and of the cwd repo."""
-    here = Path(__file__).resolve()
-    return [eval_dir.resolve().parent] + [root / "evals" for root in (fs.repo_root(here), fs.repo_root(Path.cwd())) if root]
-
-
-def export_fixture_check(eval_dir: Path, relative: str) -> tuple[str, str]:
-    """(EX code, why) a fixture path from cases.json must not be exported, or ("", "") when it may be. Reads names and link/cloud metadata (lstat) only: it never opens,
-    stats-through or follows the fixture itself, so a secret, a cloud placeholder or a link target is not touched before the answer (RK15)."""
-    posix = relative.replace("\\", "/")
-    parts = [x for x in posix.split("/")]
-    if not posix or posix.startswith("/") or ":" in posix or any(x in ("", ".", "..") for x in parts):  # ':' also covers drive letters and NTFS streams (a.csv:hid)
-        return "EX4", "unsafe fixture path '%s' (must be a plain relative path inside the eval folder, without ':')" % relative
-    for part in parts:
-        bad_name = fs.unsafe_windows_name(part)
-        if bad_name:
-            return C.WIN_NAME_CODES[bad_name.split(":", 1)[0]], "fixture '%s' has a Windows-dangerous name (%s); refusing to copy it" % (relative, bad_name.split(": ", 1)[1])
-    for part in parts:
-        if fs.secret_file_name(part):
-            return "EX4", "fixture '%s' has a secret or credential name ('%s': .env*, *.credentials.json, auth.json, *.pem, *.key, secrets.json...); refusing to copy it" % (relative, part)
-        if fs.zone_named(part):
-            return "EX4", "fixture '%s' sits in a folder named like a secret or cloud-synced zone ('%s'); refusing to copy it" % (relative, part)
-    if fs.zone_reason(eval_dir / relative):
-        return "EX4", "fixture '%s' is inside a secret or cloud-synced folder; refusing to copy it" % relative
-    current = eval_dir
-    for part in parts:
-        current = current / part
-        if fs.is_link(current):
-            return "EX4", "fixture '%s' goes through a symlink or junction; refusing to copy it" % relative
-        if fs.path_is_cloud(current):
-            return "EX4", "fixture '%s' is a cloud placeholder; refusing to copy it" % relative
-    if fs.zone_reason(Path(os.path.realpath(current.parent)) / parts[-1]):
-        return "EX4", "fixture '%s' resolves into a secret or cloud-synced folder; refusing to copy it" % relative
-    try:
-        info = os.lstat(current)
-    except OSError:
-        return "", ""  # missing: reported by the caller
-    if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
-        return "EX4", "fixture '%s' is a hard link (%d names for one file); refusing to copy it" % (relative, info.st_nlink)
-    return "", ""
-
-
-def export_fixture_refusal(eval_dir: Path, relative: str) -> str:
-    """The message of export_fixture_check, or "" when the fixture may be exported."""
-    return export_fixture_check(eval_dir, relative)[1]
-
-
-def export_eval_check(eval_dir: Path) -> tuple[str, str]:
-    """The first reason any fixture named in cases.json is refused (export_fixture_refusal), checked BEFORE check_evals stats a single fixture. An eval folder
-    inside a secret or cloud-synced zone is refused without reading cases.json. Unreadable or malformed JSON gives "" so that check_evals reports it (EV1)."""
-    if fs.zone_reason(eval_dir):
-        return "EX4", "eval folder is inside a secret or cloud-synced folder; refusing to read or export it"
-    try:
-        cases = json.loads((eval_dir / "cases.json").read_text(encoding="utf-8"))["cases"]
-        listed = [c["fixtures"] for c in cases if isinstance(c, dict) and isinstance(c.get("fixtures"), list)]
-    except (ValueError, OSError, KeyError, TypeError):
-        return "", ""
-    for relative in (x for fixtures in listed for x in fixtures if isinstance(x, str)):
-        found = export_fixture_check(eval_dir, relative)
-        if found[1]:
-            return found
-    return "", ""
-
-
-def export_eval_refusal(eval_dir: Path) -> str:
-    """The message of export_eval_check, or "" when no fixture is refused."""
-    return export_eval_check(eval_dir)[1]
-
-
-def export_fixture_source(eval_dir: Path, relative: str) -> tuple[Path | None, list[str], str]:
-    """Resolve a fixture path from cases.json to (source, export-name parts, problem). Only plain relative paths inside eval_dir, no links,
-    no secret/credential names, nothing in a secret or cloud-synced zone (export_fixture_refusal)."""
-    problem = export_fixture_check(eval_dir, relative)[1]
-    if problem:
-        return None, [], problem
-    parts = relative.replace("\\", "/").split("/")
-    current = eval_dir.joinpath(*parts)
-    if not current.is_file() or not fs.valid_resolved_under(current, eval_dir):
-        return None, [], "missing/outside eval fixture '%s'" % relative
-    return current, (parts[1:] if parts[0] == "fixtures" and len(parts) > 1 else parts), ""
-
-
-def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: bool = False) -> tuple[int, list[dict], dict]:
-    """Write <out_root>/<skill_name>/evals/evals.json (agentskills schema, SPEC 9.6) plus evals/files/ from evals/<skill>/cases.json.
-
-    Returns (exit code, findings, {"exported", "excluded_negative", "path"}). 2 = destination under skills/ or an evals root (EX1);
-    1 = refused before any write (EV*, EX2-EX7, EX9-EX12; EX4 also covers a fixture with a secret/credential name, in a secret or cloud-synced zone, behind a link or a hard link, decided from names and lstat before any fixture is opened or stat-ed) or a write error (EX8; EX13 = a source changed between check and copy; EX6 also covers a parent swapped for a link after mkdir). On EX8 the files this run created are removed again (empty folders may remain);
-    a file replaced under --force is not restored. Only the positive cases (should_trigger true) are exported; nothing else is deleted,
-    and --force only overwrites the files this function generates."""
-    eval_dir, out_root = Path(eval_dir), Path(out_root)
-    stats = {"exported": 0, "excluded_negative": 0, "path": ""}
-
-    def refuse(code: int, ident: str, message: str, path: Path = eval_dir):
-        return code, [fs.emit("ERROR", ident, path, 0, message)], stats
-
-    dest = out_root / skill_name
-    if any(fs.valid_resolved_under(dest, skills) for skills in export_skills_dirs(eval_dir)):
-        return refuse(2, "EX1", "export destination must not be under skills/ (it would ship test data inside the skill): %s" % out_root, out_root)
-    if any(fs.valid_resolved_under(dest, frozen) for frozen in export_eval_dirs(eval_dir)):
-        return refuse(2, "EX1", "export destination must not be under evals/ (frozen test data; the export would change the eval it came from): %s" % out_root, out_root)
-    if not C.EXPORT_NAME_RE.match(skill_name or ""):
-        return refuse(1, "EX2", "skill name '%s' is not a plain lowercase-hyphen name" % skill_name)
-    ident, problem = export_eval_check(eval_dir)  # names, zones and links first: check_evals below stats every fixture
-    if problem:
-        return refuse(1, ident, problem, eval_dir / "cases.json")
-    problems = [x for x in check_evals(eval_dir) if x["level"] == "ERROR"]
-    if problems:
-        return 1, problems, stats
-    try:
-        data = json.loads((eval_dir / "cases.json").read_text(encoding="utf-8"))
-    except (ValueError, OSError) as exc:
-        return refuse(1, "EV1", "cannot read evals JSON: %s" % exc, eval_dir / "cases.json")
-    cases = data["cases"]
-    if data.get("status") == "draft" or any("STUDIO-DRAFT" in "%s %s" % (c.get("prompt", ""), " ".join(map(str, c.get("expected_behaviors", [])))) for c in cases):
-        return refuse(1, "EX3", "eval is still a draft (status 'draft' or STUDIO-DRAFT text); write real cases before exporting", eval_dir / "cases.json")
-    positive = [c for c in cases if c["should_trigger"]]
-    sources: dict[str, tuple[str, Path]] = {}  # NFC-casefolded name -> (name as exported: NFC, case kept; source file)
-    checked: dict[Path, os.stat_result] = {}  # source -> lstat taken when it was checked; the copy re-proves this identity on the open handle
-    evals = []
-    for number, case in enumerate(positive, 1):
-        names = []
-        for relative in case.get("fixtures", []):
-            source, parts, problem = export_fixture_source(eval_dir, relative)
-            if source is None:
-                return refuse(1, "EX4", problem, eval_dir / "cases.json")
-            try:
-                checked.setdefault(source, os.lstat(source))
-            except OSError as exc:
-                return refuse(1, "EX4", "cannot inspect fixture '%s': %s" % (relative, exc), eval_dir / "cases.json")
-            name = unicodedata.normalize("NFC", "/".join(parts))  # written to disk and to evals.json as NFC, case kept (Data.csv stays Data.csv)
-            key = name.casefold()  # a.csv and A.csv are one file on Windows/macOS disks; the key is only for the collision check
-            seen = sources.get(key)
-            if seen and (seen[0] != name or seen[1] != source):
-                return refuse(1, "EX7", "fixture names collide after export (compared ignoring case and Unicode form): '%s' is %s but '%s' is %s" % (seen[0], seen[1], name, source), eval_dir / "cases.json")
-            sources[key] = (name, source)
-            names.append("evals/files/" + name)
-        evals.append({"id": number, "prompt": case["prompt"], "expected_output": "; ".join(case["expected_behaviors"]), "files": names, "assertions": list(case["expected_behaviors"])})
-    for key in sources:
-        for other in sources:
-            if other.startswith(key + "/"):
-                return refuse(1, "EX12", "fixture '%s' is a file but '%s' needs it as a folder; rename one of them" % (sources[key][0], sources[other][0]), eval_dir / "cases.json")
-    evals_dir = dest / "evals"
-    target = evals_dir / "evals.json"
-    copies = {evals_dir / "files" / Path(*name.split("/")): source for name, source in sources.values()}
-    for owned in [dest, evals_dir, evals_dir / "files"] + [t.parent for t in copies] + [target] + list(copies):
-        if fs.is_link(owned):
-            return refuse(1, "EX6", "export destination goes through a symlink or junction: %s" % owned, owned)
-    for t, source in copies.items():
-        if t.exists() and source.exists() and os.path.samefile(t, source):
-            return refuse(1, "EX6", "export destination is the source fixture itself: %s" % t, t)
-    clash = [x for x in [target] + list(copies) if os.path.lexists(x)]  # a dangling link is a name already taken
-    if clash and not force:
-        return refuse(1, "EX5", "export file exists: %s; choose another --out or explicitly --force" % clash[0], clash[0])
-    fresh = [x for x in [target] + list(copies) if not os.path.lexists(x)]  # only names this run creates are cleaned up again
-    temp_name = ""
-    try:
-        for t, source in copies.items():
-            t.parent.mkdir(parents=True, exist_ok=True)
-            linked = fs.link_in_chain(t.parent, dest)  # a parent swapped for a junction after the check above would redirect the write
-            if linked:
-                raise fs.UnsafeOpen("export destination goes through a symlink or junction: %s" % linked, "EX6")
-            if t.exists():  # only reachable with --force: replace the file, never write through it
-                t.unlink()
-            with fs.open_nofollow_read(source, checked[source]) as reader, fs.create_exclusive(t) as writer:
-                shutil.copyfileobj(reader, writer)
-        evals_dir.mkdir(parents=True, exist_ok=True)
-        linked = fs.link_in_chain(evals_dir, dest)
-        if linked:
-            raise fs.UnsafeOpen("export destination goes through a symlink or junction: %s" % linked, "EX6")
-        handle, temp_name = tempfile.mkstemp(prefix=".evals-", suffix=".tmp", dir=str(evals_dir))  # same folder, so os.replace is atomic
-        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as out:
-            out.write(json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n")
-        os.replace(temp_name, target)
-        temp_name = ""
-    except OSError as exc:
-        for leftover in fresh + ([Path(temp_name)] if temp_name else []):  # a half-written export must not look like a finished one
-            try:
-                leftover.unlink(missing_ok=True)
-            except OSError:
-                pass
-        if isinstance(exc, fs.UnsafeOpen):
-            return refuse(1, exc.code, "%s (files created by this run were removed)" % exc, out_root)
-        return refuse(1, "EX8", "cannot write export: %s (files created by this run were removed)" % exc, out_root)
-    stats.update({"exported": len(evals), "excluded_negative": len(cases) - len(positive), "path": str(target)})
-    return 0, [], stats
-
-
-def frontmatter_extra_len(lines: list, body_start: int) -> int:
-    """Characters of the frontmatter outside the `description` key (the key's own lines are skipped)."""
-    total, in_description = 0, False
-    for raw in lines[1:max(body_start - 1, 1)]:
-        if raw and not raw[0].isspace():
-            in_description = raw.startswith("description:")
-        if not in_description:
-            total += len(raw) + 1
-    return total
-
-
-def estimate_tokens(body: str) -> int:
-    """Rough estimate: chars / 4; Vietnamese bodies tokenize about 1.2-2x worse (lower bound used). Not a tokenizer."""
-    letters = [c for c in body.lower() if c.isalpha()]
-    vietnamese = bool(letters) and sum(c in C.VI_CHARS for c in letters) / len(letters) > 0.1
-    return int(len(body) / 4 * (1.2 if vietnamese else 1))
-
-
-def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
-    """SK-14 / CT10: an all-caps MUST/NEVER/ALWAYS/CRITICAL line needs a reason on the same line.
-    Not prose, so skipped: fenced code (a fence closes only on the same character and at least the opening length),
-    indented code blocks (after a blank line, outside lists), table rows, inline code, link text, URLs, one-line HTML
-    comments, and <!-- studio:strict --> ... <!-- /studio:strict --> blocks. A strict block left open is itself a CT10."""
-    findings: list[dict] = []
-    fence, strict, strict_line = None, False, 0
-    prev_blank, in_indented, list_context = True, False, False
-    for offset, line in enumerate(body.splitlines()):
-        text = unicodedata.normalize("NFC", line)
-        stripped = text.strip()
-        lineno = body_start + offset + 1
-        if fence:
-            if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), stripped):
-                fence = None
-            continue
-        opened = (C.FENCE_OPEN_LIST_RE if list_context else C.FENCE_OPEN_RE).match(text)
-        if opened:
-            fence = opened.group(1)
-            prev_blank = False
-            continue
-        if C.STRICT_OPEN in text:
-            strict, strict_line = True, lineno
-        if strict:
-            if C.STRICT_CLOSE in text:
-                strict = False
-            continue
-        if not stripped:
-            prev_blank = True
-            continue
-        indented = text.startswith(("    ", "\t"))
-        if indented and (in_indented or (prev_blank and not list_context)):
-            in_indented, prev_blank = True, False
-            continue
-        in_indented = False
-        if not indented:
-            list_context = bool(C.LIST_ITEM_RE.match(text))
-        prev_blank = False
-        if stripped.startswith("|"):
-            continue
-        prose = fs.strip_html_comments(text)
-        prose = fs.strip_code_spans(prose)
-        prose = C.MD_LINK_RE.sub(" ", prose)
-        prose = C.URL_RE.sub(" ", prose)
-        match = C.FORCE_RE.search(prose)
-        if match and not C.REASON_RE.search(prose):
-            findings.append(fs.emit("WARN", "CT10", manifest, lineno,
-                                 "'%s' without a reason on the same line (SK-14); state why, or mark a deliberately strict step with %s ... %s"
-                                 % (match.group(1), C.STRICT_OPEN, C.STRICT_CLOSE)))
-    if strict:
-        findings.append(fs.emit("WARN", "CT10", manifest, strict_line,
-                             "strict block not closed: %s has no matching %s, so the rest of the body was not linted (SK-14)"
-                             % (C.STRICT_OPEN, C.STRICT_CLOSE)))
-    return findings
-
-
-def lint_unclosed_comment(body: str, body_start: int, manifest: Path) -> list:
-    """CT11: a `<!--` outside code that no `-->` ever closes hides the rest of the body from the language and forcing-word lints."""
-    fence, list_context, opened_at = None, False, 0
-    for offset, line in enumerate(body.splitlines()):
-        text = unicodedata.normalize("NFC", line)
-        if fence:
-            if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), text.strip()):
-                fence = None
-            continue
-        if opened_at:
-            closed = text.find("-->")
-            if closed < 0:
-                continue
-            text, opened_at = text[closed + 3:], 0
-        opened = (C.FENCE_OPEN_LIST_RE if list_context else C.FENCE_OPEN_RE).match(text)
-        if opened:
-            fence = opened.group(1)
-            continue
-        if text.strip() and not text.startswith(("    ", "\t")):
-            list_context = bool(C.LIST_ITEM_RE.match(text))
-        rest = fs.strip_html_comments(fs.strip_code_spans(text))
-        if "<!--" in rest:
-            opened_at = body_start + offset + 1
-    if opened_at:
-        return [fs.emit("WARN", "CT11", manifest, opened_at, "HTML comment opened here is never closed with '-->'; the rest of the body is read as comment text (language and SK-14 lints skip it)")]
-    return []
-
-
-def prose_lines(body: str) -> list[tuple[int, str]]:
-    """Prose lines of a Markdown body as (1-based line number inside `body`, text); file line = body_start + number.
-    Left out: blank lines, fenced and indented code, table rows, lines marked <!-- studio:vi-ok -->, and the lines of a
-    multi-line HTML comment. In the text, inline code, link targets, URLs and HTML comments are blanked; the text is not
-    normalized, so VI1 can see NFD."""
-    found: list[tuple[int, str]] = []
-    fence, prev_blank, in_indented, list_context, in_comment = None, True, False, False, False
-    for offset, text in enumerate(body.splitlines()):
-        stripped = text.strip()
-        if fence:
-            if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), stripped):
-                fence = None
-            continue
-        if in_comment:
-            closed = text.find("-->")
-            if closed < 0:
-                continue
-            text, in_comment = text[closed + 3:], False
-            stripped = text.strip()
-        opened = (C.FENCE_OPEN_LIST_RE if list_context else C.FENCE_OPEN_RE).match(text)
-        if opened:
-            fence, prev_blank = opened.group(1), False
-            continue
-        if not stripped:
-            prev_blank = True
-            continue
-        indented = text.startswith(("    ", "\t"))
-        if indented and (in_indented or (prev_blank and not list_context)):
-            in_indented, prev_blank = True, False
-            continue
-        in_indented = False
-        if not indented:
-            list_context = bool(C.LIST_ITEM_RE.match(text))
-        prev_blank = False
-        if stripped.startswith("|") or C.VI_OK_MARK in text:
-            continue
-        prose = fs.strip_html_comments(text)
-        prose = fs.strip_code_spans(prose)
-        if "<!--" in prose:  # a comment that continues on the next lines
-            prose, in_comment = prose[:prose.index("<!--")], True
-        prose = C.MD_LINK_RE.sub(r"\1", prose)
-        prose = C.URL_RE.sub(" ", prose)
-        if prose.strip():
-            found.append((offset + 1, prose))
-    return found
-
-
-def _vi_counts(text: str) -> tuple[int, int]:
-    """(letters, letters with a Vietnamese diacritic), counted on the NFC form so an NFD body is still recognised."""
-    letters = [c for c in unicodedata.normalize("NFC", text).lower() if c.isalpha()]
-    return len(letters), sum(c in C.VI_CHARS for c in letters)
-
-
-def _vi_lang(lines: list[tuple[int, str]]) -> str:
-    letters = accents = 0
-    for _, text in lines:
-        count, accented = _vi_counts(text)
-        letters, accents = letters + count, accents + accented
-    return "vi" if letters and accents / letters >= C.VI_ACCENT_RATIO else "en"
-
-
-def detect_lang(body: str) -> str:
-    """'vi' when letters with a Vietnamese diacritic are at least VI_ACCENT_RATIO of the prose letters, else 'en'
-    (code, table rows, inline code, vi-ok lines and the frontmatter do not count)."""
-    return _vi_lang(prose_lines(body))
-
-
-def _vi_sentences(lines: list[tuple[int, str]]) -> list[tuple[int, int]]:
-    """(line where the sentence starts, word count). A sentence ends at . ! ? or ; followed by a space, and a list item,
-    heading or blank line also ends one, so 'v1.0', '3.5', 'e.g.' and paths are not split. A word is a whitespace-separated token."""
-    sentences: list[tuple[int, int]] = []
-    buf: list[tuple[int, str]] = []
-
-    def flush() -> None:
-        if not buf:
-            return
-        starts, pos, parts = [], 0, []
-        for rel, text in buf:
-            starts.append((pos, rel))
-            parts.append(text)
-            pos += len(text) + 1
-        joined = C.SENTENCE_ABBREV_RE.sub(lambda m: m.group(1) + "․", " ".join(parts))
-        offsets = [at for at, _ in starts]
-        start = 0
-        for cut in list(C.SENTENCE_SPLIT_RE.finditer(joined)) + [None]:
-            end = cut.start() if cut else len(joined)
-            if joined[start:end].split():
-                sentences.append((starts[bisect.bisect_right(offsets, start) - 1][1], len(joined[start:end].split())))
-            if cut:
-                start = cut.end()
-        buf.clear()
-
-    prev = -1
-    for rel, text in lines:
-        item = bool(C.LIST_ITEM_RE.match(text))
-        heading = text.lstrip().startswith("#")
-        if buf and (rel != prev + 1 or item or heading):
-            flush()
-        buf.append((rel, re.sub(r"^\s*(#+|>+|[-*+]|\d+[.)])\s+", "", text.strip())))
-        prev = rel
-        if heading:
-            flush()
-    flush()
-    return sentences
-
-
-def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path, front_lines: list | None = None) -> list:
-    """FR16 / SPEC 9.10: VI1-VI5, all WARN, only when the body is Vietnamese (detect_lang). Line numbers are file lines.
-    VI1 body not NFC (first deviating line) · VI2 d/m/yyyy date · VI3 sentence over VI_SENTENCE_MAX words ·
-    VI4 frontmatter outside `description` holds Vietnamese letters, or `description` does but has no 'Use when' ·
-    VI5 a '## ' section of at least VI5_SECTION_MIN_LETTERS letters with under VI5_ACCENT_MIN diacritics."""
-    lines = prose_lines(body)
-    if _vi_lang(lines) != "vi":
-        return []
-    findings: list[dict] = []
-    for rel, text in lines:
-        if unicodedata.normalize("NFC", text) != text:
-            findings.append(fs.emit("WARN", "VI1", manifest, body_start + rel,
-                                 "body is not Unicode NFC (first deviating line; later lines may be too); re-save the text in NFC (V09)"))
-            break
-    for rel, text in lines:
-        date = C.NON_ISO_DATE_RE.search(text)
-        if date:
-            findings.append(fs.emit("WARN", "VI2", manifest, body_start + rel, "date '%s' is not ISO; write yyyy-mm-dd (V11)" % date.group(0)))
-    for rel, words in _vi_sentences(lines):
-        if words > C.VI_SENTENCE_MAX:
-            findings.append(fs.emit("WARN", "VI3", manifest, body_start + rel,
-                                 "sentence has %d words (>%d); split it, aim for 25 or fewer (V03)" % (words, C.VI_SENTENCE_MAX)))
-    if front_lines is not None:
-        front = list(front_lines)
-    else:
-        try:
-            front = manifest.read_text(encoding="utf-8").splitlines()[:body_start]
-        except (OSError, UnicodeError):
-            front = []
-    first_line: dict = {}  # top-level key -> its frontmatter line; nested[parent][key] -> the line under that parent (built once, a scan per key was quadratic)
-    nested: dict = {}
-    parent = None
-    for number, raw in enumerate(front, 1):
-        stripped = raw.lstrip()
-        colon = stripped.find(":")
-        if colon <= 0:
-            continue
-        key = stripped[:colon]
-        if raw[:1] not in (" ", "\t"):
-            first_line.setdefault(key, number)
-            parent = key
-        elif parent is not None:
-            nested.setdefault(parent, {}).setdefault(key, number)
-
-    def front_line(label: str, default: int) -> int:
-        parts = label.split("[")[0].split(".")
-        if len(parts) > 1:  # metadata.k: look under metadata:, not at a root key of the same name
-            return nested.get(parts[0], {}).get(parts[-1], first_line.get(parts[0], default))
-        return first_line.get(parts[0], default)
-
-    def accented(value) -> bool:
-        return isinstance(value, str) and _vi_counts(fs.strip_html_comments(value))[1] > 0
-
-    def strings(label: str, value) -> list[tuple[str, str]]:
-        """Every string inside a frontmatter value (nested dicts and lists), labelled by its path."""
-        if isinstance(value, dict):
-            return [pair for k, v in value.items() for pair in strings("%s.%s" % (label, k), v)]
-        if isinstance(value, (list, tuple)):
-            return [pair for i, v in enumerate(value) for pair in strings("%s[%d]" % (label, i), v)]
-        return [(label, value)] if isinstance(value, str) else []
-
-    pairs = [pair for key, value in meta.items() if key != "description" for pair in strings(key, value)]
-    for label, value in pairs:
-        at = front_line(label.split("[")[0], 2)
-        if accented(value) and not (at <= len(front) and C.VI_OK_MARK in front[at - 1]):
-            findings.append(fs.emit("WARN", "VI4", manifest, at, "frontmatter '%s' has Vietnamese letters; keep frontmatter values English (V13)" % label))
-    desc = fs.strip_html_comments(meta["description"]) if isinstance(meta.get("description"), str) else None
-    at = front_line("description", 3)
-    if accented(desc) and not C.VI_TRIGGER_RE.search(desc) and not (at <= len(front) and C.VI_OK_MARK in front[at - 1]):
-        findings.append(fs.emit("WARN", "VI4", manifest, at,
-                             "description has Vietnamese letters but no 'Use when' trigger phrase; write it in English and add Vietnamese only as extra trigger words (V13)"))
-    section = None
-    for rel, text in lines + [(0, "# end")]:
-        if re.match(r"^#{1,2}\s+\S", text):
-            if section and section[1] >= C.VI5_SECTION_MIN_LETTERS and section[2] / section[1] < C.VI5_ACCENT_MIN:
-                findings.append(fs.emit("WARN", "VI5", manifest, body_start + section[0],
-                                     "section '%s' has %d letters and almost no Vietnamese diacritics; one language per skill, write it in Vietnamese (V14)"
-                                     % (section[3], section[1])))
-            section = [rel, 0, 0, text.strip("# ").strip()] if re.match(r"^##\s", text) else None
-        elif section:
-            count, with_accent = _vi_counts(text)
-            section[1], section[2] = section[1] + count, section[2] + with_accent
-    return findings
-
-
-def lint_contents(path: Path, lines: list, kind: str, offset: int = 0) -> list:
-    """FR15: Contents rules. kind 'reference' -> ST5, 'skill_body' -> ST7; `offset` = lines before lines[0]."""
-    code = "ST5" if kind == "reference" else "ST7"
-    limit = C.REF_TOC_LINES if kind == "reference" else C.BODY_TOC_LINES
-    findings: list[dict] = []
-    norm = [unicodedata.normalize("NFC", x) for x in lines]
-    start = next((i for i, x in enumerate(norm[:C.CONTENTS_WINDOW]) if C.CONTENTS_RE.match(x.strip())), None)
-    if start is None:
-        if len(lines) > limit:
-            level = "ERROR" if kind == "reference" else "WARN"
-            what = "reference" if kind == "reference" else "SKILL.md body"
-            findings.append(fs.emit(level, code, path, offset + 1, "%s >%d lines needs a '## Contents' (or '## Mục lục') in its first %d lines" % (what, limit, C.CONTENTS_WINDOW)))
-        return findings
-    headings, fence = set(), None
-    for i, x in enumerate(norm):
-        s = x.strip()
-        if fence:
-            if s.startswith(fence):
-                fence = None
-            continue
-        if s.startswith(("```", "~~~")):
-            fence = s[:3]
-        elif i != start and re.match(r"^##\s+\S", x):
-            headings.add(x[2:].strip())
-    entries = []
-    for i in range(start + 1, len(norm)):
-        s = norm[i].strip()
-        if s.startswith("#"):
-            break
-        if s.startswith(("- ", "* ")):
-            entries.append((i, C.MD_LINK_RE.sub(r"\1", s[2:]).split(" — ")[0].strip()))
-    if len(entries) > C.CONTENTS_MAX:
-        findings.append(fs.emit("WARN", code, path, offset + start + 1, "Contents has %d entries; keep it to %d or fewer" % (len(entries), C.CONTENTS_MAX)))
-    for i, name in entries:
-        if name not in headings:
-            findings.append(fs.emit("WARN", code, path, offset + i + 1, "Contents entry '%s' matches no '## ' heading in this file" % name))
-    return findings
-
-
-def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: bool = False, target: str = "portable",
-                   profile: str = "portable", allow_links_under: Path | None = None, max_file_bytes: int | None = None,
-                   skip_markers: tuple = ()) -> list[dict]:
-    """Findings for one skill. profile "opcos" (doctor): an existing link that leaves the skill but stays under `allow_links_under`
-    is a WARN ST6, the OPCOS_PROVENANCE_KEYS are WARN FM4, and no `metadata.opcos_*` key is a NOTE MD1. ST3 and ST8 apply to every profile.
-    `max_file_bytes` (doctor passes DOCTOR_MAX_FILE_BYTES): a SKILL.md or reference above it is not read, WARN SZ1. `skip_markers` extend CLOUD_MARKERS.
-    A symlink, junction or cloud placeholder inside the skill is reported (SEC, SZ2) and never opened, listed or followed."""
-    folder = folder.resolve()
-    manifest = folder / "SKILL.md"
-    if not manifest.is_file():
-        return [fs.emit("ERROR", "FM1", manifest, 0, "SKILL.md is missing")]
-    markers = C.CLOUD_MARKERS + tuple(skip_markers)
-    try:
-        text, too_big = fs.read_capped(manifest, max_file_bytes)
-    except UnicodeError:
-        return [fs.emit("ERROR", "FM1", manifest, 0, "SKILL.md must be UTF-8 text")]
-    if too_big:
-        return [fs.emit("ERROR", "SZ1", manifest, 0, "SKILL.md is larger than %d bytes; not read or linted, so it cannot pass" % max_file_bytes)]
-    claude = target == "claude-code"
-    meta, findings, body_start = fs.parse_frontmatter(text, manifest, C.CLAUDE_CODE_KEYS if claude else frozenset())
-    all_lines = text.splitlines()
-    name = meta.get("name")
-    desc = meta.get("description")
-    if not isinstance(name, str) or not C.NAME_RE.fullmatch(name) or len(name) > 64:
-        findings.append(fs.emit("ERROR", "FM2", manifest, 2, "name must be lowercase kebab-case, 1–64 chars and without '--'"))
-    elif name != folder.name:
-        findings.append(fs.emit("ERROR", "FM2", manifest, 2, "name '%s' differs from folder '%s'" % (name, folder.name)))
-    if isinstance(name, str):
-        word = next((w for w in C.RESERVED_NAME_WORDS if w in name), None)
-        if word:
-            findings.append(fs.emit("ERROR", "FM5", manifest, 2, "name must not contain the reserved word '%s'" % word))
-        elif claude and name in C.CLAUDE_CODE_RESERVED_NAMES:
-            findings.append(fs.emit("ERROR", "FM5", manifest, 2, "name '%s' is reserved by Claude Code" % name))
-    if not isinstance(desc, str) or not desc.strip() or len(desc) > 1024 or fs.has_xml_tag(desc or ""):
-        findings.append(fs.emit("ERROR", "DS1", manifest, 3, "description must be a nonempty string <=1024 chars without XML tags"))
-    elif not re.search(r"(?i)\b(use when|when to use|used when|for tasks involving)\b", desc):
-        findings.append(fs.emit("WARN", "DS3", manifest, 3, "description should describe when to invoke the Skill, e.g. 'Use when ...'"))
-    elif re.match(r"(?i)^\s*(i can|you can|i will|we can)\b", desc):
-        findings.append(fs.emit("WARN", "DS2", manifest, 3, "prefer third-person description e.g. 'Validates CSV...'"))
-    if isinstance(desc, str):
-        trigger = C.TRIGGER_RE.search(desc)
-        if trigger and trigger.start() >= C.TRIGGER_LATEST:
-            findings.append(fs.emit("WARN", "DS4", manifest, 3, "trigger phrase starts at character %d; put 'Use when ...' inside the first %d characters" % (trigger.start() + 1, C.TRIGGER_LATEST)))
-        listing = len(desc) + (len(meta["when_to_use"]) if isinstance(meta.get("when_to_use"), str) else 0)
-        if claude and listing > C.LISTING_MAX:
-            findings.append(fs.emit("WARN", "DS5", manifest, 3, "description + when_to_use is %d chars; Claude Code truncates the skill listing at %d" % (listing, C.LISTING_MAX)))
-    allowed = sorted(C.PORTABLE_KEYS | C.CLAUDE_CODE_KEYS) if claude else sorted(C.PORTABLE_KEYS)
-    for key in meta:
-        if key in C.PORTABLE_KEYS:
-            continue
-        at = next((i + 1 for i, x in enumerate(all_lines[:body_start]) if x.startswith(key + ":")), 2)
-        if claude and key in C.CLAUDE_CODE_KEYS:
-            findings.append(fs.emit("WARN", "FM6", manifest, at, "frontmatter key '%s' is Claude Code only; claude.ai and the API reject it with a hard error" % key))
-        elif profile == "opcos" and key in C.OPCOS_PROVENANCE_KEYS:
-            findings.append(fs.emit("WARN", "FM4", manifest, at, "provenance key '%s' is an OpcOS convention, not portable; move it under metadata before publishing" % key))
-        else:
-            findings.append(fs.emit("ERROR", "FM4", manifest, at, "unknown frontmatter key '%s' for target %s; allowed keys: %s; use metadata or a target adapter" % (key, target, ", ".join(allowed))))
-    if profile == "opcos" and not (isinstance(meta.get("metadata"), dict) and any(k.startswith("opcos_") for k in meta["metadata"])):
-        findings.append(fs.emit("NOTE", "MD1", manifest, 2, "no metadata.opcos_* key; OpcOS registry fields are optional"))
-    extra = frontmatter_extra_len(all_lines, body_start)
-    if extra > C.FRONTMATTER_EXTRA_MAX:
-        findings.append(fs.emit("WARN", "FM8", manifest, 1, "frontmatter outside description is %d chars (>%d); move detail to the body or references" % (extra, C.FRONTMATTER_EXTRA_MAX)))
-    if "metadata" in meta and (not isinstance(meta["metadata"], dict) or any(not isinstance(v, str) for v in meta["metadata"].values())):
-        findings.append(fs.emit("ERROR", "FM4", manifest, 0, "metadata must be a mapping of string keys to string values"))
-    if "compatibility" in meta and len(str(meta["compatibility"])) > 500:
-        findings.append(fs.emit("ERROR", "FM4", manifest, 0, "compatibility max length is 500 chars"))
-    body = "\n".join(all_lines[body_start:])
-    if len(body.splitlines()) >= 500:
-        findings.append(fs.emit("WARN", "ST1", manifest, body_start + 1, "Skill body should be under 500 lines (best-practice, not spec hard limit)"))
-    body_bytes = len(body.encode("utf-8"))
-    if body_bytes > C.CODEX_BODY_MAX_BYTES:
-        findings.append(fs.emit("WARN", "ST3", manifest, body_start + 1, "Skill body is %d bytes (>%d, the Codex 0.147 limit); move detail to references (standards/SOURCE_TRACEABILITY.md A16)" % (body_bytes, C.CODEX_BODY_MAX_BYTES)))
-    tokens = estimate_tokens(body)
-    if tokens > C.BODY_TOKEN_MAX:
-        findings.append(fs.emit("WARN", "ST2", manifest, body_start + 1, "Skill body is about %d tokens (estimate, not a tokenizer); keep it under %d and move detail to references" % (tokens, C.BODY_TOKEN_MAX)))
-    findings.extend(lint_forcing_words(body, body_start, manifest))
-    findings.extend(lint_unclosed_comment(body, body_start, manifest))
-    findings.extend(lint_contents(manifest, body.splitlines(), "skill_body", body_start))
-    findings.extend(lint_vietnamese(meta, body, body_start, manifest, all_lines[:body_start]))
-    if re.search(r"<!--\s*STUDIO-DRAFT|\[FILL:|\bTODO\b|\bFIXME\b", body, re.IGNORECASE):
-        findings.append(fs.emit("WARN", "CT9", manifest, body_start + 1, "draft marker/TODO/FIXME remains; do not ship unreviewed scaffold"))
-    if re.search(r"(?i)(show|write out|transcribe|echo)\s+(your\s+)?(private\s+)?(chain.of.thought|internal reasoning|hidden reasoning)", body):
-        findings.append(fs.emit("WARN", "NM2", manifest, body_start + 1, "possible request to disclose private model reasoning"))
-    refs_linked = set()
-    newlines: list | None = None  # offsets of "\n" in the body, built the first time a finding needs a line number
-    verdicts: dict = {}  # link text -> (level, message) or (None, resolved path): one check per distinct target
-
-    def line_of(offset: int) -> int:
-        nonlocal newlines
-        if newlines is None:
-            newlines = [m.start() for m in re.finditer("\n", body)]
-        return body_start + bisect.bisect_left(newlines, offset) + 1
-
-    def classify(link: str) -> tuple:
-        if C.ABSOLUTE_LINK_RE.match(link) or link.startswith(("/", "\\")):  # UNC, drive, file:, smb:, rooted: never resolved, stat-ed or opened (Windows would authenticate to a share)
-            return "ERROR", "reference escapes Skill folder: absolute or UNC link not opened: '%s'" % link
-        resolved = folder / link
-        if not fs.lexically_inside(resolved, folder) and fs.zone_reason(resolved, markers):  # named outside and in a forbidden zone: do not resolve or stat it
-            return "ERROR", "reference escapes Skill folder into a cloud or secret zone (not opened): '%s'" % link
-        if fs.link_crosses_link(folder, link):
-            return "ERROR", "reference goes through a symlink or junction (not opened): '%s'" % link
-        if not fs.valid_resolved_under(resolved, folder):
-            if (profile == "opcos" and allow_links_under is not None and not fs.zone_reason(resolved.resolve(), markers)
-                    and fs.valid_resolved_under(resolved, allow_links_under) and resolved.exists()):
-                return "WARN", "link leaves the Skill folder but stays inside the scanned root: '%s'" % link
-            return "ERROR", "reference escapes Skill folder: '%s'" % link
-        if not resolved.exists():
-            return "ERROR", "missing referenced resource '%s'" % link
-        try:
-            return None, resolved.resolve()
-        except OSError:
-            return None, None
-
-    for match in C.LINK_RE.finditer(body):
-        link = match.group(1).strip().strip('<>')
-        if link.startswith(("http://", "https://", "mailto:", "#")):
-            continue
-        link = link.split('#')[0].split('?')[0]
-        if not link:
-            continue
-        if link not in verdicts:
-            verdicts[link] = classify(link)
-        level, detail = verdicts[link]
-        if level:
-            findings.append(fs.emit(level, "ST6", manifest, line_of(match.start()), detail))
-        elif detail is not None:
-            refs_linked.add(detail)
-    ref_dir = folder / "references"
-    tree, tree_links, tree_dirs, tree_cloud, tree_cut = fs.walk_files(folder, markers)
-    if tree_cut:
-        findings.append(fs.emit("WARN", "SZ1", folder, 0, "skill lists more than %d files and folders or goes deeper than %d levels; the rest was not listed or checked"
-                             % (C.DOCTOR_MAX_FILES_PER_SKILL, C.DOCTOR_MAX_SKILL_DEPTH)))
-    if ref_dir in tree_dirs:
-        for p in (x for x in tree if ref_dir in x.parents and x.name.endswith(".md") and not fs.is_sensitive_name(x.name)):
-            if p in tree_cloud:
-                continue  # reported as SZ2 below, never opened
-            if p not in tree_links and not p.is_file():
-                continue
-            if p in tree_links:
-                findings.append(fs.emit("ERROR", "SEC", p, 0, "symlink in reference tree may escape package; replace with real file"))
-                continue
-            if p.resolve() not in refs_linked:
-                findings.append(fs.emit("WARN", "ST4", p, 0, "reference Markdown is not directly linked from SKILL.md"))
-            try:
-                ref_text, ref_too_big = fs.read_capped(p, max_file_bytes)
-            except UnicodeError:
-                findings.append(fs.emit("ERROR", "ST6", p, 0, "reference must be UTF-8"))
-                continue
-            if ref_too_big:
-                findings.append(fs.emit("WARN", "SZ1", p, 0, "reference is larger than %d bytes; not read or linted" % max_file_bytes))
-                continue
-            findings.extend(lint_contents(p, ref_text.splitlines(), "reference"))
-    scripts = folder / "scripts"
-    if scripts in tree_dirs:
-        for script in tree:
-            if (script.parent == scripts and script not in tree_links and script not in tree_dirs and script not in tree_cloud
-                    and script.suffix in {".py", ".sh", ".js", ".ts"} and script.name not in body):
-                findings.append(fs.emit("WARN", "SC3", script, 0, "script not mentioned in SKILL.md; document whether to run or read"))
-    for p in tree:
-        if p in tree_cloud:
-            findings.append(fs.emit("WARN", "SZ2", p, 0, "cloud placeholder (OneDrive/SharePoint attributes) inside the skill; not opened or listed"))
-        elif p in tree_links:
-            findings.append(fs.emit("ERROR", "SEC", p, 0, "symlinks are not portable/safe in distributed skill packages"))
-        elif (p.parent == folder and p.name.lower() not in C.ST8_ALLOWED_DIRS and p.name.lower() not in C.SKIP_DIRS and not fs.is_sensitive_name(p.name)
-              and p in tree_dirs):
-            findings.append(fs.emit("WARN", "ST8", p, 0, "folder '%s' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill" % p.name))
-    if eval_root is None:
-        root = fs.repo_root(folder)
-        if root is not None:
-            eval_root = root / "evals"
-    if require_evals:
-        if eval_root is None:
-            findings.append(fs.emit("ERROR", "EV1", folder, 0, "eval root not found; supply --eval-root or use within Studio repo"))
-        else:
-            findings.extend(check_evals(eval_root / folder.name))
-    return findings
-
-
-def print_findings(folder: Path, findings: list[dict]) -> None:
-    errors = sum(f["level"] == "ERROR" for f in findings)
-    warnings = sum(f["level"] == "WARN" for f in findings)
-    print("%s: %d errors; %d warnings" % (folder, errors, warnings))
-    for item in findings:
-        location = item["path"] + ((":%s" % item["line"]) if item["line"] else "")
-        print("  %-5s %-4s %s — %s" % (item["level"], item["code"], location, item["message"]))
 
 
 def get_template(full: bool = False, lang: str = "en") -> Path:
@@ -909,13 +144,13 @@ def cmd_check(args, audit: bool = False) -> int:
     root = fs.repo_root(Path(__file__))
     external = Path(args.eval_root) if args.eval_root else (root / "evals" if root else None)
     for folder in folders:
-        findings = validate_skill(folder, eval_root=external, require_evals=args.require_evals, target=getattr(args, "target", "portable"))
+        findings = validate.validate_skill(folder, eval_root=external, require_evals=args.require_evals, target=getattr(args, "target", "portable"))
         reports.append({"skill": str(folder), "findings": findings})
     if args.json:
         print(json.dumps({"audit": audit, "reports": reports}, ensure_ascii=False, indent=2))
     else:
         for report in reports:
-            print_findings(Path(report["skill"]), report["findings"])
+            validate.print_findings(Path(report["skill"]), report["findings"])
         if audit:
             print("\nAUDIT IS READ-ONLY. Semantic review is required for SK-03/04/06/07/08/10/12/14 (SK-14 is only partly machine-checked by CT10); model tests were not run.")
     return 1 if any(f["level"] == "ERROR" for x in reports for f in x["findings"]) else 0
@@ -925,7 +160,7 @@ def cmd_evals_export(args, paths: list[Path]) -> int:
     out_root = Path(args.out or C.EXPORT_DEFAULT_OUT).expanduser()
     reports, worst = [], 0
     for path in paths:
-        code, findings, stats = export_agentskills(path, path.name, out_root, force=args.force)
+        code, findings, stats = evals.export_agentskills(path, path.name, out_root, force=args.force)
         worst = 2 if code == 2 or worst == 2 else max(worst, code)
         reports.append({"skill": path.name, "exit": code, "findings": findings, "stats": stats})
     if args.json:
@@ -962,19 +197,19 @@ def cmd_evals(args) -> int:
         return cmd_evals_export(args, paths)
     reports = []
     for path in paths:
-        findings = check_evals(path)
+        findings = evals.check_evals(path)
         reports.append({"skill": path.name, "findings": findings})
     if args.json:
         print(json.dumps({"reports": reports, "model_runs_performed": 0}, ensure_ascii=False, indent=2))
     else:
         for item in reports:
-            print_findings(eval_root / item["skill"], item["findings"])
+            validate.print_findings(eval_root / item["skill"], item["findings"])
         print("Schema-only evaluation: NO model sessions were executed.")
     return 1 if any(f["level"] == "ERROR" for x in reports for f in x["findings"]) else 0
 
 
 def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
-    findings = validate_skill(folder)
+    findings = validate.validate_skill(folder)
     manifest = folder / "SKILL.md"
     if manifest.is_file() and re.search(r"<!--\s*STUDIO-DRAFT", manifest.read_text(encoding="utf-8")):
         findings.append(fs.emit("ERROR", "PACK", manifest, 0, "cannot package an unfinished template: remove draft marker after authoring"))
@@ -1030,7 +265,7 @@ def cmd_package(args) -> int:
         return 2
     files, findings = ensure_distributable(folder)
     if any(f["level"] == "ERROR" for f in findings):
-        print_findings(folder, findings)
+        validate.print_findings(folder, findings)
         print("Package blocked; correct errors before trying again.", file=sys.stderr)
         return 1
     out = Path(args.out).expanduser().resolve()
@@ -1107,7 +342,7 @@ def cmd_install(args) -> int:
         boundary = Path.home()
     files, findings = ensure_distributable(folder)
     if any(f["level"] == "ERROR" for f in findings):
-        print_findings(folder, findings)
+        validate.print_findings(folder, findings)
         return 1
     if not args.user:
         rel = Path(".claude") / "skills" if args.agent == "claude" else Path(".agents") / "skills"
@@ -1331,7 +566,7 @@ def _skill_identity(skill: Path, target: str, max_bytes: int | None = None) -> t
         return skill.name, "en"
     meta, _, body_start = fs.parse_frontmatter(text, manifest, C.CLAUDE_CODE_KEYS if target == "claude-code" else frozenset())
     name = meta.get("name") if isinstance(meta.get("name"), str) and meta["name"] else skill.name
-    return name, detect_lang("\n".join(text.splitlines()[body_start:]))
+    return name, lint.detect_lang("\n".join(text.splitlines()[body_start:]))
 
 
 def _under_roots(path, roots) -> str:
@@ -1389,7 +624,7 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
     totals = {"skills": 0, "errors": 0, "warnings": 0, "notes": 0}
     for skill in skills:
         under = next((r for r in real_roots if fs.valid_resolved_under(skill, r)), None)
-        findings = validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under,
+        findings = validate.validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under,
                                   max_file_bytes=C.DOCTOR_MAX_FILE_BYTES, skip_markers=skip_markers)
         codes = []
         for f in findings:
