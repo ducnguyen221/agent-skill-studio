@@ -1627,6 +1627,32 @@ def cmd_package(args) -> int:
     return 0
 
 
+def root_link_in_chain(skill_root: Path, stop: Path):
+    """First link/junction among `skill_root` and its parents strictly below `stop` (HOME or the workspace itself is not checked), else None."""
+    current, stop_norm = Path(skill_root), os.path.normcase(os.path.abspath(stop))
+    while os.path.normcase(os.path.abspath(current)) != stop_norm and current.parent != current:
+        if is_link(current):
+            return current
+        current = current.parent
+    return None
+
+
+def move_aside(src: Path, dst: Path) -> None:
+    """Move the folder `src` to `dst` (same device: rename). Across devices (rename raises OSError) copy first, then delete `src`; a failed copy removes the
+    half-made `dst` and re-raises, so `src` stays whole."""
+    try:
+        os.rename(src, dst)
+        return
+    except OSError:
+        pass
+    try:
+        shutil.copytree(src, dst, symlinks=True)
+    except BaseException:
+        shutil.rmtree(dst, ignore_errors=True)
+        raise
+    shutil.rmtree(src)
+
+
 def cmd_install(args) -> int:
     folder = Path(args.skill).expanduser().resolve()
     if not folder.is_dir():
@@ -1641,6 +1667,7 @@ def cmd_install(args) -> int:
         if not skill_root.parent.is_dir():
             print("ERROR: parent directory not found: %s; nothing was created" % skill_root.parent, file=sys.stderr)
             return 2
+        boundary = Path.home()
     files, findings = ensure_distributable(folder)
     if any(f["level"] == "ERROR" for f in findings):
         print_findings(folder, findings)
@@ -1652,31 +1679,66 @@ def cmd_install(args) -> int:
             print("ERROR: workspace directory not found: %s" % workspace, file=sys.stderr)
             return 2
         skill_root = workspace / rel
+        boundary = workspace
+    linked = root_link_in_chain(skill_root, boundary)
+    if linked is not None:
+        real = os.path.realpath(skill_root)
+        if not args.allow_root_link:
+            print("ERROR: skill folder %s is behind a link (%s); its real location is %s. Nothing was installed. Re-run with --allow-root-link if that is intended."
+                  % (skill_root, linked, real), file=sys.stderr)
+            return 2
+        print("Note: skill folder %s is behind a link (%s); installing into its real location %s" % (skill_root, linked, real))
     dest = skill_root / folder.name
     if dest.resolve() == folder or valid_resolved_under(dest, folder):
         print("ERROR: destination is the source Skill or nested under it; refusing self-overwrite", file=sys.stderr)
         return 1
+    if os.path.lexists(dest) and is_link(dest):  # before exists(): a dangling link is not "there" for exists() and would crash mkdir
+        print("ERROR: symlink destination refused", file=sys.stderr)
+        return 1
     if dest.exists() and not args.force:
         print("ERROR: %s exists; no changes made. Use --force only if you intend replacement." % dest, file=sys.stderr)
         return 1
+    backup = None
     if dest.exists() and args.force:
-        # Refuse symlink/junction targets and back up rather than silently erasing.
-        if is_link(dest):
-            print("ERROR: symlink destination refused", file=sys.stderr)
-            return 1
+        # Back up rather than silently erase; the backup lives next to the skill root, not in it, so the agent never loads it.
         from datetime import datetime, timezone
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        backup = dest.with_name(dest.name + ".backup-" + stamp)
-        if backup.exists():
+        backups_dir = skill_root.parent / ".skill-studio-backups"
+        if os.path.lexists(backups_dir) and is_link(backups_dir):
+            print("ERROR: backup folder %s is a link; nothing was changed" % backups_dir, file=sys.stderr)
+            return 1
+        backup = backups_dir / (dest.name + "-" + stamp)
+        if os.path.lexists(backup):
             print("ERROR: backup collision", file=sys.stderr)
             return 1
-        dest.rename(backup)
+        try:
+            backups_dir.mkdir(exist_ok=True)
+            move_aside(dest, backup)
+        except OSError as exc:
+            print("ERROR: could not back up the existing installation (%s); the old Skill was left in place" % (exc.strerror or type(exc).__name__), file=sys.stderr)
+            return 1
         print("Existing installation backed up to %s" % backup)
     dest.mkdir(parents=True, exist_ok=False)  # creates skill_root itself, never the agent's config parent
-    for source in files:
-        destination = dest / source.relative_to(folder)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+    try:
+        for source in files:
+            destination = dest / source.relative_to(folder)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            inner = link_in_chain(destination.parent, dest)
+            if inner is not None:
+                raise UnsafeOpen("link inside the destination: %s" % inner)
+            info = os.lstat(source)
+            with open_nofollow_read(source, info) as src_handle, create_exclusive(destination) as dst_handle:
+                shutil.copyfileobj(src_handle, dst_handle)
+            os.chmod(destination, stat.S_IMODE(info.st_mode))
+    except (UnsafeOpen, OSError) as exc:
+        shutil.rmtree(dest, ignore_errors=True)
+        if backup is not None:
+            try:
+                os.rename(backup, dest)
+            except OSError:
+                print("ERROR: the old Skill is kept at %s" % backup, file=sys.stderr)
+        print("ERROR: install stopped: %s; no partial Skill was left" % exc, file=sys.stderr)
+        return 1
     print("Installed %s for %s at %s. This copies files; it does not run the agent or its scripts." % (folder.name, args.agent, dest))
     return 0
 
@@ -2578,7 +2640,8 @@ def main(argv: list[str] | None = None) -> int:
     where = p.add_mutually_exclusive_group()
     where.add_argument("--workspace", help="project directory (default .)")
     where.add_argument("--user", action="store_true", help="install into the per-user skill folder (antigravity, codex; not claude); the agent's config folder must already exist")
-    p.add_argument("--force", action="store_true", help="back up and replace existing install")
+    p.add_argument("--force", action="store_true", help="back up (to <skill root parent>/.skill-studio-backups/) and replace existing install")
+    p.add_argument("--allow-root-link", action="store_true", help="install even when the skill folder (or a parent below HOME/the workspace) is a symlink or junction; the real target is printed")
     p.set_defaults(func=cmd_install)
     p = sub.add_parser("sync-template", help="sync source template to packaged Skill asset")
     p.add_argument("--check", action="store_true", help="verify byte-identical mirror without modifications")

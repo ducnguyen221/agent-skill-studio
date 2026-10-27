@@ -172,7 +172,7 @@ python3 studio.py doctor --roots "<dir1>;<dir2>" --json
 
 Plugin chỉ chứa thư mục `skills/`; `evals/` và `tests/` không nằm trong gói.
 
-**Lệnh install sao chép có kiểm tra, không sửa hoặc ghi đè mục tiêu sẵn có nếu không có `--force`** (`--force` sao lưu bản cũ sang `<tên>.backup-<UTC>` rồi thay).
+**Lệnh install sao chép có kiểm tra, không sửa hoặc ghi đè mục tiêu sẵn có nếu không có `--force`** (`--force` chuyển bản cũ sang `<cha của gốc skill>/.skill-studio-backups/<tên>-<UTC>/`, **ngoài** gốc skill để agent không nạp nhầm, rồi in đường đó; khác ổ đĩa thì chép rồi xoá, lỗi thì skill cũ còn nguyên). Gốc skill (hoặc thư mục cha của nó dưới HOME với `--user`, dưới workspace với `--workspace`) là symlink/junction → thoát 2 và nêu đích thật; cờ `--allow-root-link` cho phép có chủ ý và in đích. Đích `<tên>` là link (kể cả dangling) → thoát 1 `symlink destination refused`, có hay không `--force`: tự gỡ link trước khi cài lại.
 
 ```bash
 # Thư mục --workspace phải có sẵn (thiếu thì thoát 2)
