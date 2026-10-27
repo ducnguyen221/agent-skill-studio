@@ -384,7 +384,7 @@ class FmtMoreTests(unittest.TestCase):
         self.assertEqual(studio.classify_md(base / "standards" / "A.md", self.tmp / "elsewhere"), "other")
 
     def test_shipped_process_template_matches_pr1(self):
-        path = ROOT / "templates" / "skill-template-full" / "references" / "PROCESS_TEMPLATE.md"
+        path = ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template-full" / "references" / "PROCESS_TEMPLATE.md"
         self.assertEqual(studio.check_process_shape(path.read_text(encoding="utf-8")), [])
 
     def test_fmt_misplaced_blank_lines_before_frontmatter(self):

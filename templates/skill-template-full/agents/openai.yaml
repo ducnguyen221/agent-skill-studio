@@ -1,3 +1,0 @@
-# Optional, Codex only; delete if unused.
-policy:
-  allow_implicit_invocation: true

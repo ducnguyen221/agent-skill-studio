@@ -406,7 +406,9 @@
       "before": {
         "exit": 0
       },
-      "after": null
+      "after": {
+        "exit": 2
+      }
     },
     "C-version": {
       "exit": 0,
@@ -812,7 +814,9 @@
       "before": {
         "exit": 0
       },
-      "after": null
+      "after": {
+        "exit": 2
+      }
     },
     "E-version": {
       "exit": 0,
@@ -1235,7 +1239,9 @@
       "before": {
         "exit": 0
       },
-      "after": null
+      "after": {
+        "exit": 2
+      }
     },
     "S-version": {
       "exit": 0,

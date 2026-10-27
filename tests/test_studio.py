@@ -392,12 +392,72 @@ class StudioTests(unittest.TestCase):
             self.assertTrue((temp / "skills" / "external-skill" / "SKILL.md").is_file())
             self.assertTrue((temp / "evals" / "external-skill" / "cases.json").is_file())
 
-    def test_template_mirror_matches(self):
-        run = self.run_cli("sync-template", "--check")
-        self.assertEqual(0, run.returncode, run.stdout + run.stderr)
-        self.assertEqual((("skill-template", "skill-template"), ("skill-template-full", "skill-template-full")), studio.TEMPLATE_PAIRS)
-        for src_name, dst_name in studio.TEMPLATE_PAIRS:
-            self.assertEqual([], studio.mirror_diff(ROOT / "templates" / src_name, ROOT / "skills" / "skill-creator-studio" / "assets" / dst_name), src_name)
+    # SPR-02 TK3 (FR2, FR3): test_template_mirror_matches is replaced on purpose, because templates/skill-template* and the
+    # sync-template command are gone; assets/ is the only copy of the scaffolds, so there is no mirror left to compare.
+    def repo_copy(self, base: Path) -> Path:
+        """A small repo made of the live engine skill, the two files repo_root() looks for and a decoy templates/ folder."""
+        repo = base / "repo"
+        shutil.copytree(ROOT / "skills" / "skill-creator-studio", repo / "skills" / "skill-creator-studio", ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copyfile(ROOT / "studio.py", repo / "studio.py")
+        (repo / "standards").mkdir()
+        (repo / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("x\n", encoding="utf-8")
+        (repo / ".claude-plugin").mkdir()
+        (repo / ".claude-plugin" / "plugin.json").write_text("{}\n", encoding="utf-8")
+        for name in ("skill-template", "skill-template-full"):
+            (repo / "templates" / name).mkdir(parents=True)
+            for file in ("SKILL.md", "SKILL.vi.md"):
+                (repo / "templates" / name / file).write_text("---\nname: %s\ndescription: DECOY-TEMPLATE-MARKER\n---\n" % name, encoding="utf-8")
+        return repo
+
+    def test_new_in_a_repo_takes_the_scaffold_from_assets(self):
+        """bắt-lỗi: `new` run inside a repo copy that has a different templates/skill-template* uses the engine's assets/ scaffold."""
+        with tempfile.TemporaryDirectory() as t:
+            repo = self.repo_copy(Path(t))
+            for extra in ((), ("--full",), ("--lang", "vi")):
+                with self.subTest(extra=extra):
+                    name = "demo-" + ("full" if extra == ("--full",) else "vi" if extra else "min")
+                    run = subprocess.run([sys.executable, "-X", "utf8", str(repo / "studio.py"), "new", name, "--description", "Demo skill for template tests. Use when testing.",
+                                          "--output", str(Path(t) / "out" / "skills"), "--eval-root", str(Path(t) / "out" / "evals"), *extra],
+                                         cwd=repo, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+                    text = (Path(t) / "out" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                    self.assertNotIn("DECOY-TEMPLATE-MARKER", text)
+                    if extra == ("--full",):
+                        self.assertTrue((Path(t) / "out" / "skills" / name / "references" / "PROCESS_TEMPLATE.md").is_file())
+                    else:
+                        self.assertIn("## Gotchas", text)
+
+    def test_get_template_always_reads_assets_of_the_engine(self):
+        """bắt-lỗi: get_template points into the engine's own assets/ folder, even when the engine runs inside a repo that has templates/."""
+        assets = (ROOT / "skills" / "skill-creator-studio" / "assets").resolve()
+        self.assertEqual(assets / "skill-template" / "SKILL.md", studio.get_template().resolve())
+        self.assertEqual(assets / "skill-template" / "SKILL.vi.md", studio.get_template(False, "vi").resolve())
+        self.assertEqual(assets / "skill-template-full", studio.get_template(True).resolve())
+
+    def test_repo_root_needs_plugin_manifest_and_standard_not_templates(self):
+        """bắt-lỗi: repo_root accepts a folder with .claude-plugin/plugin.json and the authoring standard (no templates/), and refuses one without the manifest."""
+        with tempfile.TemporaryDirectory() as t:
+            base = Path(t).resolve()
+            good, no_manifest = base / "good", base / "no-manifest"
+            for repo in (good, no_manifest):
+                (repo / "standards").mkdir(parents=True)
+                (repo / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("x", encoding="utf-8")
+                (repo / "skills" / "s").mkdir(parents=True)
+            (good / ".claude-plugin").mkdir()
+            (good / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
+            (no_manifest / "templates" / "skill-template").mkdir(parents=True)
+            (no_manifest / "templates" / "skill-template" / "SKILL.md").write_text("x", encoding="utf-8")
+            self.assertEqual(good, studio.repo_root(good / "skills" / "s"))
+            self.assertIsNone(studio.repo_root(no_manifest / "skills" / "s"))
+
+    def test_sync_template_is_not_a_command_any_more(self):
+        """bắt-lỗi: `studio.py sync-template [--check]` is an invalid command: argparse exit 2 and the command is not offered as a choice."""
+        for argv in (("sync-template", "--check"), ("sync-template",)):
+            with self.subTest(argv=argv):
+                run = self.run_cli(*argv)
+                self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+                self.assertIn("invalid choice", run.stderr)
+                self.assertNotIn("sync-template", run.stderr.split("choose from")[-1])
 
     def test_registry_matches_skill_folders(self):
         obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
@@ -634,7 +694,7 @@ def nonblank(path: Path) -> int:
 
 
 class TemplateTests(unittest.TestCase):
-    """FR10 / FR19: minimal EN/VI template, --full, mirror_diff and install --user (SPR-33 TK6)."""
+    """FR10 / FR19: minimal EN/VI template, --full and install --user (SPR-33 TK6)."""
 
     def run_cli(self, *args):
         return self.run_cli_env({}, *args)
@@ -730,10 +790,10 @@ class TemplateTests(unittest.TestCase):
 
     def test_minimal_templates_stay_under_20_nonblank_lines(self):
         """SC4: both default templates stay small; the Vietnamese one mirrors the English headings."""
-        counts = [nonblank(ROOT / "templates" / "skill-template" / f) for f in ("SKILL.md", "SKILL.vi.md")]
+        counts = [nonblank(ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template" / f) for f in ("SKILL.md", "SKILL.vi.md")]
         self.assertEqual([14, 14], counts)
-        en = (ROOT / "templates" / "skill-template" / "SKILL.md").read_text(encoding="utf-8")
-        vi = (ROOT / "templates" / "skill-template" / "SKILL.vi.md").read_text(encoding="utf-8")
+        en = (ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template" / "SKILL.md").read_text(encoding="utf-8")
+        vi = (ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template" / "SKILL.vi.md").read_text(encoding="utf-8")
         for heading in ("# Skill Template", "## Gotchas", "## References"):
             self.assertIn(heading, en)
             self.assertIn(heading, vi)
@@ -759,20 +819,6 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(base / "SKILL.vi.md", studio.get_template(False, "vi"))
         self.assertEqual(base.parent / "skill-template-full", studio.get_template(True))
         self.assertEqual(base.parent / "skill-template-full", studio.get_template(full=True, lang="en"))
-
-    def test_mirror_diff_detects_extra_file(self):
-        with tempfile.TemporaryDirectory() as t:
-            src, dst = Path(t) / "src", Path(t) / "dst"
-            for root in (src, dst):
-                (root / "sub").mkdir(parents=True)
-                (root / "same.txt").write_bytes(b"same")
-                (root / "sub" / "keep.txt").write_bytes(b"keep")
-            self.assertEqual([], studio.mirror_diff(src, dst))
-            (dst / "extra.txt").write_bytes(b"x")
-            (dst / "sub" / "keep.txt").write_bytes(b"changed")
-            (src / "missing.txt").write_bytes(b"m")
-            self.assertEqual(["extra.txt", "missing.txt", "sub/keep.txt"], studio.mirror_diff(src, dst))
-            self.assertEqual(["missing.txt", "same.txt", "sub/keep.txt"], studio.mirror_diff(src, Path(t) / "absent"))
 
     def test_package_includes_agents_dir(self):
         with tempfile.TemporaryDirectory() as t:
@@ -840,12 +886,12 @@ class TemplateTests(unittest.TestCase):
     def test_full_and_minimal_templates_validate_clean(self):
         """Round-2 fix 1: the full template is named like its folder, so validate has no FM2."""
         for folder in ("skill-template", "skill-template-full"):
-            findings = studio.validate_skill(ROOT / "templates" / folder)
+            findings = studio.validate_skill(ROOT / "skills" / "skill-creator-studio" / "assets" / folder)
             self.assertEqual([], [f for f in findings if f["level"] == "ERROR"], folder)
-            run = self.run_cli("validate", ROOT / "templates" / folder)
+            run = self.run_cli("validate", ROOT / "skills" / "skill-creator-studio" / "assets" / folder)
             self.assertEqual(0, run.returncode, run.stdout + run.stderr)
             self.assertIn(": 0 errors;", run.stdout)
-        self.assertIn("name: skill-template-full\n", (ROOT / "templates" / "skill-template-full" / "SKILL.md").read_text(encoding="utf-8"))
+        self.assertIn("name: skill-template-full\n", (ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template-full" / "SKILL.md").read_text(encoding="utf-8"))
 
     def test_new_full_does_not_leak_template_suffix_into_name(self):
         with tempfile.TemporaryDirectory() as t:
@@ -1009,7 +1055,7 @@ class TemplateTests(unittest.TestCase):
             code, _, err = call(lone_env, "install", skill, "--agent", "antigravity", "--user")
             self.assertEqual((2, True, []), (code, "parent directory not found" in err, list(lone.iterdir())))
 
-    def test_new_and_sync_in_process(self):
+    def test_new_in_process(self):
         import contextlib
         import io
 
@@ -1032,11 +1078,9 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual((2, True), (code, "English-only" in err))
             self.assertEqual({"SKILL.md"}, {p.name for p in (base / "skills" / "ip-vi").iterdir()})
             self.assertTrue((base / "skills" / "ip-full" / "agents" / "openai.yaml").is_file())
-        code, out, err = call("sync-template", "--check")
-        self.assertEqual(0, code, out + err)
 
-    def test_install_workspace_and_sync_branches_in_process(self):
-        """Covers the --workspace path of install and both sync-template modes without touching the repo copies."""
+    def test_install_workspace_branches_in_process(self):
+        """Covers the --workspace path of install without touching the repo copies."""
         import contextlib
         import io
         from unittest import mock
@@ -1057,12 +1101,6 @@ class TemplateTests(unittest.TestCase):
             self.assertTrue((ws / ".claude" / "skills" / "data-quality-audit" / "SKILL.md").is_file())
             code, _, err = call("install", ROOT / "skills" / "data-quality-audit", "--agent", "codex", "--workspace", Path(t) / "absent")
             self.assertEqual((2, True), (code, "workspace directory not found" in err))
-        with mock.patch.object(studio, "mirror_diff", return_value=["SKILL.md"]):
-            code, _, err = call("sync-template", "--check")
-        self.assertEqual((1, True), (code, "template mirror differs: skill-template/SKILL.md" in err))
-        with mock.patch.object(studio.shutil, "rmtree") as rm, mock.patch.object(studio.shutil, "copytree") as cp:
-            code, out, _ = call("sync-template")
-        self.assertEqual((0, 2, 2, True), (code, rm.call_count, cp.call_count, "Synced 2 canonical templates" in out))
 
 
 class AgentskillsExportTests(unittest.TestCase):
@@ -1465,8 +1503,8 @@ class AgentskillsExportTests(unittest.TestCase):
             repo = Path(t) / "repo"
             (repo / "standards").mkdir(parents=True)
             (repo / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("x", encoding="utf-8")
-            (repo / "templates" / "skill-template").mkdir(parents=True)
-            (repo / "templates" / "skill-template" / "SKILL.md").write_text("x", encoding="utf-8")
+            (repo / ".claude-plugin").mkdir()
+            (repo / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
             (repo / "evals").mkdir()
             other = Path(t) / "other"
             other.mkdir()

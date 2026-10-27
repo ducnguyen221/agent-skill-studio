@@ -84,8 +84,6 @@ EXPORT_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REJECT_NAMES = {".env", ".env.local", "id_rsa", "id_ed25519", "credentials.json", "secrets.json"}
 REJECT_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
 TEMPLATE_LANGS = ("en", "vi")
-# (source dir under templates/, mirror dir under skills/skill-creator-studio/assets/)
-TEMPLATE_PAIRS = (("skill-template", "skill-template"), ("skill-template-full", "skill-template-full"))
 PROFILES = ("portable", "opcos")
 DOCTOR_EXCLUDE_PARTS = (".claude/skills", ".agents/skills", ".worktrees", ".ads-worktrees", ".claude/worktrees", "node_modules", ".tmp", "__pycache__")
 DOCTOR_PRUNE_SILENT = frozenset({".git", ".venv", ".pytest_cache", ".mypy_cache"})  # never skills, never worth a skipped[] line
@@ -225,7 +223,7 @@ def parse_frontmatter(text: str, path: Path, opaque_keys: frozenset = frozenset(
 
 def repo_root(start: Path) -> Path | None:
     for candidate in [start.resolve()] + list(start.resolve().parents):
-        if (candidate / "standards" / "SKILL_AUTHORING_STANDARD.md").is_file() and (candidate / "templates" / "skill-template" / "SKILL.md").is_file():
+        if (candidate / ".claude-plugin" / "plugin.json").is_file() and (candidate / "standards" / "SKILL_AUTHORING_STANDARD.md").is_file():
             return candidate
     return None
 
@@ -1466,23 +1464,10 @@ def print_findings(folder: Path, findings: list[dict]) -> None:
 
 def get_template(full: bool = False, lang: str = "en") -> Path:
     """Minimal template: the SKILL.md / SKILL.vi.md file. Full template: the skill-template-full directory."""
-    root = repo_root(Path(__file__).resolve())
-    base = root / "templates" if root is not None else Path(__file__).resolve().parents[1] / "assets"
+    base = Path(__file__).resolve().parent.parent / "assets"
     if full:
         return base / "skill-template-full"
     return base / "skill-template" / ("SKILL.vi.md" if lang == "vi" else "SKILL.md")
-
-
-def mirror_diff(src: Path, dst: Path) -> list:
-    """Relative paths that are missing from dst, differ in bytes, or exist only in dst (an extra file is drift too)."""
-    def files(base: Path) -> dict:
-        if not base.is_dir():
-            return {}
-        return {p.relative_to(base).as_posix(): p for p in base.rglob("*")
-                if p.is_file() and "__pycache__" not in p.relative_to(base).parts}
-    left, right = files(src), files(dst)
-    diff = {rel for rel, p in left.items() if rel not in right or p.read_bytes() != right[rel].read_bytes()}
-    return sorted(diff | (set(right) - set(left)))
 
 
 def user_skill_root(agent: str) -> Path:
@@ -1844,29 +1829,6 @@ def cmd_install(args) -> int:
         print("ERROR: install stopped: %s; no partial Skill was left" % exc, file=sys.stderr)
         return 1
     print("Installed %s for %s at %s. This copies files; it does not run the agent or its scripts." % (folder.name, args.agent, dest))
-    return 0
-
-
-def cmd_sync(args) -> int:
-    root = repo_root(Path(__file__))
-    if root is None:
-        print("ERROR: sync-template is for Studio source repository only", file=sys.stderr)
-        return 2
-    assets = root / "skills" / "skill-creator-studio" / "assets"
-    pairs = [(root / "templates" / a, assets / b) for a, b in TEMPLATE_PAIRS]
-    if args.check:
-        drift = [(src.name, rel) for src, dst in pairs for rel in mirror_diff(src, dst)]
-        for name, rel in drift:
-            print("ERROR: template mirror differs: %s/%s" % (name, rel), file=sys.stderr)
-        if drift:
-            return 1
-        print("Template distribution mirror is in sync.")
-        return 0
-    for src, dst in pairs:
-        if dst.exists():
-            shutil.rmtree(dst)
-        shutil.copytree(src, dst)
-    print("Synced %d canonical templates to bundled skill assets." % len(pairs))
     return 0
 
 
@@ -2785,9 +2747,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--force", action="store_true", help="back up (to <skill root parent>/.skill-studio-backups/) and replace existing install")
     p.add_argument("--allow-root-link", action="store_true", help="install even when the skill folder (or a parent below HOME/the workspace) is a symlink or junction; the real target is printed")
     p.set_defaults(func=cmd_install)
-    p = sub.add_parser("sync-template", help="sync source template to packaged Skill asset")
-    p.add_argument("--check", action="store_true", help="verify byte-identical mirror without modifications")
-    p.set_defaults(func=cmd_sync)
     p = sub.add_parser("doctor", help="report-only scan of many skill roots (not Claude Code's /skill-doctor); exit 0 clean, 1 findings, 2 cannot scan")
     p.add_argument("--roots", help="skill roots separated by ';' (default: the repo's skills/; outside the repo --roots or --roots-file is required)")
     p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment (at the line start or after whitespace)")

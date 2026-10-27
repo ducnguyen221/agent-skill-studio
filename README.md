@@ -49,7 +49,7 @@ Agent Skill Studio/
 ├── AGENTS.md                    # Chỉ dẫn repo chung cho Codex/Antigravity
 ├── CLAUDE.md                    # Claude Code: import AGENTS.md và thêm adapter
 ├── GEMINI.md                    # Antigravity-specific notes, không sao chép rule chung
-├── studio.py                    # CLI: new / validate / audit / evals / package / install / sync-template / doctor / fmt
+├── studio.py                    # CLI: new / validate / audit / evals / package / install / doctor / fmt
 ├── .claude-plugin/              # Manifest plugin Claude Code (plugin.json, marketplace.json)
 ├── .codex-plugin/               # Manifest plugin Codex (plugin.json)
 ├── standards/
@@ -77,16 +77,14 @@ Agent Skill Studio/
 │   ├── ANTIGRAVITY_ADAPTER.md
 │   └── CAPABILITY_MATRIX.md
 ├── templates/
-│   ├── README.md                # Hai template và khi nào dùng
-│   ├── project/                 # Mẫu AGENTS.md, CLAUDE.md, GEMINI.md
-│   ├── skill-template/          # Mặc định tối giản: SKILL.md (en) và SKILL.vi.md (vi)
-│   └── skill-template-full/     # --full: SKILL.md, references/, scripts/, assets/, agents/
+│   ├── README.md                # Hai template (ở skills/skill-creator-studio/assets/) và khi nào dùng
+│   └── project/                 # Mẫu AGENTS.md, CLAUDE.md, GEMINI.md
 ├── skills/
 │   ├── skill-creator-studio/    # Skill meta-factory: NEW / AUDIT / REFINE
 │   │   ├── SKILL.md
 │   │   ├── references/
 │   │   ├── scripts/studio.py    # CLI có thể chạy cả khi Skill được copy sang repo khác
-│   │   └── assets/              # skill-template/ và skill-template-full/: bản phân phối, được CI đồng bộ
+│   │   └── assets/              # skill-template/ (SKILL.md en, SKILL.vi.md vi), skill-template-full/ (--full): bản duy nhất của hai khuôn
 │   └── data-quality-audit/     # Skill ví dụ có script xử lý CSV thật
 ├── evals/                      # KHÔNG được mang vào package Skill
 │   ├── RUNBOOK.md
@@ -109,7 +107,7 @@ Agent Skill Studio/
 └── .github/workflows/ci.yml    # Validation + unit tests + packaging smoke test
 ```
 
-> **Ghi chú cây đích:** cây trên là hiện trạng của repo. Sprint áp dụng kế tiếp (SPEC 9.15 của SPR-33) mới dời: `adapters/*` thành `docs/adapters.md`; xoá `registry/SKILL_CATALOG.md` (giữ `catalog.json`); `QA_REPORT.md`, `ECOSYSTEM.md`, `standards/ROBONUGGETS_46_RULE_MAP.md` vào `docs/`; `templates/project/` thành `templates/starter-project/`; `CLAUDE.md` gốc còn một dòng. Các đường API cứng (`studio.py`, `skills/*`, `standards/SKILL_AUTHORING_STANDARD.md`, `templates/skill-template/SKILL.md`, tên repo) đứng yên. Tới lúc đó, đường dẫn trong tài liệu này vẫn đúng như đã ghi.
+> **Ghi chú cây đích:** cây trên là hiện trạng của repo. Sprint áp dụng kế tiếp (SPEC 9.15 của SPR-33) mới dời: `adapters/*` thành `docs/adapters.md`; xoá `registry/SKILL_CATALOG.md` (giữ `catalog.json`); `QA_REPORT.md`, `ECOSYSTEM.md`, `standards/ROBONUGGETS_46_RULE_MAP.md` vào `docs/`; `templates/project/` thành `templates/starter-project/`; `CLAUDE.md` gốc còn một dòng. Các đường API cứng (`studio.py`, `skills/*`, `standards/SKILL_AUTHORING_STANDARD.md`, tên repo) đứng yên. Tới lúc đó, đường dẫn trong tài liệu này vẫn đúng như đã ghi.
 
 ### `references/`, `scripts/`, `assets/`, `evals/` khác nhau ra sao?
 
@@ -262,10 +260,10 @@ Không bao giờ đọc nội dung placeholder cloud. `PINNED` một mình (file
 Trước khi phát hành: `python3 studio.py doctor`, rồi `fmt --check` trên danh sách file của đợt (13 đường của SPR-33, phải thoát 0 và báo `0 skipped`):
 
 ```bash
-python3 studio.py fmt --check standards/MEMO-SKILL-V0.md standards/SKILL_AUTHORING_STANDARD.md standards/SOURCE_TRACEABILITY.md standards/EVALUATION_STANDARD.md standards/CORE_STANDARD.md standards/README.md standards/VIETNAMESE_SKILL_WRITING.md content templates/skill-template templates/skill-template-full templates/README.md
+python3 studio.py fmt --check standards/MEMO-SKILL-V0.md standards/SKILL_AUTHORING_STANDARD.md standards/SOURCE_TRACEABILITY.md standards/EVALUATION_STANDARD.md standards/CORE_STANDARD.md standards/README.md standards/VIETNAMESE_SKILL_WRITING.md content skills/skill-creator-studio/assets/skill-template skills/skill-creator-studio/assets/skill-template-full templates/README.md
 ```
 
-`fmt --check` không kèm đường thì thoát 2; `fmt --check --all` hiện thoát 1 vì còn dòng cũ và file chuẩn không được chạm trong đợt này. Sau đó `validate --all --require-evals`, `evals --all`, `sync-template --check` và `python3 -m unittest discover -s tests`. Ghi số đo vào [QA_REPORT.md](QA_REPORT.md), thêm mục vào [CHANGELOG.md](CHANGELOG.md) (chỉ thêm, không ghi đè), rồi mới tăng version. `model_evaluated` giữ `false` cho đến khi `registry/catalog.json` có đủ bằng chứng đếm lại được.
+`fmt --check` không kèm đường thì thoát 2; `fmt --check --all` hiện thoát 1 vì còn dòng cũ và file chuẩn không được chạm trong đợt này. Sau đó `validate --all --require-evals`, `evals --all` và `python3 -m unittest discover -s tests`. Ghi số đo vào [QA_REPORT.md](QA_REPORT.md), thêm mục vào [CHANGELOG.md](CHANGELOG.md) (chỉ thêm, không ghi đè), rồi mới tăng version. `model_evaluated` giữ `false` cho đến khi `registry/catalog.json` có đủ bằng chứng đếm lại được.
 
 ## Đọc tài liệu theo nhiệm vụ
 
