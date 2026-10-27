@@ -218,7 +218,7 @@ Hướng dẫn agent sử dụng Skill factory: [skills/skill-creator-studio/SKI
 4. `evals/<name>/cases.json` hợp lệ, có ít nhất 3 ca và có positive/negative. `studio.py evals` chỉ test **schema**, không chấm được model.
 5. Chạy unit tests / CI, test thật với agent mục tiêu theo [evals/RUNBOOK.md](evals/RUNBOOK.md). Định nghĩa: [Không pass giả](standards/EVALUATION_STANDARD.md#không-pass-giả-not_run).
 6. Với Skill nguy hiểm, policy gate/permissions độc lập phải chạy thành công; chỉ nhắc trong Markdown **không đủ**.
-7. `validate` kiểm cả chuẩn viết (SK-14, SK-15 và các mã như `FM5`, `FM6`, `CT10`, `DS4`, `DS5`, `ST2`, `ST3`, `ST5`, `ST7`, `ST8`, `SZ1`, `SZ2`); thân tiếng Việt còn qua lint `VI1`–`VI5` ([VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md)). Đa số là WARN, chỉ lỗi cấu trúc mới chặn.
+7. `validate` kiểm cả chuẩn viết (SK-14, SK-15 và các mã như `FM5`, `FM6`, `CT10`, `CT11`, `DS4`, `DS5`, `ST2`, `ST3`, `ST5`, `ST7`, `ST8`, `SZ1`, `SZ2`); thân tiếng Việt còn qua lint `VI1`–`VI5` ([VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md)). Đa số là WARN, chỉ lỗi cấu trúc mới chặn.
 8. `python3 studio.py fmt --check` và `python3 studio.py doctor` là hai lệnh chỉ báo cáo, chạy được bất cứ lúc nào.
 
 ## Xuất fixture (`evals <skill> --export agentskills`): mã `EX*` và rủi ro còn lại

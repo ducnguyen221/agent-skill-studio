@@ -752,13 +752,13 @@ class DoctorHardeningTests(unittest.TestCase):
             with mock.patch.object(builtins, "open", spy), mock.patch.object(io, "open", spy):
                 code, out, err = run("--roots", str(root), "--json")
             report = json.loads(out)
-            self.assertEqual(code, 0, (out, err))
+            self.assertEqual(code, 1, (out, err))  # SPR-01 TK6: an unread SKILL.md is an SZ1 ERROR
             by_name = {s["name"]: s for s in report["skills"]}
             ref_codes = [(c["code"], c["level"], c["file"]) for c in by_name["big-ref"]["codes"]]
             self.assertIn(("SZ1", "WARN", "references/BIG.md"), ref_codes)
             self.assertNotIn("ST5", [c[0] for c in ref_codes])
             man_codes = [(c["code"], c["level"], c["file"]) for c in by_name["big-manifest"]["codes"]]
-            self.assertEqual(man_codes, [("SZ1", "WARN", "SKILL.md")], "an oversized SKILL.md is not linted")
+            self.assertEqual(man_codes, [("SZ1", "ERROR", "SKILL.md")], "an oversized SKILL.md is not linted")
             limited = {Path(s["path"]).name for s in report["skipped"] if s["reason"] == "limit"}
             self.assertEqual(limited, {"BIG.md", "SKILL.md"})
             big_reads = [(p, n) for p, n in reads if p.endswith("BIG.md") or "big-manifest" in p]

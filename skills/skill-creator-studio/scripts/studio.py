@@ -1273,7 +1273,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     except UnicodeError:
         return [emit("ERROR", "FM1", manifest, 0, "SKILL.md must be UTF-8 text")]
     if too_big:
-        return [emit("WARN", "SZ1", manifest, 0, "SKILL.md is larger than %d bytes; not read or linted" % max_file_bytes)]
+        return [emit("ERROR", "SZ1", manifest, 0, "SKILL.md is larger than %d bytes; not read or linted, so it cannot pass" % max_file_bytes)]
     claude = target == "claude-code"
     meta, findings, body_start = parse_frontmatter(text, manifest, CLAUDE_CODE_KEYS if claude else frozenset())
     all_lines = text.splitlines()
@@ -1852,7 +1852,7 @@ def _is_excluded(parts: tuple, include_cache: bool) -> bool:
 
 
 def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, skip_markers: tuple = ()) -> list[Path]:
-    """Absolute root paths from --roots (`;` separated) and --roots-file (one per line, `#` comments).
+    """Absolute root paths from --roots (`;` separated) and --roots-file (one per line; `#` starts a comment, also after a path).
     Without either, the repo's skills/ is the root; outside the repo that is an error. A path in a cloud or secret zone is
     returned without being looked at (doctor reports it as skipped); any other root must be an existing directory and not too
     broad (a drive root, the home folder or a folder above it). A --roots-file with a secret-looking name is refused unread, and
@@ -1870,7 +1870,10 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
             raise ValueError("cannot read --roots-file %s: not UTF-8 text" % roots_file)
         except OSError as exc:
             raise ValueError("cannot read --roots-file %s: %s" % (roots_file, exc.strerror or type(exc).__name__))
-        items += [(x.strip(), "--roots-file line %d" % number) for number, x in enumerate(lines, 1) if x.strip() and not x.lstrip().startswith("#")]
+        for number, raw in enumerate(lines, 1):
+            line = re.sub(r"\s+#.*$", "", raw.strip())  # a comment starts at '#' at the line start or after whitespace; 'a#b' stays a path
+            if line and not line.startswith("#"):
+                items.append((line, "--roots-file line %d" % number))
     if not items:
         if repo is None:
             raise ValueError("outside the Studio repository doctor needs --roots or --roots-file")
@@ -1982,21 +1985,39 @@ def _skill_identity(skill: Path, target: str, max_bytes: int | None = None) -> t
     return name, detect_lang("\n".join(text.splitlines()[body_start:]))
 
 
+def _under_roots(path, roots) -> str:
+    """`path` relative to the first of the report's `roots` that holds it (posix, case-folded on Windows), else `path` as written:
+    a baseline taken in another checkout of the same tree still matches."""
+    text = path if isinstance(path, str) else ""
+    for root in roots if isinstance(roots, list) else []:
+        spellings = [str(root).rstrip("/")]
+        try:
+            spellings.append(Path(str(root)).resolve().as_posix().rstrip("/"))  # a root given by an 8.3 or linked name; skills are listed by real path
+        except (OSError, RuntimeError):
+            pass
+        for base in spellings:
+            head, same = text[:len(base) + 1], base + "/"
+            if base and (head.lower() == same.lower() if os.name == "nt" else head == same):
+                return text[len(base) + 1:]
+    return text
+
+
 def _code_counts(report: dict) -> dict:
-    """{(skill path, code): times} over ERROR and WARN findings (a NOTE is information, never "new")."""
+    """{(skill path under its root, code): times} over ERROR and WARN findings (a NOTE is information, never "new")."""
     counts: dict = {}
     for skill in report.get("skills", []):
         for item in skill.get("codes", []):
             if item.get("level") in ("ERROR", "WARN"):
-                key = (skill.get("path"), item.get("code"))
+                key = (_under_roots(skill.get("path"), report.get("roots")), item.get("code"))
                 counts[key] = counts.get(key, 0) + 1
     return counts
 
 
 def diff_baseline(current: dict, baseline: dict) -> list[dict]:
-    """The (skill, code) pairs that occur more often in `current` than in `baseline`."""
+    """The (skill, code) pairs that occur more often in `current` than in `baseline`; skills are matched by their path under the report roots."""
     before = _code_counts(baseline)
-    return [{"path": path, "code": code, "before": before.get((path, code), 0), "after": after}
+    shown = {_under_roots(skill.get("path"), current.get("roots")): skill.get("path") for skill in current.get("skills", [])}
+    return [{"path": shown.get(path, path), "code": code, "before": before.get((path, code), 0), "after": after}
             for (path, code), after in sorted(_code_counts(current).items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1])))
             if after > before.get((path, code), 0)]
 
@@ -2724,7 +2745,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_sync)
     p = sub.add_parser("doctor", help="report-only scan of many skill roots (not Claude Code's /skill-doctor); exit 0 clean, 1 findings, 2 cannot scan")
     p.add_argument("--roots", help="skill roots separated by ';' (default: the repo's skills/; outside the repo --roots or --roots-file is required)")
-    p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment")
+    p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment (at the line start or after whitespace)")
     p.add_argument("--profile", choices=PROFILES, default="portable", help="opcos: a link inside the scanned root is a WARN, provenance keys are WARN, missing metadata.opcos_* is a NOTE")
     p.add_argument("--target", choices=TARGETS, default="portable")
     p.add_argument("--include-cache", action="store_true", help="also scan folders whose name contains 'cache'")
