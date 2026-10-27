@@ -1879,6 +1879,14 @@ def _is_excluded(parts: tuple, include_cache: bool) -> bool:
     return not include_cache and "cache" in low[-1]
 
 
+def _is_dir_quiet(path: Path) -> bool:
+    """Path.is_dir() that also treats an OSError the stdlib does not swallow (ENAMETOOLONG on POSIX) as 'not a directory'."""
+    try:
+        return path.is_dir()
+    except OSError:
+        return False
+
+
 def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, skip_markers: tuple = ()) -> list[Path]:
     """Absolute root paths from --roots (`;` separated) and --roots-file (one per line; `#` starts a comment, also after a path).
     Without either, the repo's skills/ is the root; outside the repo that is an error. A path in a cloud or secret zone is
@@ -1914,7 +1922,7 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
         path = Path(os.path.abspath(os.path.expanduser(item)))
         if root_too_broad(path, markers):
             raise ValueError("root too broad; pass narrower roots (not a drive root, the home folder or a folder above it): %s" % label)
-        if not zone_reason(path, markers) and not path.is_dir():
+        if not zone_reason(path, markers) and not _is_dir_quiet(path):
             raise ValueError("root not found or not a directory: %s" % label)
         found.append(path)
     return found

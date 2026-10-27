@@ -111,23 +111,23 @@ class MoveAsideTests(unittest.TestCase):
         for n in ("a.md", "sub/b.md", "z.md"):
             (self.src / n).write_text(n, encoding="utf-8")
 
-    def test_bat_loi_non_exdev_rename_failure_keeps_the_old_folder_whole(self):
-        """bắt-lỗi: a rename failing for a reason other than another device (a locked file) does not copy-then-delete; src stays complete, no half dst."""
+    def test_don_vi_ham_moi_non_exdev_rename_failure_keeps_the_old_folder_whole(self):
+        """đơn-vị-hàm-mới (move_aside does not exist at df875ce): a rename failing for a reason other than another device (a locked file) does not copy-then-delete; src stays complete, no half dst."""
         with mock.patch.object(os, "rename", side_effect=PermissionError(errno.EACCES, "in use")):
             with self.assertRaises(PermissionError):
                 studio.move_aside(self.src, self.dst)
         self.assertEqual(["a.md", "sub", "z.md"], sorted(os.listdir(self.src)))
         self.assertFalse(self.dst.exists())
 
-    def test_tuong_duong_exdev_copies_then_removes(self):
-        """tương-đương: across devices the folder is copied and the source removed (as before)."""
+    def test_don_vi_ham_moi_exdev_copies_then_removes(self):
+        """đơn-vị-hàm-mới (move_aside does not exist at df875ce): across devices the folder is copied and the source removed (as before)."""
         with mock.patch.object(os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")):
             studio.move_aside(self.src, self.dst)
         self.assertFalse(self.src.exists())
         self.assertEqual(["a.md", "sub", "z.md"], sorted(os.listdir(self.dst)))
 
-    def test_bat_loi_failed_delete_after_copy_reports_the_real_state(self):
-        """bắt-lỗi: copy done but the old folder cannot be fully removed -> a distinct error that names the backup; the backup stays whole."""
+    def test_don_vi_ham_moi_failed_delete_after_copy_reports_the_real_state(self):
+        """đơn-vị-hàm-mới (MoveAsideError does not exist at df875ce): copy done but the old folder cannot be fully removed -> a distinct error that names the backup; the backup stays whole."""
         with mock.patch.object(os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")), \
                 mock.patch.object(studio.shutil, "rmtree", side_effect=PermissionError(errno.EACCES, "in use")):
             with self.assertRaises(studio.MoveAsideError) as ctx:
@@ -160,8 +160,8 @@ class FmtIdentityTests(unittest.TestCase):
         self.path = Path(self._tmp.name) / "SKILL.md"
         self.path.write_bytes(self.DIRTY.encode("utf-8"))
 
-    def test_bat_loi_fmt_passes_the_listing_identity_to_every_read(self):
-        """bắt-lỗi: fmt reads (--check) and backs up (--fix) with expect_stat set, so Windows compares the opened handle with the checked file too."""
+    def test_don_vi_ham_moi_fmt_passes_the_listing_identity_to_every_read(self):
+        """đơn-vị-hàm-mới (open_nofollow_read does not exist at df875ce): fmt reads (--check) and backs up (--fix) with expect_stat set, so Windows compares the opened handle with the checked file too."""
         calls = []
         real = studio.open_nofollow_read
 
@@ -192,7 +192,7 @@ class FmtIdentityTests(unittest.TestCase):
 
 class ExportCleanupTests(unittest.TestCase):
     def test_bat_loi_existing_link_like_name_is_a_clash_and_survives(self):
-        """bắt-lỗi: a name that lexists but not exists() (a dangling link) counts as taken: EX5, and the cleanup loop never removes it."""
+        """bắt-lỗi (hồi quy trong sprint: red at a57c4e4; df875ce has no such export): a name that lexists but not exists() (a dangling link) counts as taken: EX5, and the cleanup loop never removes it."""
         with tempfile.TemporaryDirectory() as t:
             out = Path(t) / "out"
             argv = ("evals", "data-quality-audit", "--export", "agentskills", "--out", str(out))
@@ -216,7 +216,7 @@ class ExportCleanupTests(unittest.TestCase):
 
 class RootsFileCommentTimeTests(unittest.TestCase):
     def test_bat_loi_roots_file_comment_strip_is_linear(self):
-        """bắt-lỗi: a line of one word, 40000 blanks and another word is read in well under a second (the old regex took ~2 s)."""
+        """bắt-lỗi (hồi quy trong sprint: green at df875ce, which had no comment support; red at a57c4e4, ~2.4 s): a line of one word, 40000 blanks and another word is read in well under a second."""
         with tempfile.TemporaryDirectory() as t:
             listing = Path(t) / "roots.txt"
             listing.write_text("a" + " " * 40000 + "b\n", encoding="utf-8")
@@ -225,8 +225,8 @@ class RootsFileCommentTimeTests(unittest.TestCase):
                 studio.parse_roots(None, str(listing), None)
             self.assertLess(time.perf_counter() - started, 0.5)
 
-    def test_tuong_duong_comment_forms(self):
-        """tương-đương: trailing comment after blanks is cut, a '#' inside a name stays."""
+    def test_bat_loi_comment_forms(self):
+        """bắt-lỗi (red at df875ce: no comment support): trailing comment after blanks is cut, a '#' inside a name stays."""
         with tempfile.TemporaryDirectory() as t:
             base = Path(t)
             (base / "a#b").mkdir()
@@ -234,6 +234,16 @@ class RootsFileCommentTimeTests(unittest.TestCase):
             listing = base / "roots.txt"
             listing.write_text("# head\n%s   # note\n%s\n" % (base / "plain", base / "a#b"), encoding="utf-8")
             self.assertEqual([base / "plain", base / "a#b"], studio.parse_roots(None, str(listing), None))
+
+
+class ParseRootsOsErrorTests(unittest.TestCase):
+    def test_bat_loi_roots_file_line_too_long_for_the_os_is_a_value_error(self):
+        """bắt-lỗi (hồi quy trong sprint: red on POSIX at 77fd1e1, ENAMETOOLONG traceback): an OSError from is_dir() is 'root not found', not a crash."""
+        with tempfile.TemporaryDirectory() as t:
+            with mock.patch.object(Path, "is_dir", side_effect=OSError(errno.ENAMETOOLONG, "File name too long")):
+                with self.assertRaises(ValueError) as ctx:
+                    studio.parse_roots(str(Path(t) / "x"), None, None)
+            self.assertIn("root not found", str(ctx.exception))
 
 
 if __name__ == "__main__":
