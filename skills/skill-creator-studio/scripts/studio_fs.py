@@ -616,9 +616,9 @@ def _remove_quietly(path) -> None:
 def _is_dir_quiet(path: Path) -> bool:
     """True for a real folder. A link (symlink, junction), a cloud placeholder, a missing path and an OSError the stdlib does not swallow
     (ENAMETOOLONG on POSIX) are 'not a directory'; one lstat, so the target of a link is never stat-ed (SPR-02 FR7.1)."""
-    if is_link(path) or path_is_cloud(path):
-        return False
-    try:
+    try:  # is_link() asks pathlib first, which re-raises ENAMETOOLONG and similar: every OSError means 'not a directory'
+        if is_link(path) or path_is_cloud(path):
+            return False
         return stat.S_ISDIR(os.lstat(path).st_mode)
     except OSError:
         return False

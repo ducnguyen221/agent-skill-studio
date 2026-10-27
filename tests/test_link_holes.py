@@ -283,6 +283,14 @@ class IsDirQuietLinkTests(unittest.TestCase):
             self.assertFalse(E.fs._is_dir_quiet(Path(t) / "missing"))
             self.assertFalse(E.fs._is_dir_quiet(Path(t) / ("x" * 5000)))
 
+    def test_bat_loi_is_dir_quiet_any_oserror_is_not_a_directory(self):
+        """bắt-lỗi: an OSError from lstat that pathlib does not swallow (POSIX ENAMETOOLONG, errno 36) makes the answer False, never a crash (CI ubuntu on 913306a: is_link raised)."""
+        import errno
+        with tempfile.TemporaryDirectory() as t:
+            for code in (errno.ENAMETOOLONG, errno.EACCES):
+                with self.subTest(errno=code), mock.patch.object(os, "lstat", side_effect=OSError(code, "mock")),                         mock.patch.object(os, "stat", side_effect=OSError(code, "mock")):  # Path.is_symlink goes through either, by Python version
+                    self.assertFalse(E.fs._is_dir_quiet(Path(t) / "x"))
+
     @unittest.skipUnless(can_link(), "cannot create a directory link here")
     def test_bat_loi_is_dir_quiet_real_link_is_false(self):
         """bắt-lỗi: a real symlink or junction to a folder is not a directory for this test (today: True)."""
