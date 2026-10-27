@@ -35,8 +35,10 @@ CMD_KEY_BEFORE = re.compile(r'\bcmd["\']?\s*:\s*$')
 CMD_KEY_AT = re.compile(r'\bcmd["\']?\s*:\s*')  # a literal is a command value when a match of this ends exactly at its opening quote
 ARRAY_ASSIGN = re.compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*\[')
 # lookaheads: a match consumes only the name, so `x . map` does not hide a following `map . map`
-USE_MAP = re.compile(r"\b([A-Za-z_$][\w$]*)(?=\s*\.\s*(?:map|forEach)\b)")
-USE_OF = re.compile(r"\bof\s+(?=([A-Za-z_$][\w$]*))")
+# whole identifier runs (a regex that starts at every word/`$` boundary of one long run is quadratic); names are cut out of a run in code
+USE_MAP = re.compile(r"(?<![\w$])([\w$]+)(?=\s*\.\s*(?:map|forEach)\b)")
+ASSIGN_RUN = re.compile(r"(?<![\w$])([\w$]+)\s*=\s*\[")
+USE_OF = re.compile(r"\bof\s+(?=([\w$]+))")
 SCRIPTS = {"data-quality-audit": ("validate_csv.py",), "skill-creator-studio": ("studio.py",)}
 
 
@@ -141,25 +143,65 @@ def _bracket_ends(js, ends):
     return close
 
 
+_NAME_START = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$"  # ASCII only, like ARRAY_ASSIGN
+
+
+def _word(c):
+    return c.isalnum() or c == "_"
+
+
+def _array_assigns(js):
+    """[(name, end)] like ARRAY_ASSIGN.finditer: the name is the first `\\b`-started identifier inside the run, `end` is just after the `[`."""
+    found = []
+    for m in ASSIGN_RUN.finditer(js):
+        x = m.group(1)
+        for k, c in enumerate(x):
+            if (c in _NAME_START) and ((k == 0 and _word(c)) or (k and _word(x[k - 1]) != _word(c))):
+                found.append((x[k:], m.end()))
+                break
+    return found
+
+
 def _js_command_spans(js):
     """(start, end) spans of array bodies `NAME = [ ... ]` where NAME is later mapped/iterated (a command batch)."""
-    assigns = list(ARRAY_ASSIGN.finditer(js))
+    assigns = _array_assigns(js)
     if not assigns:
         return []
     # last start of each name's use: one scan of the text instead of one search of the tail per assignment
+    # `$` is not a word char, so the old per-name patterns (`\bNAME`, `NAME\b`) also matched a name inside a longer identifier at a
+    # word/`$` boundary: "x$foo.map" uses `$foo` and `foo`; "of foo$bar" uses `foo`. Only prefixes/suffixes whose length is the length of
+    # an assigned name are looked at, so the work stays linear.
+    names = {n for n, _ in assigns}
+    lengths = sorted({len(n) for n in names})
+
+    def note(name, pos):
+        if pos > last_use.get(name, -1):
+            last_use[name] = pos
+
     last_use = {}
     for m in USE_MAP.finditer(js):
-        last_use[m.group(1)] = m.start()
+        x, s0 = m.group(1), m.start()
+        for ln in lengths:
+            if ln > len(x):
+                break
+            k = len(x) - ln
+            if ((k == 0 and _word(x[0])) or (k and _word(x[k - 1]) != _word(x[k]))) and x[k:] in names:
+                note(x[k:], s0 + k)
     for m in USE_OF.finditer(js):
-        last_use[m.group(1)] = max(last_use.get(m.group(1), -1), m.start())
+        x = m.group(1)
+        for ln in lengths:
+            if ln > len(x):
+                break
+            if (_word(x[-1]) if ln == len(x) else _word(x[ln - 1]) != _word(x[ln])) and x[:ln] in names:
+                note(x[:ln], m.start())
     close = None
     spans = []
-    for m in assigns:
-        if last_use.get(m.group(1), -1) < m.end():
+    for name, end in assigns:
+        if last_use.get(name, -1) < end:
             continue
         if close is None:
             close = _bracket_ends(js, _string_body_ends(js))
-        spans.append((m.end(), close[m.end()]))
+        spans.append((end, close[end]))
     return spans
 
 

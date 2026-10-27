@@ -344,7 +344,17 @@ JS_OLD = [('cmd: "cat a/SKILL.md"', ['cat a/SKILL.md'], []),
  ('xcmd: "no"', [], []),
  ('m = ["a", m = ["b"]]; m.map(f)', ['a', 'b'], [(5, 20), (15, 19)]),
  ('u = ["a"]; u2.map(f)', [], []),
- ('w = ["a"]; of wx', [], [])]
+ ('w = ["a"]; of wx', [], []),
+ ('f = ["a"]; of f$', ['a'], [(5, 9)]),
+ ('f = ["a"]; of f$x', ['a'], [(5, 9)]),
+ ('f$ = ["a"]; of f$', [], []),
+ ('f$ = ["a"]; of f$x', ['a'], [(6, 10)]),
+ ('$f = ["a"]; of $f', [], []),
+ ('f = ["a"]; x$f.map(g)', ['a'], [(5, 9)]),
+ ('$f = ["a"]; x$f.map(g)', ['a'], [(6, 10)]),
+ ('f$g = ["a"]; of f$g$', ['a'], [(7, 11)]),
+ ('f = ["a"]; $f.map(g)', ['a'], [(5, 9)]),
+ ('f$ = ["a"]; f$.forEach(g)', ['a'], [(6, 10)])]
 
 
 CHILD = r'''
@@ -436,7 +446,7 @@ class ActivationLinearTimeTests(unittest.TestCase):
                 self.assertEqual(expected, bool(activation._script_re(skill).search(text)))
 
     def test_tuong_duong_codex_js_matches_the_pre_fix_output(self):
-        """tương-đương: command strings and array spans the original finds in 30 JS snippets (nested arrays, escapes, unclosed, $ names)."""
+        """tương-đương: command strings and array spans the original finds in 40 JS snippets (nested arrays, escapes, unclosed, $ at the start/middle/end of names)."""
         for text, commands, spans in JS_OLD:
             with self.subTest(text=text):
                 self.assertEqual(commands, activation._codex_commands(text))
