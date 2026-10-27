@@ -24,6 +24,8 @@ import _engine  # noqa: E402
 studio = _engine.engine
 studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
 studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_dist = _engine.dist  # SPR-02 TK4c
+studio_doctor = _engine.doctor  # SPR-02 TK4c
 
 
 def run(*argv):
@@ -119,23 +121,23 @@ class MoveAsideTests(unittest.TestCase):
         """đơn-vị-hàm-mới (move_aside does not exist at df875ce): a rename failing for a reason other than another device (a locked file) does not copy-then-delete; src stays complete, no half dst."""
         with mock.patch.object(os, "rename", side_effect=PermissionError(errno.EACCES, "in use")):
             with self.assertRaises(PermissionError):
-                studio.move_aside(self.src, self.dst)
+                studio_dist.move_aside(self.src, self.dst)
         self.assertEqual(["a.md", "sub", "z.md"], sorted(os.listdir(self.src)))
         self.assertFalse(self.dst.exists())
 
     def test_don_vi_ham_moi_exdev_copies_then_removes(self):
         """đơn-vị-hàm-mới (move_aside does not exist at df875ce): across devices the folder is copied and the source removed (as before)."""
         with mock.patch.object(os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")):
-            studio.move_aside(self.src, self.dst)
+            studio_dist.move_aside(self.src, self.dst)
         self.assertFalse(self.src.exists())
         self.assertEqual(["a.md", "sub", "z.md"], sorted(os.listdir(self.dst)))
 
     def test_don_vi_ham_moi_failed_delete_after_copy_reports_the_real_state(self):
         """đơn-vị-hàm-mới (MoveAsideError does not exist at df875ce): copy done but the old folder cannot be fully removed -> a distinct error that names the backup; the backup stays whole."""
         with mock.patch.object(os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")), \
-                mock.patch.object(studio.shutil, "rmtree", side_effect=PermissionError(errno.EACCES, "in use")):
-            with self.assertRaises(studio.MoveAsideError) as ctx:
-                studio.move_aside(self.src, self.dst)
+                mock.patch.object(shutil, "rmtree", side_effect=PermissionError(errno.EACCES, "in use")):
+            with self.assertRaises(studio_dist.MoveAsideError) as ctx:
+                studio_dist.move_aside(self.src, self.dst)
         self.assertIn(str(self.dst), str(ctx.exception))
         self.assertEqual(["a.md", "sub", "z.md"], sorted(os.listdir(self.dst)))
 
@@ -226,7 +228,7 @@ class RootsFileCommentTimeTests(unittest.TestCase):
             listing.write_text("a" + " " * 40000 + "b\n", encoding="utf-8")
             started = time.perf_counter()
             with self.assertRaises(ValueError):
-                studio.parse_roots(None, str(listing), None)
+                studio_doctor.parse_roots(None, str(listing), None)
             self.assertLess(time.perf_counter() - started, 0.5)
 
     def test_bat_loi_comment_forms(self):
@@ -237,7 +239,7 @@ class RootsFileCommentTimeTests(unittest.TestCase):
             (base / "plain").mkdir()
             listing = base / "roots.txt"
             listing.write_text("# head\n%s   # note\n%s\n" % (base / "plain", base / "a#b"), encoding="utf-8")
-            self.assertEqual([base / "plain", base / "a#b"], studio.parse_roots(None, str(listing), None))
+            self.assertEqual([base / "plain", base / "a#b"], studio_doctor.parse_roots(None, str(listing), None))
 
 
 class ParseRootsOsErrorTests(unittest.TestCase):
@@ -246,7 +248,7 @@ class ParseRootsOsErrorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             with mock.patch.object(Path, "is_dir", side_effect=OSError(errno.ENAMETOOLONG, "File name too long")):
                 with self.assertRaises(ValueError) as ctx:
-                    studio.parse_roots(str(Path(t) / "x"), None, None)
+                    studio_doctor.parse_roots(str(Path(t) / "x"), None, None)
             self.assertIn("root not found", str(ctx.exception))
 
 

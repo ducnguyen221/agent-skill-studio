@@ -1,0 +1,231 @@
+"""The `package` and `install` commands: check a skill is distributable, zip it, copy it into an agent's skill folder (SPR-02 TK4c).
+
+Internal module of `studio.py`; do not run it. It reaches other studio modules through the module object (FR4.5).
+"""
+
+from __future__ import annotations
+
+import errno
+import hashlib
+import os
+import re
+import shutil
+import stat
+import sys
+import zipfile
+from pathlib import Path
+
+import studio_const as C
+import studio_fs as fs
+import studio_scaffold as scaffold
+import studio_validate as validate
+
+
+def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
+    findings = validate.validate_skill(folder)
+    manifest = folder / "SKILL.md"
+    if manifest.is_file() and re.search(r"<!--\s*STUDIO-DRAFT", manifest.read_text(encoding="utf-8")):
+        findings.append(fs.emit("ERROR", "PACK", manifest, 0, "cannot package an unfinished template: remove draft marker after authoring"))
+    files = []
+    paths, links, dirs, cloud, cut = fs.walk_files(folder, skip_names=C.SKIP_DIRS)  # no rglob: links and cloud placeholders are listed, never entered or opened
+    if cut:
+        findings.append(fs.emit("ERROR", "PACK", folder, 0, "skill tree is over the scan limit (%d entries or %d folder levels); nothing is packaged short, trim the tree"
+                             % (C.DOCTOR_MAX_FILES_PER_SKILL, C.DOCTOR_MAX_SKILL_DEPTH)))
+    for p in paths:
+        if p in cloud:
+            findings.append(fs.emit("ERROR", "PACK", p, 0, "cloud placeholder; not read, not packaged"))
+        elif p in links:
+            findings.append(fs.emit("ERROR", "PACK", p, 0, "symlink or junction; not followed, not packaged"))
+        elif p in dirs:
+            if fs.zone_named(p.name):
+                findings.append(fs.emit("ERROR", "PACK", p, 0, "folder named like a cloud/secret zone; not entered, not packaged"))
+        else:
+            files.append(p)
+    kept = []
+    for p in files:
+        if fs.secret_file_name(p.name) or p.suffix.lower() in C.REJECT_SUFFIXES:  # the same name rule as --export, any letter case
+            findings.append(fs.emit("ERROR", "SEC", p, 0, "secret/credential-like file must not be shipped; remove it from the Skill (nothing is packaged or installed)"))
+            continue
+        try:
+            info = os.lstat(p)
+        except OSError as exc:
+            findings.append(fs.emit("ERROR", "PACK", p, 0, "cannot stat: %s" % (exc.strerror or type(exc).__name__)))
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            continue
+        if info.st_size > 25 * 1024 * 1024:
+            findings.append(fs.emit("ERROR", "PACK", p, 0, "file exceeds 25 MB; review before shipping"))
+            continue
+        if p.suffix.lower() in {".md", ".py", ".txt", ".json", ".yaml", ".yml", ".sh"}:
+            try:
+                with fs.open_nofollow_read(p, info) as handle:
+                    raw = handle.read().decode("utf-8")
+            except fs.UnsafeOpen as exc:
+                findings.append(fs.emit("ERROR", "PACK", p, 0, "not packaged: %s" % exc))
+                continue
+            except (OSError, UnicodeError):
+                raw = ""
+            if ("-----BEGIN " + "PRIVATE KEY-----") in raw or re.search(r"\b(?:sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16})\b", raw):
+                findings.append(fs.emit("ERROR", "SEC", p, 0, "possible hardcoded secret in package"))
+        kept.append(p)
+    return kept, findings
+
+
+def cmd_package(args) -> int:
+    folder = Path(args.skill).expanduser().resolve()
+    if not folder.is_dir():
+        print("ERROR: skill folder not found: %s" % folder, file=sys.stderr)
+        return 2
+    files, findings = ensure_distributable(folder)
+    if any(f["level"] == "ERROR" for f in findings):
+        validate.print_findings(folder, findings)
+        print("Package blocked; correct errors before trying again.", file=sys.stderr)
+        return 1
+    out = Path(args.out).expanduser().resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    target = out / (folder.name + ".zip")
+    if target.exists() and not args.force:
+        print("ERROR: package exists: %s; choose another --out or explicitly --force" % target, file=sys.stderr)
+        return 1
+    try:
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in files:
+                arcname = str(Path(folder.name) / p.relative_to(folder))
+                with fs.open_nofollow_read(p, os.lstat(p)) as handle:  # the file that was checked, never a link put there since
+                    data = handle.read()
+                zf.writestr(zipfile.ZipInfo.from_file(p, arcname), data, compress_type=zipfile.ZIP_DEFLATED)
+    except fs.UnsafeOpen as exc:
+        fs._remove_quietly(target)
+        print("ERROR: PACK: %s; nothing was packaged" % exc, file=sys.stderr)
+        return 1
+    digest = hashlib.sha256(target.read_bytes()).hexdigest()
+    print("Packaged %d runtime files -> %s\nSHA256: %s\nExcluded: evals/, tests/ and cache folders (any letter case); a secret-named file stops the package instead. Model evaluation status is unchanged." % (len(files), target, digest))
+    return 0
+
+
+def root_link_in_chain(skill_root: Path, stop: Path):
+    """First link/junction among `skill_root` and its parents strictly below `stop` (HOME or the workspace itself is not checked), else None."""
+    current, stop_norm = Path(skill_root), os.path.normcase(os.path.abspath(stop))
+    while os.path.normcase(os.path.abspath(current)) != stop_norm and current.parent != current:
+        if fs.is_link(current):
+            return current
+        current = current.parent
+    return None
+
+
+class MoveAsideError(OSError):
+    """The copy at `dst` is complete but the old folder could not be fully removed: it may be partly gone. The message names the copy."""
+
+
+def move_aside(src: Path, dst: Path) -> None:
+    """Move the folder `src` to `dst` (same device: rename). Only when the rename fails because `dst` is on another device (EXDEV, Windows error 17) is the
+    folder copied first and `src` deleted after; any other rename failure (a locked file, a permission) is raised at once with `src` untouched. A failed copy
+    removes the half-made `dst` and re-raises, so `src` stays whole; a failed delete after a good copy raises MoveAsideError."""
+    try:
+        os.rename(src, dst)
+        return
+    except OSError as exc:
+        if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != 17:
+            raise
+    try:
+        shutil.copytree(src, dst, symlinks=True)
+    except BaseException:
+        shutil.rmtree(dst, ignore_errors=True)
+        raise
+    try:
+        shutil.rmtree(src)
+    except OSError as exc:
+        raise MoveAsideError(exc.errno, "the backup is complete at %s but the old Skill could not be fully removed (%s); it may be partly deleted" % (dst, exc.strerror or type(exc).__name__)) from exc
+
+
+def cmd_install(args) -> int:
+    folder = Path(args.skill).expanduser().resolve()
+    if not folder.is_dir():
+        print("ERROR: skill folder not found", file=sys.stderr)
+        return 2
+    if args.user:
+        try:
+            skill_root = scaffold.user_skill_root(args.agent)
+        except ValueError as exc:
+            print("ERROR: %s" % exc, file=sys.stderr)
+            return 2
+        if not skill_root.parent.is_dir():
+            print("ERROR: parent directory not found: %s; nothing was created" % skill_root.parent, file=sys.stderr)
+            return 2
+        boundary = Path.home()
+    files, findings = ensure_distributable(folder)
+    if any(f["level"] == "ERROR" for f in findings):
+        validate.print_findings(folder, findings)
+        return 1
+    if not args.user:
+        rel = Path(".claude") / "skills" if args.agent == "claude" else Path(".agents") / "skills"
+        workspace = Path(args.workspace or ".").expanduser().resolve()
+        if not workspace.is_dir():
+            print("ERROR: workspace directory not found: %s" % workspace, file=sys.stderr)
+            return 2
+        skill_root = workspace / rel
+        boundary = workspace
+    linked = root_link_in_chain(skill_root, boundary)
+    if linked is not None:
+        real = os.path.realpath(skill_root)
+        if not args.allow_root_link:
+            print("ERROR: skill folder %s is behind a link (%s); its real location is %s. Nothing was installed. Re-run with --allow-root-link if that is intended."
+                  % (skill_root, linked, real), file=sys.stderr)
+            return 2
+        print("Note: skill folder %s is behind a link (%s); installing into its real location %s" % (skill_root, linked, real))
+    dest = skill_root / folder.name
+    if dest.resolve() == folder or fs.valid_resolved_under(dest, folder):
+        print("ERROR: destination is the source Skill or nested under it; refusing self-overwrite", file=sys.stderr)
+        return 1
+    if os.path.lexists(dest) and fs.is_link(dest):  # before exists(): a dangling link is not "there" for exists() and would crash mkdir
+        print("ERROR: symlink destination refused", file=sys.stderr)
+        return 1
+    if dest.exists() and not args.force:
+        print("ERROR: %s exists; no changes made. Use --force only if you intend replacement." % dest, file=sys.stderr)
+        return 1
+    backup = None
+    if dest.exists() and args.force:
+        # Back up rather than silently erase; the backup lives next to the skill root, not in it, so the agent never loads it.
+        from datetime import datetime, timezone
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backups_dir = skill_root.parent / ".skill-studio-backups"
+        if os.path.lexists(backups_dir) and fs.is_link(backups_dir):
+            print("ERROR: backup folder %s is a link; nothing was changed" % backups_dir, file=sys.stderr)
+            return 1
+        backup = backups_dir / (dest.name + "-" + stamp)
+        if os.path.lexists(backup):
+            print("ERROR: backup collision", file=sys.stderr)
+            return 1
+        try:
+            backups_dir.mkdir(exist_ok=True)
+            move_aside(dest, backup)
+        except MoveAsideError as exc:
+            print("ERROR: %s. Nothing new was installed; restore from the backup if the Skill folder is incomplete." % exc.strerror, file=sys.stderr)
+            return 1
+        except OSError as exc:
+            print("ERROR: could not back up the existing installation (%s); the old Skill was left in place" % (exc.strerror or type(exc).__name__), file=sys.stderr)
+            return 1
+        print("Existing installation backed up to %s" % backup)
+    dest.mkdir(parents=True, exist_ok=False)  # creates skill_root itself, never the agent's config parent
+    try:
+        for source in files:
+            destination = dest / source.relative_to(folder)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            inner = fs.link_in_chain(destination.parent, dest)
+            if inner is not None:
+                raise fs.UnsafeOpen("link inside the destination: %s" % inner)
+            info = os.lstat(source)
+            with fs.open_nofollow_read(source, info) as src_handle, fs.create_exclusive(destination) as dst_handle:
+                shutil.copyfileobj(src_handle, dst_handle)
+            os.chmod(destination, stat.S_IMODE(info.st_mode))
+    except (fs.UnsafeOpen, OSError) as exc:
+        shutil.rmtree(dest, ignore_errors=True)
+        if backup is not None:
+            try:
+                os.rename(backup, dest)
+            except OSError:
+                print("ERROR: the old Skill is kept at %s" % backup, file=sys.stderr)
+        print("ERROR: install stopped: %s; no partial Skill was left" % exc, file=sys.stderr)
+        return 1
+    print("Installed %s for %s at %s. This copies files; it does not run the agent or its scripts." % (folder.name, args.agent, dest))
+    return 0

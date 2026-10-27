@@ -24,6 +24,7 @@ import _engine  # noqa: E402
 studio = _engine.engine
 studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
 studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_doctor = _engine.doctor  # SPR-02 TK4c
 studio_validate = _engine.validate  # SPR-02 TK4b
 
 SKILL = "---\nname: %s\ndescription: Checks a toy example. Use when testing the doctor command.\n%s---\n\n# Title\n\nShort body.\n"
@@ -967,7 +968,7 @@ class DoctorRound3Tests(unittest.TestCase):
             alias = tmp / "alias"
             make_dir_link(self, alias, real)
             with mock.patch.object(studio_fs, "path_is_cloud", lambda p: norm(p) == norm(real)), watching() as calls:
-                skills, skipped = studio.iter_skill_dirs([alias])
+                skills, skipped = studio_doctor.iter_skill_dirs([alias])
             self.assertEqual(skills, [])
             self.assertEqual([s["reason"] for s in skipped], ["cloud"])
             self.assertFalse([p for n, p, _ in calls if n in ("scandir", "listdir") and is_under(p, real)], "the placeholder folder must not be listed")

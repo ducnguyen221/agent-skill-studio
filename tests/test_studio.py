@@ -24,6 +24,8 @@ import _engine  # noqa: E402
 studio = _engine.engine
 studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
 studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_scaffold = _engine.scaffold  # SPR-02 TK4c
+studio_dist = _engine.dist  # SPR-02 TK4c
 studio_evals = _engine.evals  # SPR-02 TK4b
 studio_lint = _engine.lint  # SPR-02 TK4b
 studio_validate = _engine.validate  # SPR-02 TK4b
@@ -359,7 +361,7 @@ class StudioTests(unittest.TestCase):
             folder.mkdir()
             (folder / "SKILL.md").write_text('---\nname: demo-skill\ndescription: "Checks inputs. Use when testing security."\n---\n\n# Demo\n', encoding="utf-8")
             (folder / ".env").write_text("PASSWORD=secret", encoding="utf-8")
-            files, findings = studio.ensure_distributable(folder)
+            files, findings = studio_dist.ensure_distributable(folder)
             self.assertTrue(any(x["code"] == "SEC" and x["level"] == "ERROR" for x in findings))
 
     def test_install_copy_and_no_implicit_overwrite(self):
@@ -435,9 +437,9 @@ class StudioTests(unittest.TestCase):
     def test_get_template_always_reads_assets_of_the_engine(self):
         """bắt-lỗi: get_template points into the engine's own assets/ folder, even when the engine runs inside a repo that has templates/."""
         assets = (ROOT / "skills" / "skill-creator-studio" / "assets").resolve()
-        self.assertEqual(assets / "skill-template" / "SKILL.md", studio.get_template().resolve())
-        self.assertEqual(assets / "skill-template" / "SKILL.vi.md", studio.get_template(False, "vi").resolve())
-        self.assertEqual(assets / "skill-template-full", studio.get_template(True).resolve())
+        self.assertEqual(assets / "skill-template" / "SKILL.md", studio_scaffold.get_template().resolve())
+        self.assertEqual(assets / "skill-template" / "SKILL.vi.md", studio_scaffold.get_template(False, "vi").resolve())
+        self.assertEqual(assets / "skill-template-full", studio_scaffold.get_template(True).resolve())
 
     def test_repo_root_needs_plugin_manifest_and_standard_not_templates(self):
         """bắt-lỗi: repo_root accepts a folder with .claude-plugin/plugin.json and the authoring standard (no templates/), and refuses one without the manifest."""
@@ -805,7 +807,7 @@ class TemplateTests(unittest.TestCase):
         self.assertNotIn("<", re.search(r"^description: (.*)$", en, re.M).group(1))
 
     def test_full_has_process_template(self):
-        process = studio.get_template(full=True) / "references" / "PROCESS_TEMPLATE.md"
+        process = studio_scaffold.get_template(full=True) / "references" / "PROCESS_TEMPLATE.md"
         text = process.read_text(encoding="utf-8")
         for needle in ("# Process Template", "> **Conclusion:**", "## When to use / not", "## Steps", "### Step 1",
                        "Command:", "Expect:", "Stop if:", "## Gotchas", "## Done when"):
@@ -819,11 +821,11 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual("# Optional, Codex only; delete if unused.", (process.parent.parent / "agents" / "openai.yaml").read_text(encoding="utf-8").splitlines()[0])
 
     def test_get_template_selects_files(self):
-        base = studio.get_template().parent
-        self.assertEqual(base / "SKILL.md", studio.get_template())
-        self.assertEqual(base / "SKILL.vi.md", studio.get_template(False, "vi"))
-        self.assertEqual(base.parent / "skill-template-full", studio.get_template(True))
-        self.assertEqual(base.parent / "skill-template-full", studio.get_template(full=True, lang="en"))
+        base = studio_scaffold.get_template().parent
+        self.assertEqual(base / "SKILL.md", studio_scaffold.get_template())
+        self.assertEqual(base / "SKILL.vi.md", studio_scaffold.get_template(False, "vi"))
+        self.assertEqual(base.parent / "skill-template-full", studio_scaffold.get_template(True))
+        self.assertEqual(base.parent / "skill-template-full", studio_scaffold.get_template(full=True, lang="en"))
 
     def test_package_includes_agents_dir(self):
         with tempfile.TemporaryDirectory() as t:
@@ -1044,10 +1046,10 @@ class TemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             home, env = self.make_home(t, ".gemini/config", ".agents")
             with mock.patch.dict(os.environ, env):
-                self.assertEqual(home / ".gemini" / "config" / "skills", studio.user_skill_root("antigravity"))
-                self.assertEqual(home / ".agents" / "skills", studio.user_skill_root("codex"))
+                self.assertEqual(home / ".gemini" / "config" / "skills", studio_scaffold.user_skill_root("antigravity"))
+                self.assertEqual(home / ".agents" / "skills", studio_scaffold.user_skill_root("codex"))
                 with self.assertRaises(ValueError):
-                    studio.user_skill_root("claude")
+                    studio_scaffold.user_skill_root("claude")
             self.assertEqual(0, call(env, "install", skill, "--agent", "antigravity", "--user")[0])
             self.assertEqual(0, call(env, "install", skill, "--agent", "codex", "--user")[0])
             code, _, err = call(env, "install", skill, "--agent", "codex", "--user")
@@ -1307,7 +1309,7 @@ class AgentskillsExportTests(unittest.TestCase):
             folder = self.make_eval(t)
             out = Path(t) / "out"
             self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
-            with mock.patch.object(studio.os.path, "samefile", return_value=True):
+            with mock.patch.object(os.path, "samefile", return_value=True):
                 code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
             self.assertEqual((1, True), (code, any("source fixture itself" in f["message"] for f in findings)))
 
@@ -1315,7 +1317,7 @@ class AgentskillsExportTests(unittest.TestCase):
         from unittest import mock
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
-            with mock.patch.object(studio.shutil, "copyfileobj", side_effect=OSError("disk full")):
+            with mock.patch.object(shutil, "copyfileobj", side_effect=OSError("disk full")):
                 code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, 0, "EX8"), (code, stats["exported"], findings[0]["code"]))
 
@@ -1574,9 +1576,9 @@ class AgentskillsExportTests(unittest.TestCase):
                     if label.startswith("second") and len(calls) == 2:
                         raise OSError("disk full")
                     return real(src, dst)
-                with mock.patch.object(studio.shutil, "copyfileobj", side_effect=flaky):
+                with mock.patch.object(shutil, "copyfileobj", side_effect=flaky):
                     if label.startswith("evals"):
-                        with mock.patch.object(studio.tempfile, "mkstemp", side_effect=OSError("denied")):
+                        with mock.patch.object(tempfile, "mkstemp", side_effect=OSError("denied")):
                             code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
                     else:
                         code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
@@ -1624,7 +1626,7 @@ class ExportFixtureHardeningTests(unittest.TestCase):
                 touched.append(("copyfile", str(src)))
             return real_copy(src, dst, *args, **kwargs)
         with mock.patch("builtins.open", spy_open), mock.patch.object(os, "stat", spy_stat), \
-                mock.patch.object(Path, "stat", spy_path_stat), mock.patch.object(studio.shutil, "copyfile", spy_copy):
+                mock.patch.object(Path, "stat", spy_path_stat), mock.patch.object(shutil, "copyfile", spy_copy):
             code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out)
         return code, findings, stats, touched
 

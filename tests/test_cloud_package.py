@@ -25,6 +25,7 @@ import _engine  # noqa: E402
 studio = _engine.engine
 studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
 studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_fmt = _engine.fmt  # SPR-02 TK4c
 
 REPARSE = 0x400
 TAG_SYMLINK, TAG_MOUNT, TAG_CLOUD, TAG_CLOUD_CHILD, TAG_ODD = 0xA000000C, 0xA0000003, 0x9000001A, 0x9000101A, 0x99
@@ -78,7 +79,7 @@ class CloudTagTests(unittest.TestCase):
     def cloud(self, st, via="path"):
         with mock.patch.object(studio_const, "CLOUD_ATTRS_AVAILABLE", True):
             if via == "path":
-                with mock.patch.object(studio.os, "lstat", return_value=st):
+                with mock.patch.object(os, "lstat", return_value=st):
                     return studio_fs.path_is_cloud("x")
             return studio_fs.entry_is_cloud(Entry(st))
 
@@ -112,9 +113,9 @@ class CloudTagTests(unittest.TestCase):
     def test_tuong_duong_is_link_unchanged_for_every_reparse_tag(self):
         """tương-đương: is_link still true for any reparse point, cloud included (FR5.1)."""
         for tag in (TAG_SYMLINK, TAG_MOUNT, TAG_CLOUD, TAG_CLOUD_CHILD, TAG_ODD):
-            with self.subTest(tag=hex(tag)), mock.patch.object(studio.os, "lstat", return_value=fake_stat(REPARSE, tag)):
+            with self.subTest(tag=hex(tag)), mock.patch.object(os, "lstat", return_value=fake_stat(REPARSE, tag)):
                 self.assertTrue(studio_fs.is_link(Path("x")))
-        with mock.patch.object(studio.os, "lstat", return_value=fake_stat()):
+        with mock.patch.object(os, "lstat", return_value=fake_stat()):
             self.assertFalse(studio_fs.is_link(Path("x")))
 
 
@@ -268,7 +269,7 @@ class FmtBackupExclusiveTests(unittest.TestCase):
         """tương-đương (green at df875ce, which already avoided the existing name): a hard link at the first .bak name must survive; the backup takes the next suffix."""
         outside = self.tmp / "outside.txt"
         outside.write_bytes(b"CANARY")
-        with mock.patch.object(studio, "datetime") as dt:
+        with mock.patch.object(studio_fmt, "datetime") as dt:
             dt.now.return_value.strftime.return_value = "STAMP"
             os.link(outside, self.tmp / "SKILL.md.bak-STAMP")
             code, out, err = fmt("--fix", str(self.path))
@@ -281,7 +282,7 @@ class FmtBackupExclusiveTests(unittest.TestCase):
     def test_bat_loi_planted_symlink_backup_is_not_written_through(self):
         """bắt-lỗi: same with a (dangling) symlink at the first name."""
         victim = self.tmp / "victim.txt"
-        with mock.patch.object(studio, "datetime") as dt:
+        with mock.patch.object(studio_fmt, "datetime") as dt:
             dt.now.return_value.strftime.return_value = "STAMP"
             os.symlink(victim, self.tmp / "SKILL.md.bak-STAMP")
             code, out, err = fmt("--fix", str(self.path))
@@ -291,10 +292,10 @@ class FmtBackupExclusiveTests(unittest.TestCase):
 
     def test_bat_loi_failed_copy_keeps_a_preexisting_backup_name(self):
         """bắt-lỗi: a copy that fails leaves the file already at the first name untouched and removes only its own."""
-        with mock.patch.object(studio, "datetime") as dt:
+        with mock.patch.object(studio_fmt, "datetime") as dt:
             dt.now.return_value.strftime.return_value = "STAMP"
             (self.tmp / "SKILL.md.bak-STAMP").write_bytes(b"PREEXISTING")
-            with mock.patch.object(studio.shutil, "copyfileobj", side_effect=OSError(28, "no space")):
+            with mock.patch.object(shutil, "copyfileobj", side_effect=OSError(28, "no space")):
                 code, out, err = fmt("--fix", str(self.path))
         self.assertEqual(code, 2, out + err)
         self.assertEqual((self.tmp / "SKILL.md.bak-STAMP").read_bytes(), b"PREEXISTING")

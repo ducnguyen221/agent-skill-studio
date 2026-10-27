@@ -23,6 +23,7 @@ studio = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(studio)
 studio_const = sys.modules["studio_const"]  # sibling modules the engine just imported (SPR-02 TK4a)
 studio_fs = sys.modules["studio_fs"]
+studio_doctor = sys.modules["studio_doctor"]
 studio_validate = sys.modules["studio_validate"]
 
 GOOD_DESC = "Does a small job. Use when testing the validator."
@@ -131,7 +132,7 @@ class OutBeforeScanTest(Fr7Case):
         out = self.tmp / "keep" / "data.json"
         out.parent.mkdir()
         out.write_text('{"mine": 1}\n', encoding="utf-8")
-        with mock.patch.object(studio, "iter_skill_dirs", side_effect=AssertionError("scanned before --out was checked")):
+        with mock.patch.object(studio_doctor, "iter_skill_dirs", side_effect=AssertionError("scanned before --out was checked")):
             code, _, err = doctor("--roots", str(root), "--out", str(out))
         self.assertEqual(code, 2, err)
         self.assertIn("not a doctor report", err)
@@ -151,7 +152,7 @@ class LinkParenTest(Fr7Case):
 class WorktreesTest(Fr7Case):
     def test_fr79_ads_worktrees_excluded_like_worktrees(self):
         """bắt-lỗi: FR7.9 the scan leaves out `.ads-worktrees`."""
-        self.assertTrue(studio._is_excluded((".ads-worktrees",), False))
+        self.assertTrue(studio_doctor._is_excluded((".ads-worktrees",), False))
         root = self.tmp / "plugins"
         make_skill(root / ".ads-worktrees" / "copy", "dup-skill", "# T\n\nShort.")
         make_skill(root, "real-skill", "# T\n\nShort.")
