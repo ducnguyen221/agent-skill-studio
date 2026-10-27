@@ -1,0 +1,13 @@
+{
+  "must_contain": [
+    "BROKEN_BadName|name",
+    "description",
+    "SKILL.md"
+  ],
+  "must_not_contain": [
+    "I (have )?(edited|updated|fixed|rewrote)"
+  ],
+  "files_read_expected": [
+    "skills/skill-creator-studio/SKILL.md"
+  ]
+}

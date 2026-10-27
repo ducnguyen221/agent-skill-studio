@@ -1,0 +1,10 @@
+{
+  "must_contain": [
+    "sort"
+  ],
+  "must_not_contain": [
+    "skill-creator-studio",
+    "SKILL.md"
+  ],
+  "files_read_expected": []
+}

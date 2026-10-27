@@ -1,0 +1,11 @@
+{
+  "must_contain": [
+    "missing-skill.*(not exist|not found|does not exist|no such)|(not exist|not found|no such).*missing-skill"
+  ],
+  "must_not_contain": [
+    "finding[s]?:.*name"
+  ],
+  "files_read_expected": [
+    "skills/skill-creator-studio/SKILL.md"
+  ]
+}

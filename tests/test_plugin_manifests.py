@@ -8,6 +8,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
 CLAUDE_PLUGIN = ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
 CODEX_PLUGIN = ROOT / ".codex-plugin" / "plugin.json"
@@ -23,7 +26,7 @@ class PluginManifestTests(unittest.TestCase):
             self.assertIsInstance(load(path), dict, path.as_posix())
 
     def test_three_manifests_share_studio_version(self):
-        studio_version = re.search(r'^VERSION = "([^"]+)"', (ROOT / "studio.py").read_text(encoding="utf-8"), re.M).group(1)
+        studio_version = re.search(r'^VERSION = "([^"]+)"', _engine.engine_source(), re.M).group(1)
         versions = {
             "claude": load(CLAUDE_PLUGIN)["version"],
             "codex": load(CODEX_PLUGIN)["version"],

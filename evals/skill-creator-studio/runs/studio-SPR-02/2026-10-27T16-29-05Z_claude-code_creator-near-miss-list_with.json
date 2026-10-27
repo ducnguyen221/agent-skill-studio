@@ -1,0 +1,32 @@
+{
+  "case_id": "creator-near-miss-list",
+  "pair_id": "skill-creator-studio/creator-near-miss-list/claude-code",
+  "timestamp": "2026-10-27T16:29:05.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "near-miss",
+  "should_trigger": false,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "<local>/opcos/batch-f1e3f71/plugin (git archive f1e3f717d653df24844306425afc46a6fd95643c, autocrlf=false)",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "52c40016f52c77fc7e534730ea7e0775bcc8c85ba4d01d095d2be5a82ff66e2e",
+    "line_numbers_refer_to": "original transcript",
+    "redacted_copy": "ledger evidence/transcripts-TK14/skill-creator-studio_creator-near-miss-list.jsonl (OpcOS repo, not committed here)"
+  },
+  "output_excerpt": "Hai thư mục skill nằm trong `fixtures/skills-dir`:\n\n- `alpha-notes`\n- `beta-notes`",
+  "cwd": "<local>/opcos/batch-f1e3f71/runs/creator-near-miss-list",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "60afcb24-0646-43f6-8616-397a94e7f616",
+  "ledger_id": "60afcb24-0646-43f6-8616-397a94e7f616",
+  "wall_seconds": 14.1,
+  "timeout_s": 600,
+  "status": "ran",
+  "batch": "SPR-02-TK14-f1e3f71",
+  "cost_usd": 0.27764469999999997
+}

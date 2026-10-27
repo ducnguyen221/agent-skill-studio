@@ -24,7 +24,7 @@ Creates or improves Agent Skills with evidence, independent checks and no silent
 
 - Claude Code-only frontmatter keys such as `when_to_use` or `hooks` fail `FM4` unless you run `validate --target claude-code`.
 - `package` refuses a `SKILL.md` that still has the `STUDIO-DRAFT` HTML comment marker; delete it once the body is real (`package` does not check evals).
-- `fmt --fix` copies every file it changes to `<file>.bak-<ISO>`; in a git repo pass `--no-backup`, and delete stray `*.bak-*` before `package` or `sync-template --check`.
+- `fmt --fix` copies every file it changes to `<file>.bak-<ISO>`; in a git repo pass `--no-backup`, and delete stray `*.bak-*` before `package`.
 
 ## Pick mode
 
@@ -34,13 +34,13 @@ Creates or improves Agent Skills with evidence, independent checks and no silent
 | **AUDIT** | Check/score/review existing SKILL or library | Static report + semantic review; **no edits** |
 | **REFINE** | Existing Skill fails or new evidence arrives | Proposed targeted changes; apply approved changes, regression checks |
 
-Commands below run from this Skill's folder as `python3 scripts/studio.py <command>` (commands: `new`, `validate`, `audit`, `evals`, `package`, `install`, `sync-template`, `doctor`, `fmt`; Python 3.9+, standard library only; `--help` lists exact parameters), or `studio.py` at a Studio repo root. It is never an automatic agent action: run it only where you have permission. In any mode, when a claim about a rule or its source needs checking, read [references/SOURCE_NOTES.md](references/SOURCE_NOTES.md).
+Commands below run from this Skill's folder as `python3 scripts/studio.py <command>` (commands: `new`, `check`, `validate`, `audit`, `evals`, `package`, `install`, `doctor`, `fmt`; Python 3.9+, standard library only; `--help` lists exact parameters), or `studio.py` at a Studio repo root. It is never an automatic agent action: run it only where you have permission. In any mode, when a claim about a rule or its source needs checking, read [references/SOURCE_NOTES.md](references/SOURCE_NOTES.md). Internal engine modules (imported by `studio.py`, do not run directly): `scripts/studio_const.py`, `scripts/studio_dist.py`, `scripts/studio_doctor.py`, `scripts/studio_evals.py`, `scripts/studio_fmt.py`, `scripts/studio_fs.py`, `scripts/studio_lint.py`, `scripts/studio_scaffold.py`, `scripts/studio_validate.py`.
 
 ## NEW — create a Skill
 
 1. Define one job, positive trigger, negative trigger, input/output and side effects. Done when scope and success criteria can be explained in two sentences.
 2. Read [references/NEW_WORKFLOW.md](references/NEW_WORKFLOW.md) before drafting, for shape, manifest, resources and the eval-first workflow. Write >=3 realistic test scenarios plus no-skill baseline plan **before extensive instructions**.
-3. Run `python3 scripts/studio.py new <name> --description "<what>. Use when <trigger>." --output <target>`. The default scaffold is the minimal template: one `SKILL.md` with `## Gotchas`. Add `--lang vi` for a Vietnamese body (frontmatter stays English), or `--full` for the full template with `references/`, `scripts/`, `assets/` and `agents/` (English-only, so it cannot combine with `--lang vi`). When this Skill is installed outside the Studio repo, the bundled mirrors in `assets/skill-template*/` supply the scaffold. Done when scaffold exists, `evals/<name>` is separate and name/description match.
+3. Run `python3 scripts/studio.py new <name> --description "<what>. Use when <trigger>." --output <target>`. The default scaffold is the minimal template: one `SKILL.md` with `## Gotchas`. Add `--lang vi` for a Vietnamese body (frontmatter stays English), or `--full` for the full template with `references/`, `scripts/`, `assets/` and `agents/` (it follows `--lang`, so `--full --lang vi` gives the full template with a Vietnamese body). `new` always takes the scaffold from `assets/skill-template*/` of this Skill, inside or outside the Studio repo. Done when scaffold exists, `evals/<name>` is separate and name/description match.
 4. Replace scaffold draft wording, add necessary refs/assets/scripts. Never ship an unedited `STUDIO-DRAFT` template or marker as a finished Skill.
 5. Validate with `python3 scripts/studio.py validate <path> --require-evals` in a Studio repo, then `evals` static check; run model tests separately using external evals runbook. If validation fails, return to step 4.
 6. Document actual runtime coverage and package after passing relevant release gates.

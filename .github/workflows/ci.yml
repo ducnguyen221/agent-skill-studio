@@ -28,8 +28,6 @@ jobs:
         run: python studio.py validate --all --require-evals
       - name: Validate eval manifests (not model execution)
         run: python studio.py evals --all
-      - name: Verify canonical template mirror
-        run: python studio.py sync-template --check
       - name: Unit and local link tests
         run: python -m unittest discover -s tests -v
       - name: Package runtime Skill samples (exclude evals)

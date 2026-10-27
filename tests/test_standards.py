@@ -5,6 +5,8 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
 
 STANDARDS_DIR = Path(__file__).resolve().parent.parent / "standards"
 ROOT_DIR = STANDARDS_DIR.parent
@@ -52,7 +54,9 @@ def emitted_codes(source: str) -> set:
                     assigned.setdefault(target.id, []).append(node.value)
     codes: set = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "emit" and len(node.args) > 1:
+        if isinstance(node, ast.Call) and len(node.args) > 1 and (
+                (isinstance(node.func, ast.Name) and node.func.id == "emit")
+                or (isinstance(node.func, ast.Attribute) and node.func.attr == "emit")):  # `fs.emit(...)` since the engine split (SPR-02 TK4a)
             arg = node.args[1]
             parts = assigned.get(arg.id, []) if isinstance(arg, ast.Name) else [arg]
             codes.update(c.value for part in parts for c in ast.walk(part) if isinstance(c, ast.Constant) and isinstance(c.value, str))
@@ -147,7 +151,7 @@ class StandardsTest(unittest.TestCase):
 
     def test_authoring_standard_check_codes_exist_in_validator(self):
         text = read_std("SKILL_AUTHORING_STANDARD.md")
-        emitted = emitted_codes((ROOT_DIR / "studio.py").read_text(encoding="utf-8"))
+        emitted = emitted_codes(_engine.engine_source())
         for head in re.findall(r"^### SK-\d\d .*kiểm: (.*)$", text, re.M):
             codes = set(re.findall(r"`([A-Z]{2}\d+|SEC)`", head))
             for pre, a, b in re.findall(r"`([A-Z]{2})(\d+)`–`[A-Z]{2}(\d+)`", head):

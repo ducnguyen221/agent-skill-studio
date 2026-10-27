@@ -18,9 +18,14 @@ from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("studio_tk3_impl", ROOT / "studio.py")
-studio = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(studio)
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
+
+studio = _engine.engine
+studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
+studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_fmt = _engine.fmt  # SPR-02 TK4c
 
 REPARSE = 0x400
 TAG_SYMLINK, TAG_MOUNT, TAG_CLOUD, TAG_CLOUD_CHILD, TAG_ODD = 0xA000000C, 0xA0000003, 0x9000001A, 0x9000101A, 0x99
@@ -72,11 +77,11 @@ def dir_link(test, link, target):
 
 class CloudTagTests(unittest.TestCase):
     def cloud(self, st, via="path"):
-        with mock.patch.object(studio, "CLOUD_ATTRS_AVAILABLE", True):
+        with mock.patch.object(studio_const, "CLOUD_ATTRS_AVAILABLE", True):
             if via == "path":
-                with mock.patch.object(studio.os, "lstat", return_value=st):
-                    return studio.path_is_cloud("x")
-            return studio.entry_is_cloud(Entry(st))
+                with mock.patch.object(os, "lstat", return_value=st):
+                    return studio_fs.path_is_cloud("x")
+            return studio_fs.entry_is_cloud(Entry(st))
 
     def test_bat_loi_cloud_tag_is_cloud_other_reparse_tags_are_not(self):
         """bắt-lỗi: reparse tags through path_is_cloud and entry_is_cloud."""
@@ -103,15 +108,15 @@ class CloudTagTests(unittest.TestCase):
 
     def test_bat_loi_mask_has_no_pinned_bit(self):
         """bắt-lỗi: CLOUD_ATTR_MASK."""
-        self.assertEqual(studio.CLOUD_ATTR_MASK & 0x80000, 0)
+        self.assertEqual(studio_const.CLOUD_ATTR_MASK & 0x80000, 0)
 
     def test_tuong_duong_is_link_unchanged_for_every_reparse_tag(self):
         """tương-đương: is_link still true for any reparse point, cloud included (FR5.1)."""
         for tag in (TAG_SYMLINK, TAG_MOUNT, TAG_CLOUD, TAG_CLOUD_CHILD, TAG_ODD):
-            with self.subTest(tag=hex(tag)), mock.patch.object(studio.os, "lstat", return_value=fake_stat(REPARSE, tag)):
-                self.assertTrue(studio.is_link(Path("x")))
-        with mock.patch.object(studio.os, "lstat", return_value=fake_stat()):
-            self.assertFalse(studio.is_link(Path("x")))
+            with self.subTest(tag=hex(tag)), mock.patch.object(os, "lstat", return_value=fake_stat(REPARSE, tag)):
+                self.assertTrue(studio_fs.is_link(Path("x")))
+        with mock.patch.object(os, "lstat", return_value=fake_stat()):
+            self.assertFalse(studio_fs.is_link(Path("x")))
 
 
 def make_skill(base: Path) -> Path:
@@ -167,9 +172,9 @@ class PackageTreeTests(unittest.TestCase):
         """bắt-lỗi: a cloud placeholder (path_is_cloud / entry_is_cloud say so, both exist at df875ce) gives PACK, exit 1 and no zip."""
         (self.skill / "references").mkdir(exist_ok=True)
         (self.skill / "references" / "ghost.md").write_text("x")
-        real_entry, real_path = studio.entry_is_cloud, studio.path_is_cloud
-        with mock.patch.object(studio, "entry_is_cloud", lambda e: e.name == "ghost.md" or real_entry(e)), \
-                mock.patch.object(studio, "path_is_cloud", lambda p: Path(p).name == "ghost.md" or real_path(p)):
+        real_entry, real_path = studio_fs.entry_is_cloud, studio_fs.path_is_cloud
+        with mock.patch.object(studio_fs, "entry_is_cloud", lambda e: e.name == "ghost.md" or real_entry(e)), \
+                mock.patch.object(studio_fs, "path_is_cloud", lambda p: Path(p).name == "ghost.md" or real_path(p)):
             code, out, err = package(self.skill, self.out)
         self.assertEqual(code, 1, out + err)
         self.assertIn("PACK", out + err)
@@ -179,16 +184,16 @@ class PackageTreeTests(unittest.TestCase):
         """đơn-vị-hàm-mới: a cloud placeholder gives PACK and no open_nofollow_read of it."""
         (self.skill / "references").mkdir(exist_ok=True)
         (self.skill / "references" / "ghost.md").write_text("x")
-        real = studio.entry_is_cloud
+        real = studio_fs.entry_is_cloud
         opened = []
-        real_open = studio.open_nofollow_read
+        real_open = studio_fs.open_nofollow_read
 
         def spy(path, *a, **k):
             opened.append(Path(path).name)
             return real_open(path, *a, **k)
 
-        with mock.patch.object(studio, "entry_is_cloud", lambda e: e.name == "ghost.md" or real(e)), \
-                mock.patch.object(studio, "open_nofollow_read", spy):
+        with mock.patch.object(studio_fs, "entry_is_cloud", lambda e: e.name == "ghost.md" or real(e)), \
+                mock.patch.object(studio_fs, "open_nofollow_read", spy):
             code, out, err = package(self.skill, self.out)
         self.assertEqual(code, 1, out + err)
         self.assertIn("PACK", out + err)
@@ -196,7 +201,7 @@ class PackageTreeTests(unittest.TestCase):
 
     def test_bat_loi_scan_limit_is_pack_error_not_a_short_package(self):
         """bắt-lỗi: a tree above the scan limit is refused, not packaged short."""
-        with mock.patch.object(studio, "DOCTOR_MAX_FILES_PER_SKILL", 3):
+        with mock.patch.object(studio_const, "DOCTOR_MAX_FILES_PER_SKILL", 3):
             code, out, err = package(self.skill, self.out)
         self.assertEqual(code, 1, out + err)
         self.assertIn("PACK", out + err)
@@ -204,7 +209,7 @@ class PackageTreeTests(unittest.TestCase):
 
     def test_bat_loi_depth_limit_is_pack_error(self):
         """bắt-lỗi: depth limit."""
-        with mock.patch.object(studio, "DOCTOR_MAX_SKILL_DEPTH", 1):
+        with mock.patch.object(studio_const, "DOCTOR_MAX_SKILL_DEPTH", 1):
             code, out, err = package(self.skill, self.out)
         self.assertEqual(code, 1, out + err)
         self.assertIn("PACK", out + err)
@@ -219,7 +224,7 @@ class PackageTreeTests(unittest.TestCase):
 
     def test_tuong_duong_sz2_stays_warn(self):
         """tương-đương: every SZ2 finding in studio.py is WARN (validate/doctor unchanged)."""
-        src = (ROOT / "studio.py").read_text(encoding="utf-8")
+        src = _engine.engine_source()
         levels = [m.group(1) for m in re.finditer(r'emit\("(\w+)", "SZ2"', src)]
         self.assertTrue(levels)
         self.assertEqual(set(levels), {"WARN"})
@@ -264,7 +269,7 @@ class FmtBackupExclusiveTests(unittest.TestCase):
         """tương-đương (green at df875ce, which already avoided the existing name): a hard link at the first .bak name must survive; the backup takes the next suffix."""
         outside = self.tmp / "outside.txt"
         outside.write_bytes(b"CANARY")
-        with mock.patch.object(studio, "datetime") as dt:
+        with mock.patch.object(studio_fmt, "datetime") as dt:
             dt.now.return_value.strftime.return_value = "STAMP"
             os.link(outside, self.tmp / "SKILL.md.bak-STAMP")
             code, out, err = fmt("--fix", str(self.path))
@@ -277,7 +282,7 @@ class FmtBackupExclusiveTests(unittest.TestCase):
     def test_bat_loi_planted_symlink_backup_is_not_written_through(self):
         """bắt-lỗi: same with a (dangling) symlink at the first name."""
         victim = self.tmp / "victim.txt"
-        with mock.patch.object(studio, "datetime") as dt:
+        with mock.patch.object(studio_fmt, "datetime") as dt:
             dt.now.return_value.strftime.return_value = "STAMP"
             os.symlink(victim, self.tmp / "SKILL.md.bak-STAMP")
             code, out, err = fmt("--fix", str(self.path))
@@ -287,10 +292,10 @@ class FmtBackupExclusiveTests(unittest.TestCase):
 
     def test_bat_loi_failed_copy_keeps_a_preexisting_backup_name(self):
         """bắt-lỗi: a copy that fails leaves the file already at the first name untouched and removes only its own."""
-        with mock.patch.object(studio, "datetime") as dt:
+        with mock.patch.object(studio_fmt, "datetime") as dt:
             dt.now.return_value.strftime.return_value = "STAMP"
             (self.tmp / "SKILL.md.bak-STAMP").write_bytes(b"PREEXISTING")
-            with mock.patch.object(studio.shutil, "copyfileobj", side_effect=OSError(28, "no space")):
+            with mock.patch.object(shutil, "copyfileobj", side_effect=OSError(28, "no space")):
                 code, out, err = fmt("--fix", str(self.path))
         self.assertEqual(code, 2, out + err)
         self.assertEqual((self.tmp / "SKILL.md.bak-STAMP").read_bytes(), b"PREEXISTING")
@@ -300,13 +305,13 @@ class FmtBackupExclusiveTests(unittest.TestCase):
     def test_don_vi_ham_moi_source_is_read_with_open_nofollow_read(self):
         """đơn-vị-hàm-mới: fmt reads the .md through the no-follow helper."""
         seen = []
-        real = studio.open_nofollow_read
+        real = studio_fs.open_nofollow_read
 
         def spy(path, *a, **k):
             seen.append(Path(path).name)
             return real(path, *a, **k)
 
-        with mock.patch.object(studio, "open_nofollow_read", spy):
+        with mock.patch.object(studio_fs, "open_nofollow_read", spy):
             self.assertEqual(fmt("--fix", str(self.path))[0], 0)
         self.assertIn("SKILL.md", seen)
 

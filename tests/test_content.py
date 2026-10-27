@@ -5,6 +5,7 @@ Run: python -X utf8 -m pytest tests/test_content.py -q -p no:cacheprovider
 import importlib.util
 import json
 import re
+import sys
 import tempfile
 import unicodedata
 import unittest
@@ -15,6 +16,11 @@ CODE = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
 _SPEC = importlib.util.spec_from_file_location("studio_content_impl", CODE)
 studio = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(studio)
+studio_const = sys.modules["studio_const"]  # sibling modules the engine just imported (SPR-02 TK4a)
+studio_fs = sys.modules["studio_fs"]
+studio_evals = sys.modules["studio_evals"]
+studio_lint = sys.modules["studio_lint"]
+studio_validate = sys.modules["studio_validate"]
 
 CONTENT = ROOT / "content"
 EXEMPLAR = CONTENT / "exemplar" / "writing-commit-messages"
@@ -91,7 +97,7 @@ def validate_description(desc: str, tmp: Path) -> list:
     folder.mkdir(exist_ok=True)
     text = "---\nname: pair-test\ndescription: %s\n---\n\n# Pair test\n\n%s\n" % (json.dumps(desc, ensure_ascii=False), VI_BODY)
     (folder / "SKILL.md").write_text(text, encoding="utf-8")
-    return studio.validate_skill(folder)
+    return studio_validate.validate_skill(folder)
 
 
 def json_block(lines: list) -> dict:
@@ -117,7 +123,7 @@ def expected_export(skill_name: str, cases: list) -> dict:
 
 def skill_body(path: Path) -> str:
     text = read(path / "SKILL.md")
-    _meta, _findings, body_start = studio.parse_frontmatter(text, path / "SKILL.md")
+    _meta, _findings, body_start = studio_fs.parse_frontmatter(text, path / "SKILL.md")
     return "\n".join(text.splitlines()[body_start:])
 
 
@@ -140,14 +146,14 @@ class ContentKitTests(unittest.TestCase):
                 if pair["n"] in EXPECTED_BAD_CODES:
                     self.assertEqual(EXPECTED_BAD_CODES[pair["n"]], bad_findings, "Pair %d Bad must show exactly its own error" % pair["n"])
                 if pair["n"] == 5:
-                    self.assertRegex(bad, studio.FORCE_RE, "Pair 5 Bad must carry the forcing words")
+                    self.assertRegex(bad, studio_const.FORCE_RE, "Pair 5 Bad must carry the forcing words")
                 if pair["n"] == 4:
                     self.assertNotRegex(bad, r"(?i)(?:^|[^a-z])not for(?:[^a-z]|$)", "Pair 4 Bad must keep the near-miss gap (no 'not for')")
                 if pair["n"] == 3:
                     self.assertGreaterEqual(len(bad), 600)
-                    self.assertGreaterEqual(studio.TRIGGER_RE.search(bad).start(), 600, "Bad trigger must sit after 600 chars")
-                    self.assertLess(studio.TRIGGER_RE.search(good).start(), 500)
-        self.assertEqual(studio.detect_lang(VI_BODY), "vi", "VI_BODY must be Vietnamese so VI4 is really checked")
+                    self.assertGreaterEqual(studio_const.TRIGGER_RE.search(bad).start(), 600, "Bad trigger must sit after 600 chars")
+                    self.assertLess(studio_const.TRIGGER_RE.search(good).start(), 500)
+        self.assertEqual(studio_lint.detect_lang(VI_BODY), "vi", "VI_BODY must be Vietnamese so VI4 is really checked")
         # eval cases
         text = read(CONTENT / "eval-cases.md")
         cases = blocks(text, "Case")
@@ -170,7 +176,7 @@ class ContentKitTests(unittest.TestCase):
             folder.mkdir(exist_ok=True)
             (folder / "rubric.md").write_text("rubric\n", encoding="utf-8")
             (folder / "cases.json").write_text(json.dumps({"skill_name": "writing-commit-messages", "cases": parsed}), encoding="utf-8")
-            errors = [f for f in studio.check_evals(folder) if f["level"] == "ERROR"]
+            errors = [f for f in studio_evals.check_evals(folder) if f["level"] == "ERROR"]
             self.assertEqual([], errors)
         # hand-written agentskills export example
         marker = re.search(r"(?im)^## Agentskills export.*$", text)
@@ -188,7 +194,7 @@ class ContentKitTests(unittest.TestCase):
         self.assertFalse(any(p.name == "content" for p in (ROOT / "skills").rglob("*")), "content/ must not live under skills/")
 
     def test_exemplar_validates_clean(self):
-        findings = studio.validate_skill(EXEMPLAR)
+        findings = studio_validate.validate_skill(EXEMPLAR)
         self.assertEqual([], [f for f in findings if f["level"] in ("ERROR", "WARN")], findings)
         text = read(EXEMPLAR / "SKILL.md")
         self.assertLessEqual(len(text.splitlines()), 40)
@@ -197,12 +203,12 @@ class ContentKitTests(unittest.TestCase):
         self.assertTrue(EXEMPLAR.name.startswith("writing-"), "gerund name")
 
     def test_exemplar_vi_validates_clean(self):
-        findings = studio.validate_skill(EXEMPLAR_VI)
+        findings = studio_validate.validate_skill(EXEMPLAR_VI)
         self.assertEqual([], [f for f in findings if f["level"] in ("ERROR", "WARN")], findings)
         text = read(EXEMPLAR_VI / "SKILL.md")
         self.assertLessEqual(len(text.splitlines()), 40)
         self.assertEqual(text, (EXEMPLAR_VI / "SKILL.md").read_text(encoding="utf-8"), "body must be NFC")
-        self.assertEqual("vi", studio.detect_lang(skill_body(EXEMPLAR_VI)))
+        self.assertEqual("vi", studio_lint.detect_lang(skill_body(EXEMPLAR_VI)))
         self.assertIn("## Gotchas", text)
         self.assertRegex(text, r'(?m)^  version: "1\.0\.0"$')
 

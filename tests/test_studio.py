@@ -17,151 +17,21 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CODE = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
-SPEC = importlib.util.spec_from_file_location("studio_impl", CODE)
-studio = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(studio)
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
+
+studio = _engine.engine
+studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
+studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_scaffold = _engine.scaffold  # SPR-02 TK4c
+studio_dist = _engine.dist  # SPR-02 TK4c
+studio_evals = _engine.evals  # SPR-02 TK4b
+studio_lint = _engine.lint  # SPR-02 TK4b
+studio_validate = _engine.validate  # SPR-02 TK4b
 
 
-_ACT_SPEC = importlib.util.spec_from_file_location("activation_impl", ROOT / "evals" / "tools" / "activation.py")
-activation = importlib.util.module_from_spec(_ACT_SPEC)
-_ACT_SPEC.loader.exec_module(activation)
-
-RESULT_VALUES = ("passed", "below-threshold", "partial", "not_run")
-BATCH_SHA_RE = re.compile(r"[0-9a-f]{40}")
-AB_THRESHOLDS = (("positive_triggered", lambda v: v >= 4, ">= 4"), ("negative_triggered", lambda v: v == 0, "== 0"),
-                 ("worse", lambda v: v == 0, "== 0"), ("better", lambda v: v >= 3, ">= 3"), ("pairs", lambda v: v == 5, "== 5"))
-
-
-def model_evaluated_problems(catalog_path, root):
-    """Return the list of reasons the catalog's model_evaluated / status claims are not backed by counted run logs."""
-    problems = []
-    catalog = json.loads(Path(catalog_path).read_text(encoding="utf-8"))
-    for skill in catalog["skills"]:
-        name, targets = skill["name"], set(skill["targets"])
-        flag, ev = skill.get("model_evaluated"), skill.get("evaluated")
-        tag = "%s:" % name
-        if "model_evaluated" in skill and not isinstance(flag, bool):
-            problems.append("%s model_evaluated=%r must be a JSON bool" % (tag, flag))
-        if (skill.get("status") == "model-evaluated") != (flag is True):
-            problems.append("%s status %r does not match model_evaluated=%r (model-evaluated only for true)" % (tag, skill.get("status"), flag))
-        runs_root = Path(root) / skill["evals"] / "runs"
-        # every runtime that appears in any run log must be a declared target
-        for f in sorted(list(runs_root.glob("*/*.json")) + list(runs_root.glob("*/smoke/*.json"))) if runs_root.is_dir() else []:
-            try:
-                log = json.loads(f.read_text(encoding="utf-8"))
-            except ValueError:
-                continue
-            if isinstance(log, dict) and "runtime" in log and "with_skill" in log and log["runtime"] not in targets:
-                problems.append("%s log %s has runtime %r not in targets %s" % (tag, f.name, log["runtime"], sorted(targets)))
-        if ev is None:
-            if flag is True:
-                problems.append("%s model_evaluated=true without an `evaluated` block" % tag)
-            continue
-        result, batch_sha = ev.get("result"), ev.get("batch_sha")
-        if result not in RESULT_VALUES:
-            problems.append("%s evaluated.result %r must be one of %s" % (tag, result, list(RESULT_VALUES)))
-        if not isinstance(batch_sha, str) or not BATCH_SHA_RE.fullmatch(batch_sha):
-            problems.append("%s evaluated.batch_sha %r must be 40 lowercase hex" % (tag, batch_sha))
-        if ev.get("batch_sha_kind") not in ("commit", "tree"):
-            problems.append("%s evaluated.batch_sha_kind %r must be 'commit' or 'tree' (required with batch_sha)" % (tag, ev.get("batch_sha_kind")))
-        below = False  # a ran harness missed AB_THRESHOLDS (or has no counted row); only reported as a problem when the flag is true
-        sprint, harnesses = ev.get("sprint"), ev.get("harnesses")
-        if not sprint or not isinstance(harnesses, dict):
-            problems.append("%s evaluated needs sprint and harnesses" % tag)
-            continue
-        if flag is True and set(harnesses) != targets:
-            problems.append("%s evaluated.harnesses keys %s != targets %s" % (tag, sorted(harnesses), sorted(targets)))
-        if set(harnesses) - targets:
-            problems.append("%s evaluated.harnesses has harness outside targets: %s" % (tag, sorted(set(harnesses) - targets)))
-        runs_dir = runs_root / sprint
-        counted = activation.summarize(runs_dir) if runs_dir.is_dir() else {}
-        ran_logs = _ran_logs(runs_dir) if runs_dir.is_dir() else {}
-        cases_file = Path(root) / skill["evals"] / "cases.json"
-        cases = json.loads(cases_file.read_text(encoding="utf-8")).get("cases", []) if cases_file.is_file() else []
-        n_pos = sum(1 for c in cases if c.get("should_trigger") is True)
-        n_neg = sum(1 for c in cases if c.get("should_trigger") is False)
-        ab_report = ev.get("ab_report")
-        if ab_report is not None and not str(ab_report).replace("\\", "/").startswith("%s/runs/%s/" % (str(skill["evals"]).rstrip("/"), sprint)):
-            problems.append("%s ab_report %r must be under %s/runs/%s/" % (tag, ab_report, str(skill["evals"]).rstrip("/"), sprint))
-        elif flag is True and ab_report is None:
-            problems.append("%s model_evaluated=true needs evaluated.ab_report" % tag)
-        ab_name = "ab-%s.json" % ev.get("date", "")
-        ab_path = runs_dir / ab_name
-        ab = None
-        if any(v == "ran" for v in harnesses.values()):
-            if not ab_path.is_file():
-                problems.append("%s %s missing under %s" % (tag, ab_name, runs_dir.as_posix()))
-            else:
-                ab = json.loads(ab_path.read_text(encoding="utf-8")).get("per_runtime", {})
-        for h, state in sorted(harnesses.items()):
-            if state == "ran":
-                row = (ab or {}).get(h)
-                if ab is not None and row is None:
-                    problems.append("%s harness %s is ran but absent from %s" % (tag, h, ab_name))
-                    below = True
-                    continue
-                if row is None:
-                    below = True
-                if row is not None:
-                    for key, ok, text in AB_THRESHOLDS:
-                        if not ok(row.get(key, -1)):
-                            below = True
-                            if flag is True:  # flag false drops only this threshold application, never the integrity checks below
-                                problems.append("%s %s %s=%r required %s" % (tag, h, key, row.get(key), text))
-                    mine_logs = ran_logs.get(h, {"with": [], "base": []})
-                    pos = [l for l in mine_logs["with"] if l.get("kind") != "near-miss"]
-                    neg = [l for l in mine_logs["with"] if l.get("kind") == "near-miss"]
-                    if len(pos) != n_pos:
-                        problems.append("%s %s has %d positive logs but cases.json has %d positive cases" % (tag, h, len(pos), n_pos))
-                    if len(neg) != n_neg:
-                        problems.append("%s %s has %d negative logs but cases.json has %d negative cases" % (tag, h, len(neg), n_neg))
-                    ids = [l.get("case_id") for l in mine_logs["with"] if l.get("case_id") is not None]
-                    if len(ids) != len(set(ids)):
-                        problems.append("%s %s has duplicate case_id among its with-skill logs" % (tag, h))
-                    n_base = len(mine_logs["base"])
-                    if row.get("pairs") != n_base:
-                        problems.append("%s %s pairs=%r but %d baseline logs ran" % (tag, h, row.get("pairs"), n_base))
-                    if sum(row.get(k, 0) for k in ("better", "equal", "worse")) != row.get("pairs"):
-                        problems.append("%s %s better+equal+worse = %r != pairs %r" % (tag, h, sum(row.get(k, 0) for k in ("better", "equal", "worse")), row.get("pairs")))
-                    mine = counted.get(h, {"pos_trig": 0, "neg_trig": 0})
-                    for key, got in (("positive_triggered", mine["pos_trig"]), ("negative_triggered", mine["neg_trig"])):
-                        if row.get(key) != got:
-                            problems.append("%s %s %s recount from logs = %r but %s says %r" % (tag, h, key, got, ab_name, row.get(key)))
-            elif isinstance(state, str) and state.startswith("not_run:") and len(state) > len("not_run:"):
-                if ab is not None and h in ab:
-                    problems.append("%s harness %s is %r but %s has per_runtime numbers for it" % (tag, h, state, ab_name))
-                if h in ran_logs:
-                    problems.append("%s harness %s is %r but %s has a ran log for it" % (tag, h, state, runs_dir.as_posix()))
-            else:
-                problems.append("%s harness %s state %r must be 'ran' or 'not_run:<reason>'" % (tag, h, state))
-        # `result` must equal the value recomputed from the harness states + threshold outcome. Priority when several apply:
-        # not_run > below-threshold > partial > passed (not_run = no harness ran; partial = a declared harness did not run, the rest pass).
-        n_ran = sum(1 for v in harnesses.values() if v == "ran")
-        core = "not_run" if n_ran == 0 else ("below-threshold" if below else "passed")
-        recomputed = "partial" if core == "passed" and n_ran < len(harnesses) else core
-        if flag is True:
-            # flag true is not relaxed: every old check above stays, and the block must say passed (not_run:<reason> harnesses keep being tolerated as before)
-            if result != "passed" or core != "passed":
-                problems.append("%s model_evaluated=true needs evaluated.result == 'passed' (declared %r, recomputed %r)" % (tag, result, recomputed))
-        elif result == "passed":
-            problems.append("%s model_evaluated=false but evaluated.result is 'passed' (recomputed %r)" % (tag, recomputed))
-        elif result in RESULT_VALUES and result != recomputed:
-            problems.append("%s evaluated.result %r != recomputed %r" % (tag, result, recomputed))
-    return problems
-
-
-def _ran_logs(runs_dir):
-    """{runtime: {"with": [logs], "base": [logs]}} for every top-level run log with status ran (baseline logs included)."""
-    out = {}
-    for f in sorted(Path(runs_dir).glob("*.json")):
-        try:
-            log = json.loads(f.read_text(encoding="utf-8"))
-        except ValueError:
-            continue
-        if isinstance(log, dict) and "runtime" in log and "with_skill" in log and log.get("status") == "ran":
-            out.setdefault(log["runtime"], {"with": [], "base": []})["with" if log["with_skill"] is True else "base"].append(log)
-    return out
+# The gate (AB_THRESHOLDS, model_evaluated_problems, _ran_logs) lives in the engine: studio_evals (SPR-02 TK6, FR6.1); tests call it there.
 
 
 def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, status=None, model_evaluated=True, claim_positive=4, mutate=None, flag=None, trig=4, result=None, batch_sha=None, kind="commit"):
@@ -214,21 +84,21 @@ class StudioTests(unittest.TestCase):
         return subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "studio.py"), *map(str, args)], cwd=ROOT, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def test_canonical_skills_have_no_static_errors(self):
-        for path in studio.skill_dirs(ROOT):
-            findings = studio.validate_skill(path, eval_root=ROOT / "evals", require_evals=True)
+        for path in studio_fs.skill_dirs(ROOT):
+            findings = studio_validate.validate_skill(path, eval_root=ROOT / "evals", require_evals=True)
             self.assertEqual([], [x for x in findings if x["level"] == "ERROR"], path.as_posix())
 
     def test_every_evals_manifest_is_structurally_valid(self):
         for path in (ROOT / "evals").iterdir():
             if path.is_dir() and any((path / m).exists() for m in ("cases.json", "rubric.md", "fixtures", "baselines", "expected")):
-                self.assertFalse([x for x in studio.check_evals(path) if x["level"] == "ERROR"])
+                self.assertFalse([x for x in studio_evals.check_evals(path) if x["level"] == "ERROR"])
 
     def test_frontmatter_name_and_unsupported_fields_rejected(self):
         with tempfile.TemporaryDirectory() as t:
             skill = Path(t) / "correct-name"
             skill.mkdir()
             (skill / "SKILL.md").write_text('---\nname: Wrong_Name\ndescription: "A test skill. Use when testing name compliance."\ntriggers: all\n---\n\n# Test\n', encoding="utf-8")
-            codes = {f["code"] for f in studio.validate_skill(skill) if f["level"] == "ERROR"}
+            codes = {f["code"] for f in studio_validate.validate_skill(skill) if f["level"] == "ERROR"}
             self.assertIn("FM2", codes)
             self.assertIn("FM4", codes)
 
@@ -237,7 +107,7 @@ class StudioTests(unittest.TestCase):
             skill = Path(t) / "sample-safe"
             skill.mkdir()
             (skill / "SKILL.md").write_text('---\nname: sample-safe\ndescription: "Validates names. Use when testing a link."\n---\n\nRead [unsafe](../secret.txt).\n', encoding="utf-8")
-            codes = {f["code"] for f in studio.validate_skill(skill) if f["level"] == "ERROR"}
+            codes = {f["code"] for f in studio_validate.validate_skill(skill) if f["level"] == "ERROR"}
             self.assertIn("ST6", codes)
 
     def test_new_refuses_overwrite_and_creates_external_empty_evals(self):
@@ -260,7 +130,7 @@ class StudioTests(unittest.TestCase):
             self.assertTrue(all(c["fixtures"] == [] for c in cases))
             self.assertTrue(all(c["expected_behaviors"] and all(b.startswith("STUDIO-DRAFT: ") for b in c["expected_behaviors"]) for c in cases))
             self.assertNotIn(">=3 eval cases", p.stdout)
-            self.assertFalse([f for f in studio.check_evals(evals / "test-deep-skill") if f["level"] == "ERROR"])
+            self.assertFalse([f for f in studio_evals.check_evals(evals / "test-deep-skill") if f["level"] == "ERROR"])
             self.assertEqual(1, self.run_cli(*args).returncode, "second creation should refuse overwrite")
             self.assertEqual(1, self.run_cli("package", out / "test-deep-skill", "--out", base / "dist").returncode, "draft cannot publish")
 
@@ -270,7 +140,7 @@ class StudioTests(unittest.TestCase):
             ef.mkdir()
             (ef / "cases.json").write_text(json.dumps({"skill_name": "x", "cases": [
                 {"id": "a", "prompt": "p", "should_trigger": True, "expected_behaviors": []}]}), encoding="utf-8")
-            msgs = [f["message"] for f in studio.check_evals(ef) if f["code"] == "EV4"]
+            msgs = [f["message"] for f in studio_evals.check_evals(ef) if f["code"] == "EV4"]
             self.assertTrue(any("expected_behaviors" in m for m in msgs), msgs)
 
     def run_evals_all(self, er):
@@ -290,8 +160,50 @@ class StudioTests(unittest.TestCase):
             self.assertEqual(1, p.returncode, "a folder with eval files but no cases.json is still an error")
             self.assertIn("EV1", p.stdout)
 
-    def test_packaged_factory_matches_root_studio(self):
-        self.assertEqual((ROOT / "studio.py").read_bytes(), (ROOT / "skills/skill-creator-studio/scripts/studio.py").read_bytes())
+    # SPR-02 TK2 (FR1.3): the byte-equality test of the root studio.py and the skill copy is replaced on purpose, because
+    # there is one engine now and the root file is a shim; the four tests below pin the shim instead.
+    def test_root_studio_is_a_shim(self):
+        """bắt-lỗi: the root studio.py is a shim of at most 20 lines with no `def`, standard library only."""
+        text = (ROOT / "studio.py").read_text(encoding="utf-8")
+        self.assertLessEqual(len(text.splitlines()), 20)
+        self.assertNotIn("def ", text)
+        self.assertIn("run_path", text)
+
+    def test_shim_hands_argv_and_exit_code_to_the_engine_beside_it(self):
+        """bắt-lỗi: a shim copied next to a stand-in engine runs that engine as __main__ with the same argv and exit code."""
+        with tempfile.TemporaryDirectory() as t:
+            repo = Path(t) / "repo"
+            engine = repo / "skills" / "skill-creator-studio" / "scripts"
+            engine.mkdir(parents=True)
+            shutil.copyfile(ROOT / "studio.py", repo / "studio.py")
+            (engine / "studio.py").write_text("import sys\nprint('STAND-IN', sys.argv[1:], __name__)\nsys.exit(7)\n", encoding="utf-8")
+            other = Path(t) / "elsewhere"
+            other.mkdir()
+            run = subprocess.run([sys.executable, "-X", "utf8", str(repo / "studio.py"), "alpha", "--beta"], cwd=other, text=True, encoding="utf-8",
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(7, run.returncode, run.stdout + run.stderr)
+            self.assertEqual("STAND-IN ['alpha', '--beta'] __main__", run.stdout.strip())
+
+    def test_shim_gives_the_same_output_as_the_engine_from_another_folder(self):
+        """tương-đương: the root shim and the engine run directly print the same stdout and exit with the same code, whatever the cwd."""
+        engine_path = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
+        cases = (["--version"], ["validate", str(ROOT / "skills" / "data-quality-audit"), "--json"], ["fmt", "--bogus-flag"], ["sync-nope"])
+        with tempfile.TemporaryDirectory() as t:
+            for argv in cases:
+                with self.subTest(argv=argv):
+                    runs = [subprocess.run([sys.executable, "-X", "utf8", str(path), *argv], cwd=t, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            for path in (ROOT / "studio.py", engine_path)]
+                    self.assertEqual(runs[1].returncode, runs[0].returncode)
+                    self.assertEqual(runs[1].stdout, runs[0].stdout)
+
+    def test_engine_puts_its_own_folder_first_on_sys_path(self):
+        """bắt-lỗi: running the engine file puts only its own folder at the head of sys.path (so its sibling modules resolve)."""
+        engine_path = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
+        code = "import runpy, sys; runpy.run_path(sys.argv[1], run_name='probe'); print(sys.path[0])"
+        with tempfile.TemporaryDirectory() as t:
+            run = subprocess.run([sys.executable, "-X", "utf8", "-c", code, str(engine_path)], cwd=t, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, run.returncode, run.stderr)
+        self.assertEqual(engine_path.parent.resolve(), Path(run.stdout.strip()).resolve())
 
     def test_package_is_runtime_only(self):
         with tempfile.TemporaryDirectory() as t:
@@ -311,7 +223,7 @@ class StudioTests(unittest.TestCase):
             folder.mkdir()
             (folder / "SKILL.md").write_text('---\nname: demo-skill\ndescription: "Checks inputs. Use when testing security."\n---\n\n# Demo\n', encoding="utf-8")
             (folder / ".env").write_text("PASSWORD=secret", encoding="utf-8")
-            files, findings = studio.ensure_distributable(folder)
+            files, findings = studio_dist.ensure_distributable(folder)
             self.assertTrue(any(x["code"] == "SEC" and x["level"] == "ERROR" for x in findings))
 
     def test_install_copy_and_no_implicit_overwrite(self):
@@ -349,17 +261,77 @@ class StudioTests(unittest.TestCase):
             self.assertTrue((temp / "skills" / "external-skill" / "SKILL.md").is_file())
             self.assertTrue((temp / "evals" / "external-skill" / "cases.json").is_file())
 
-    def test_template_mirror_matches(self):
-        run = self.run_cli("sync-template", "--check")
-        self.assertEqual(0, run.returncode, run.stdout + run.stderr)
-        self.assertEqual((("skill-template", "skill-template"), ("skill-template-full", "skill-template-full")), studio.TEMPLATE_PAIRS)
-        for src_name, dst_name in studio.TEMPLATE_PAIRS:
-            self.assertEqual([], studio.mirror_diff(ROOT / "templates" / src_name, ROOT / "skills" / "skill-creator-studio" / "assets" / dst_name), src_name)
+    # SPR-02 TK3 (FR2, FR3): test_template_mirror_matches is replaced on purpose, because templates/skill-template* and the
+    # sync-template command are gone; assets/ is the only copy of the scaffolds, so there is no mirror left to compare.
+    def repo_copy(self, base: Path) -> Path:
+        """A small repo made of the live engine skill, the two files repo_root() looks for and a decoy templates/ folder."""
+        repo = base / "repo"
+        shutil.copytree(ROOT / "skills" / "skill-creator-studio", repo / "skills" / "skill-creator-studio", ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copyfile(ROOT / "studio.py", repo / "studio.py")
+        (repo / "standards").mkdir()
+        (repo / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("x\n", encoding="utf-8")
+        (repo / ".claude-plugin").mkdir()
+        (repo / ".claude-plugin" / "plugin.json").write_text("{}\n", encoding="utf-8")
+        for name in ("skill-template", "skill-template-full"):
+            (repo / "templates" / name).mkdir(parents=True)
+            for file in ("SKILL.md", "SKILL.vi.md"):
+                (repo / "templates" / name / file).write_text("---\nname: %s\ndescription: DECOY-TEMPLATE-MARKER\n---\n" % name, encoding="utf-8")
+        return repo
+
+    def test_new_in_a_repo_takes_the_scaffold_from_assets(self):
+        """bắt-lỗi: `new` run inside a repo copy that has a different templates/skill-template* uses the engine's assets/ scaffold."""
+        with tempfile.TemporaryDirectory() as t:
+            repo = self.repo_copy(Path(t))
+            for extra in ((), ("--full",), ("--lang", "vi")):
+                with self.subTest(extra=extra):
+                    name = "demo-" + ("full" if extra == ("--full",) else "vi" if extra else "min")
+                    run = subprocess.run([sys.executable, "-X", "utf8", str(repo / "studio.py"), "new", name, "--description", "Demo skill for template tests. Use when testing.",
+                                          "--output", str(Path(t) / "out" / "skills"), "--eval-root", str(Path(t) / "out" / "evals"), *extra],
+                                         cwd=repo, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+                    text = (Path(t) / "out" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                    self.assertNotIn("DECOY-TEMPLATE-MARKER", text)
+                    if extra == ("--full",):
+                        self.assertTrue((Path(t) / "out" / "skills" / name / "references" / "PROCESS_TEMPLATE.md").is_file())
+                    else:
+                        self.assertIn("## Gotchas", text)
+
+    def test_get_template_always_reads_assets_of_the_engine(self):
+        """bắt-lỗi: get_template points into the engine's own assets/ folder, even when the engine runs inside a repo that has templates/."""
+        assets = (ROOT / "skills" / "skill-creator-studio" / "assets").resolve()
+        self.assertEqual(assets / "skill-template" / "SKILL.md", studio_scaffold.get_template().resolve())
+        self.assertEqual(assets / "skill-template" / "SKILL.vi.md", studio_scaffold.get_template(False, "vi").resolve())
+        self.assertEqual(assets / "skill-template-full", studio_scaffold.get_template(True).resolve())
+
+    def test_repo_root_needs_plugin_manifest_and_standard_not_templates(self):
+        """bắt-lỗi: repo_root accepts a folder with .claude-plugin/plugin.json and the authoring standard (no templates/), and refuses one without the manifest."""
+        with tempfile.TemporaryDirectory() as t:
+            base = Path(t).resolve()
+            good, no_manifest = base / "good", base / "no-manifest"
+            for repo in (good, no_manifest):
+                (repo / "standards").mkdir(parents=True)
+                (repo / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("x", encoding="utf-8")
+                (repo / "skills" / "s").mkdir(parents=True)
+            (good / ".claude-plugin").mkdir()
+            (good / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
+            (no_manifest / "templates" / "skill-template").mkdir(parents=True)
+            (no_manifest / "templates" / "skill-template" / "SKILL.md").write_text("x", encoding="utf-8")
+            self.assertEqual(good, studio_fs.repo_root(good / "skills" / "s"))
+            self.assertIsNone(studio_fs.repo_root(no_manifest / "skills" / "s"))
+
+    def test_sync_template_is_not_a_command_any_more(self):
+        """bắt-lỗi: `studio.py sync-template [--check]` is an invalid command: argparse exit 2 and the command is not offered as a choice."""
+        for argv in (("sync-template", "--check"), ("sync-template",)):
+            with self.subTest(argv=argv):
+                run = self.run_cli(*argv)
+                self.assertEqual(2, run.returncode, run.stdout + run.stderr)
+                self.assertIn("invalid choice", run.stderr)
+                self.assertNotIn("sync-template", run.stderr.split("choose from")[-1])
 
     def test_registry_matches_skill_folders(self):
         obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
         catalog_names = {x["name"] for x in obj["skills"]}
-        actual_names = {x.name for x in studio.skill_dirs(ROOT)}
+        actual_names = {x.name for x in studio_fs.skill_dirs(ROOT)}
         self.assertEqual(actual_names, catalog_names)
         for x in obj["skills"]:
             self.assertTrue((ROOT / x["path"] / "SKILL.md").is_file())
@@ -367,7 +339,7 @@ class StudioTests(unittest.TestCase):
 
     def test_model_evaluated_requires_counted_evidence(self, catalog_path=None):
         """`model_evaluated: true` is allowed only with A/B evidence recounted from the run logs in the repo."""
-        problems = model_evaluated_problems(Path(catalog_path) if catalog_path else ROOT / "registry" / "catalog.json", ROOT)
+        problems = studio_evals.model_evaluated_problems(Path(catalog_path) if catalog_path else ROOT / "registry" / "catalog.json", ROOT)
         self.assertEqual([], problems)
 
     # --- gate self-tests: fake catalogs/logs live in a temp dir, never in the repo ---
@@ -375,39 +347,39 @@ class StudioTests(unittest.TestCase):
     def test_gate_accepts_complete_evidence(self):
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t))
-            self.assertEqual([], model_evaluated_problems(catalog, root))
+            self.assertEqual([], studio_evals.model_evaluated_problems(catalog, root))
 
     def test_gate_red_true_without_ab_file(self):
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t), write_ab=False)
-            problems = model_evaluated_problems(catalog, root)
+            problems = studio_evals.model_evaluated_problems(catalog, root)
             self.assertTrue(any("ab-2026-10-18.json" in p and "missing" in p for p in problems), problems)
 
     def test_gate_red_harness_set_not_equal_targets(self):
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t), drop_harness="antigravity")
-            problems = model_evaluated_problems(catalog, root)
+            problems = studio_evals.model_evaluated_problems(catalog, root)
             self.assertTrue(any("harnesses keys" in p and "antigravity" in p for p in problems), problems)
 
     def test_gate_red_runtime_outside_targets(self):
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t), extra_runtime="gemini-cli")
-            problems = model_evaluated_problems(catalog, root)
+            problems = studio_evals.model_evaluated_problems(catalog, root)
             self.assertTrue(any("gemini-cli" in p and "targets" in p for p in problems), problems)
 
     def test_gate_red_not_run_harness_with_ran_log(self):
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t), extra_runtime="antigravity")
-            problems = model_evaluated_problems(catalog, root)
+            problems = studio_evals.model_evaluated_problems(catalog, root)
             self.assertTrue(any("antigravity" in p and "not_run" in p for p in problems), problems)
 
     def test_gate_red_status_mismatch(self):
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t), status="prototype-static-validated")
-            problems = model_evaluated_problems(catalog, root)
+            problems = studio_evals.model_evaluated_problems(catalog, root)
             self.assertTrue(any("status" in p for p in problems), problems)
             catalog, root = _fake_evidence(Path(t) / "b", model_evaluated=False, status="model-evaluated")  # false + status model-evaluated
-            problems = model_evaluated_problems(catalog, root)
+            problems = studio_evals.model_evaluated_problems(catalog, root)
             self.assertTrue(any("status" in p for p in problems), problems)
 
     # --- SC8 / FR9: `evaluated.result` + `batch_sha`; flag false drops only the AB_THRESHOLDS application ---
@@ -415,7 +387,7 @@ class StudioTests(unittest.TestCase):
     def _gate(self, **kw):
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t), **kw)
-            return model_evaluated_problems(catalog, root)
+            return studio_evals.model_evaluated_problems(catalog, root)
 
     def test_gate_false_below_threshold_with_matching_counts_is_green(self):
         """tương-đương: SC8-1 (accepting): flag false + result below-threshold, counts recounted from logs (3/5) really below threshold -> green."""
@@ -484,7 +456,7 @@ class StudioTests(unittest.TestCase):
         self._gate_red(m, "recomputed", model_evaluated=False, result="partial", write_ab=False)
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t), model_evaluated=False, result="not_run", write_ab=False, mutate=m)
-            self.assertEqual([], model_evaluated_problems(catalog, root))
+            self.assertEqual([], studio_evals.model_evaluated_problems(catalog, root))
 
     def test_runbook_has_batch_rules_section(self):
         """bắt-lỗi (red at df875ce: no «Luật lô» section): FR8.1: RUNBOOK «Luật lô» exists and names the four mandatory phrases, with PowerShell and bash examples."""
@@ -500,13 +472,13 @@ class StudioTests(unittest.TestCase):
     def test_gate_red_log_count_differs_from_ab_report(self):
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t), claim_positive=5)  # ab json claims 5, logs show 4
-            problems = model_evaluated_problems(catalog, root)
+            problems = studio_evals.model_evaluated_problems(catalog, root)
             self.assertTrue(any("recount" in p and "positive_triggered" in p for p in problems), problems)
 
     def _gate_red(self, mutate, needle, **kw):
         with tempfile.TemporaryDirectory() as t:
             catalog, root = _fake_evidence(Path(t), mutate=mutate, **kw)
-            problems = model_evaluated_problems(catalog, root)
+            problems = studio_evals.model_evaluated_problems(catalog, root)
             self.assertTrue(any(needle in p for p in problems), problems)
 
     def test_gate_red_zero_negative_logs(self):
@@ -576,7 +548,7 @@ class StudioTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             path = Path(t) / "catalog.json"
             path.write_text(json.dumps(obj), encoding="utf-8")
-            problems = model_evaluated_problems(path, ROOT)
+            problems = studio_evals.model_evaluated_problems(path, ROOT)
             self.assertTrue(any("better" in p for p in problems), problems)
             self.assertTrue(any("codex" in p and "negative_triggered" in p for p in problems), problems)
             with self.assertRaises(AssertionError):
@@ -591,7 +563,7 @@ def nonblank(path: Path) -> int:
 
 
 class TemplateTests(unittest.TestCase):
-    """FR10 / FR19: minimal EN/VI template, --full, mirror_diff and install --user (SPR-33 TK6)."""
+    """FR10 / FR19: minimal EN/VI template, --full and install --user (SPR-33 TK6)."""
 
     def run_cli(self, *args):
         return self.run_cli_env({}, *args)
@@ -626,7 +598,7 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual(["SKILL.md"], sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file()))
             self.assertLessEqual(nonblank(skill / "SKILL.md"), 20)
             self.assertIn("STUDIO-DRAFT", (skill / "SKILL.md").read_text(encoding="utf-8"))
-            self.assertEqual([], [f for f in studio.validate_skill(skill) if f["level"] == "ERROR"])
+            self.assertEqual([], [f for f in studio_validate.validate_skill(skill) if f["level"] == "ERROR"])
             pack = self.run_cli("package", skill, "--out", Path(t) / "dist")
             self.assertEqual(1, pack.returncode, pack.stdout + pack.stderr)
             self.assertIn("PACK", pack.stdout)
@@ -640,7 +612,7 @@ class TemplateTests(unittest.TestCase):
                 self.assertTrue((skill / rel).is_file(), rel)
             self.assertFalse((skill / "references" / "WORKFLOW_GUIDE.md").exists())
             self.assertNotIn("WORKFLOW_GUIDE", (skill / "SKILL.md").read_text(encoding="utf-8"))
-            findings = studio.validate_skill(skill)
+            findings = studio_validate.validate_skill(skill)
             self.assertEqual([], [f for f in findings if f["level"] == "ERROR"])
             self.assertNotIn("CT10", {f["code"] for f in findings})
 
@@ -651,11 +623,11 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual(["SKILL.md"], sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file()))
             front, body = self.split(skill / "SKILL.md")
             self.assertTrue(front.isascii(), front)
-            self.assertEqual("vi", studio.detect_lang(body))
+            self.assertEqual("vi", studio_lint.detect_lang(body))
             self.assertEqual(body, unicodedata.normalize("NFC", body))
             self.assertIn("## Gotchas", body)
             self.assertIn("## References", body)
-            findings = studio.validate_skill(skill)
+            findings = studio_validate.validate_skill(skill)
             self.assertEqual([], [f for f in findings if f["code"].startswith("VI")])
             self.assertEqual([], [f for f in findings if f["level"] == "ERROR"])
 
@@ -664,7 +636,7 @@ class TemplateTests(unittest.TestCase):
             run, skill = self.new_skill(t, "demo-en")
             self.assertEqual(0, run.returncode, run.stdout + run.stderr)
             front, body = self.split(skill / "SKILL.md")
-            self.assertEqual("en", studio.detect_lang(body))
+            self.assertEqual("en", studio_lint.detect_lang(body))
             self.assertIn("what an agent would get wrong", body)
             run2, skill2 = self.new_skill(t, "demo-en2", "--lang", "en")
             self.assertEqual(0, run2.returncode, run2.stdout + run2.stderr)
@@ -677,27 +649,28 @@ class TemplateTests(unittest.TestCase):
             self.assertIn("invalid choice: 'fr'", run.stderr)
             self.assertFalse(skill.exists())
 
-    def test_new_full_lang_vi_exit2(self):
+    def test_new_full_lang_vi_exit0(self):
+        """SPR-02 FR10 (was test_new_full_lang_vi_exit2): `--full --lang vi` is accepted and makes the full skill with a Vietnamese SKILL.md; the details are in tests/test_new_full_vi.py."""
         with tempfile.TemporaryDirectory() as t:
             run, skill = self.new_skill(t, "demo-fv", "--full", "--lang", "vi")
-            self.assertEqual(2, run.returncode, run.stdout + run.stderr)
-            self.assertIn("full template is English-only", run.stderr)
-            self.assertFalse(skill.exists())
-            self.assertFalse((Path(t) / "evals" / "demo-fv").exists())
+            self.assertEqual(0, run.returncode, run.stdout + run.stderr)
+            self.assertTrue((skill / "references" / "PROCESS_TEMPLATE.md").is_file())
+            self.assertFalse((skill / "SKILL.vi.md").exists())
+            self.assertTrue((Path(t) / "evals" / "demo-fv").is_dir())
 
     def test_minimal_templates_stay_under_20_nonblank_lines(self):
         """SC4: both default templates stay small; the Vietnamese one mirrors the English headings."""
-        counts = [nonblank(ROOT / "templates" / "skill-template" / f) for f in ("SKILL.md", "SKILL.vi.md")]
+        counts = [nonblank(ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template" / f) for f in ("SKILL.md", "SKILL.vi.md")]
         self.assertEqual([14, 14], counts)
-        en = (ROOT / "templates" / "skill-template" / "SKILL.md").read_text(encoding="utf-8")
-        vi = (ROOT / "templates" / "skill-template" / "SKILL.vi.md").read_text(encoding="utf-8")
+        en = (ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template" / "SKILL.md").read_text(encoding="utf-8")
+        vi = (ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template" / "SKILL.vi.md").read_text(encoding="utf-8")
         for heading in ("# Skill Template", "## Gotchas", "## References"):
             self.assertIn(heading, en)
             self.assertIn(heading, vi)
         self.assertNotIn("<", re.search(r"^description: (.*)$", en, re.M).group(1))
 
     def test_full_has_process_template(self):
-        process = studio.get_template(full=True) / "references" / "PROCESS_TEMPLATE.md"
+        process = studio_scaffold.get_template(full=True) / "references" / "PROCESS_TEMPLATE.md"
         text = process.read_text(encoding="utf-8")
         for needle in ("# Process Template", "> **Conclusion:**", "## When to use / not", "## Steps", "### Step 1",
                        "Command:", "Expect:", "Stop if:", "## Gotchas", "## Done when"):
@@ -711,25 +684,11 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual("# Optional, Codex only; delete if unused.", (process.parent.parent / "agents" / "openai.yaml").read_text(encoding="utf-8").splitlines()[0])
 
     def test_get_template_selects_files(self):
-        base = studio.get_template().parent
-        self.assertEqual(base / "SKILL.md", studio.get_template())
-        self.assertEqual(base / "SKILL.vi.md", studio.get_template(False, "vi"))
-        self.assertEqual(base.parent / "skill-template-full", studio.get_template(True))
-        self.assertEqual(base.parent / "skill-template-full", studio.get_template(full=True, lang="en"))
-
-    def test_mirror_diff_detects_extra_file(self):
-        with tempfile.TemporaryDirectory() as t:
-            src, dst = Path(t) / "src", Path(t) / "dst"
-            for root in (src, dst):
-                (root / "sub").mkdir(parents=True)
-                (root / "same.txt").write_bytes(b"same")
-                (root / "sub" / "keep.txt").write_bytes(b"keep")
-            self.assertEqual([], studio.mirror_diff(src, dst))
-            (dst / "extra.txt").write_bytes(b"x")
-            (dst / "sub" / "keep.txt").write_bytes(b"changed")
-            (src / "missing.txt").write_bytes(b"m")
-            self.assertEqual(["extra.txt", "missing.txt", "sub/keep.txt"], studio.mirror_diff(src, dst))
-            self.assertEqual(["missing.txt", "same.txt", "sub/keep.txt"], studio.mirror_diff(src, Path(t) / "absent"))
+        base = studio_scaffold.get_template().parent
+        self.assertEqual(base / "SKILL.md", studio_scaffold.get_template())
+        self.assertEqual(base / "SKILL.vi.md", studio_scaffold.get_template(False, "vi"))
+        self.assertEqual(base.parent / "skill-template-full", studio_scaffold.get_template(True))
+        self.assertEqual(base.parent / "skill-template-full", studio_scaffold.get_template(full=True, lang="en"))
 
     def test_package_includes_agents_dir(self):
         with tempfile.TemporaryDirectory() as t:
@@ -797,12 +756,12 @@ class TemplateTests(unittest.TestCase):
     def test_full_and_minimal_templates_validate_clean(self):
         """Round-2 fix 1: the full template is named like its folder, so validate has no FM2."""
         for folder in ("skill-template", "skill-template-full"):
-            findings = studio.validate_skill(ROOT / "templates" / folder)
+            findings = studio_validate.validate_skill(ROOT / "skills" / "skill-creator-studio" / "assets" / folder)
             self.assertEqual([], [f for f in findings if f["level"] == "ERROR"], folder)
-            run = self.run_cli("validate", ROOT / "templates" / folder)
+            run = self.run_cli("validate", ROOT / "skills" / "skill-creator-studio" / "assets" / folder)
             self.assertEqual(0, run.returncode, run.stdout + run.stderr)
             self.assertIn(": 0 errors;", run.stdout)
-        self.assertIn("name: skill-template-full\n", (ROOT / "templates" / "skill-template-full" / "SKILL.md").read_text(encoding="utf-8"))
+        self.assertIn("name: skill-template-full\n", (ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template-full" / "SKILL.md").read_text(encoding="utf-8"))
 
     def test_new_full_does_not_leak_template_suffix_into_name(self):
         with tempfile.TemporaryDirectory() as t:
@@ -812,7 +771,7 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual(1, len(re.findall(r"^name: demo-nm$", text, re.M)), text[:200])
             self.assertNotIn("demo-nm-full", text)
             self.assertNotIn("name: skill-template", text)
-            self.assertEqual([], [f for f in studio.validate_skill(skill) if f["code"] == "FM2"])
+            self.assertEqual([], [f for f in studio_validate.validate_skill(skill) if f["code"] == "FM2"])
 
     def test_install_without_scope_flag_means_workspace_dot(self):
         """No --workspace/--user is --workspace . (the current directory), not its parent."""
@@ -919,14 +878,14 @@ class TemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             plain = Path(t) / "plain"
             plain.mkdir()
-            self.assertFalse(studio.is_link(plain))
-            self.assertFalse(studio.is_link(Path(t) / "absent"))
+            self.assertFalse(studio_fs.is_link(plain))
+            self.assertFalse(studio_fs.is_link(Path(t) / "absent"))
             if os.name == "nt":
                 import _winapi
                 link = Path(t) / "junction"
                 _winapi.CreateJunction(str(plain), str(link))
                 try:
-                    self.assertTrue(studio.is_link(link))
+                    self.assertTrue(studio_fs.is_link(link))
                 finally:
                     os.rmdir(link)
 
@@ -950,10 +909,10 @@ class TemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             home, env = self.make_home(t, ".gemini/config", ".agents")
             with mock.patch.dict(os.environ, env):
-                self.assertEqual(home / ".gemini" / "config" / "skills", studio.user_skill_root("antigravity"))
-                self.assertEqual(home / ".agents" / "skills", studio.user_skill_root("codex"))
+                self.assertEqual(home / ".gemini" / "config" / "skills", studio_scaffold.user_skill_root("antigravity"))
+                self.assertEqual(home / ".agents" / "skills", studio_scaffold.user_skill_root("codex"))
                 with self.assertRaises(ValueError):
-                    studio.user_skill_root("claude")
+                    studio_scaffold.user_skill_root("claude")
             self.assertEqual(0, call(env, "install", skill, "--agent", "antigravity", "--user")[0])
             self.assertEqual(0, call(env, "install", skill, "--agent", "codex", "--user")[0])
             code, _, err = call(env, "install", skill, "--agent", "codex", "--user")
@@ -966,7 +925,7 @@ class TemplateTests(unittest.TestCase):
             code, _, err = call(lone_env, "install", skill, "--agent", "antigravity", "--user")
             self.assertEqual((2, True, []), (code, "parent directory not found" in err, list(lone.iterdir())))
 
-    def test_new_and_sync_in_process(self):
+    def test_new_in_process(self):
         import contextlib
         import io
 
@@ -985,15 +944,13 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual(0, call("new", "ip-min", *common)[0])
             self.assertEqual(0, call("new", "ip-vi", "--lang", "vi", *common)[0])
             self.assertEqual(0, call("new", "ip-full", "--full", *common)[0])
-            code, _, err = call("new", "ip-bad", "--full", "--lang", "vi", *common)
-            self.assertEqual((2, True), (code, "English-only" in err))
+            self.assertEqual(0, call("new", "ip-full-vi", "--full", "--lang", "vi", *common)[0])  # SPR-02 FR10: was exit 2 "English-only"
+            self.assertFalse((base / "skills" / "ip-full-vi" / "SKILL.vi.md").exists())
             self.assertEqual({"SKILL.md"}, {p.name for p in (base / "skills" / "ip-vi").iterdir()})
             self.assertTrue((base / "skills" / "ip-full" / "agents" / "openai.yaml").is_file())
-        code, out, err = call("sync-template", "--check")
-        self.assertEqual(0, code, out + err)
 
-    def test_install_workspace_and_sync_branches_in_process(self):
-        """Covers the --workspace path of install and both sync-template modes without touching the repo copies."""
+    def test_install_workspace_branches_in_process(self):
+        """Covers the --workspace path of install without touching the repo copies."""
         import contextlib
         import io
         from unittest import mock
@@ -1014,12 +971,6 @@ class TemplateTests(unittest.TestCase):
             self.assertTrue((ws / ".claude" / "skills" / "data-quality-audit" / "SKILL.md").is_file())
             code, _, err = call("install", ROOT / "skills" / "data-quality-audit", "--agent", "codex", "--workspace", Path(t) / "absent")
             self.assertEqual((2, True), (code, "workspace directory not found" in err))
-        with mock.patch.object(studio, "mirror_diff", return_value=["SKILL.md"]):
-            code, _, err = call("sync-template", "--check")
-        self.assertEqual((1, True), (code, "template mirror differs: skill-template/SKILL.md" in err))
-        with mock.patch.object(studio.shutil, "rmtree") as rm, mock.patch.object(studio.shutil, "copytree") as cp:
-            code, out, _ = call("sync-template")
-        self.assertEqual((0, 2, 2, True), (code, rm.call_count, cp.call_count, "Synced 2 canonical templates" in out))
 
 
 class AgentskillsExportTests(unittest.TestCase):
@@ -1055,7 +1006,7 @@ class AgentskillsExportTests(unittest.TestCase):
         source = json.loads((real / "cases.json").read_text(encoding="utf-8"))["cases"]
         positive = [c for c in source if c["should_trigger"]]
         with tempfile.TemporaryDirectory() as t:
-            code, findings, stats = studio.export_agentskills(real, "data-quality-audit", Path(t) / "out")
+            code, findings, stats = studio_evals.export_agentskills(real, "data-quality-audit", Path(t) / "out")
             self.assertEqual((0, []), (code, findings))
             target = Path(t) / "out" / "data-quality-audit" / "evals" / "evals.json"
             raw = target.read_text(encoding="utf-8")
@@ -1082,7 +1033,7 @@ class AgentskillsExportTests(unittest.TestCase):
 
     def test_export_excludes_negative_cases(self):
         with tempfile.TemporaryDirectory() as t:
-            code, _, stats = studio.export_agentskills(ROOT / "evals" / "data-quality-audit", "data-quality-audit", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(ROOT / "evals" / "data-quality-audit", "data-quality-audit", Path(t) / "out")
             self.assertEqual(0, code)
             self.assertEqual((5, 3), (stats["exported"], stats["excluded_negative"]))
             raw = (Path(t) / "out" / "data-quality-audit" / "evals" / "evals.json").read_text(encoding="utf-8")
@@ -1097,7 +1048,7 @@ class AgentskillsExportTests(unittest.TestCase):
             code, out, err = self.call("evals", "draft-one", "--eval-root", base / "evals", "--export", "agentskills", "--out", base / "out")
             self.assertEqual(1, code, out + err)
             self.assertFalse((base / "out").exists())
-            code, findings, stats = studio.export_agentskills(base / "evals" / "draft-one", "draft-one", base / "out")
+            code, findings, stats = studio_evals.export_agentskills(base / "evals" / "draft-one", "draft-one", base / "out")
             self.assertEqual((1, True, 0), (code, any("draft" in f["message"] for f in findings), stats["exported"]))
             self.assertFalse((base / "out").exists())
 
@@ -1105,7 +1056,7 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             (folder / "cases.json").write_text("{not json", encoding="utf-8")
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, "EV1"), (code, findings[0]["code"]))
             self.assertFalse((Path(t) / "out").exists())
             code, out, err = self.call("evals", "demo-skill", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", Path(t) / "out")
@@ -1116,10 +1067,10 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             out = Path(t) / "out"
-            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+            self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
             target = out / "demo-skill" / "evals" / "evals.json"
             target.write_text("MARK\n", encoding="utf-8")
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", out)
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", out)
             self.assertEqual((1, "MARK\n"), (code, target.read_text(encoding="utf-8")))
             self.assertTrue(findings)
             code, _, err = self.call("evals", "demo-skill", "--eval-root", Path(t) / "evals", "--export", "agentskills", "--out", out)
@@ -1140,7 +1091,7 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             (Path(t) / "skills").mkdir()
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "skills" / "demo-skill")
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "skills" / "demo-skill")
             self.assertEqual((2, False), (code, (Path(t) / "skills" / "demo-skill" / "evals").exists()))
         self.assertEqual(before, sorted(x.name for x in skills.iterdir()))
 
@@ -1152,7 +1103,7 @@ class AgentskillsExportTests(unittest.TestCase):
                 data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
                 data["cases"][0]["fixtures"] = [bad]
                 (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
-                code, findings, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+                code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
                 self.assertEqual((1, 0, False), (code, stats["exported"], (Path(t) / "out").exists()), bad)
                 self.assertTrue(findings, bad)
 
@@ -1180,7 +1131,7 @@ class AgentskillsExportTests(unittest.TestCase):
             if undo is None:
                 self.skipTest("cannot create links here")
             try:
-                code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+                code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
                 self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
                 self.assertTrue(any("symlink" in f["message"] for f in findings), findings)
             finally:
@@ -1190,12 +1141,12 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             out = Path(t) / "out"
-            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+            self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
             stray = out / "demo-skill" / "evals" / "files" / "mine.txt"
             stray.write_text("keep", encoding="utf-8")
             (out / "demo-skill" / "evals" / "files" / "a.csv").write_bytes(b"stale")
-            self.assertEqual(1, studio.export_agentskills(folder, "demo-skill", out)[0])
-            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out, force=True)[0])
+            self.assertEqual(1, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
+            self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out, force=True)[0])
             self.assertEqual("keep", stray.read_text(encoding="utf-8"))
             self.assertEqual((folder / "fixtures" / "a.csv").read_bytes(), (out / "demo-skill" / "evals" / "files" / "a.csv").read_bytes())
 
@@ -1209,7 +1160,7 @@ class AgentskillsExportTests(unittest.TestCase):
                 self.skipTest("cannot create links here")
             try:
                 before = (folder / "fixtures" / "a.csv").read_bytes()
-                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
                 self.assertEqual((1, before), (code, (folder / "fixtures" / "a.csv").read_bytes()))
                 self.assertTrue(any("symlink" in f["message"] for f in findings), findings)
             finally:
@@ -1220,17 +1171,17 @@ class AgentskillsExportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             out = Path(t) / "out"
-            self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
-            with mock.patch.object(studio.os.path, "samefile", return_value=True):
-                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out, force=True)
+            self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
+            with mock.patch.object(os.path, "samefile", return_value=True):
+                code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
             self.assertEqual((1, True), (code, any("source fixture itself" in f["message"] for f in findings)))
 
     def test_x_write_failure_is_reported(self):
         from unittest import mock
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
-            with mock.patch.object(studio.shutil, "copyfileobj", side_effect=OSError("disk full")):
-                code, findings, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            with mock.patch.object(shutil, "copyfileobj", side_effect=OSError("disk full")):
+                code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, 0, "EX8"), (code, stats["exported"], findings[0]["code"]))
 
     def test_x_fixture_name_collision_and_nested_names(self):
@@ -1243,12 +1194,12 @@ class AgentskillsExportTests(unittest.TestCase):
             data["cases"][0]["fixtures"] = ["fixtures/a.csv", "a.csv"]
             data["cases"][1]["fixtures"] = ["fixtures/sub/n.csv"]
             (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
             self.assertTrue(any("collide" in f["message"] for f in findings))
             data["cases"][0]["fixtures"] = ["fixtures/a.csv"]
             (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
-            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual(0, code)
             self.assertEqual(b"3", (Path(t) / "out" / "demo-skill" / "evals" / "files" / "sub" / "n.csv").read_bytes())
             evals = json.loads(Path(stats["path"]).read_text(encoding="utf-8"))["evals"]
@@ -1275,19 +1226,19 @@ class AgentskillsExportTests(unittest.TestCase):
     def test_x_bad_skill_name_refused(self):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
-            code, findings, _ = studio.export_agentskills(folder, "..", Path(t) / "out")
+            code, findings, _ = studio_evals.export_agentskills(folder, "..", Path(t) / "out")
             self.assertEqual((1, False), (code, (Path(t) / "out").exists()))
             self.assertTrue(findings)
 
     def refused(self, folder, base, name="demo-skill"):
-        code, findings, stats = studio.export_agentskills(folder, name, Path(base) / "out")
+        code, findings, stats = studio_evals.export_agentskills(folder, name, Path(base) / "out")
         self.assertFalse((Path(base) / "out").exists(), findings)
         return code, findings, stats
 
     def test_x_evals_json_bytes_exact(self):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
-            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual(0, code)
             expected = {"skill_name": "demo-skill", "evals": [
                 {"id": 1, "prompt": "Audit a.csv, tiếng Việt ok", "expected_output": "Reads a.csv; Reports rows", "files": ["evals/files/a.csv"], "assertions": ["Reads a.csv", "Reports rows"]},
@@ -1316,7 +1267,7 @@ class AgentskillsExportTests(unittest.TestCase):
                 code, findings, stats = self.refused(folder, t)
                 self.assertEqual((1, ["EX3"], 0), (code, [f["code"] for f in findings], stats["exported"]), label)
         with tempfile.TemporaryDirectory() as t:
-            self.assertEqual(0, studio.export_agentskills(self.make_eval(t, status="frozen", cases=cases()), "demo-skill", Path(t) / "out")[0])
+            self.assertEqual(0, studio_evals.export_agentskills(self.make_eval(t, status="frozen", cases=cases()), "demo-skill", Path(t) / "out")[0])
 
     def test_x_all_reports_worst_exit_whatever_the_order(self):
         for first, second in (("aaa-broken", "zzz-good"), ("aaa-good", "zzz-broken")):
@@ -1367,7 +1318,7 @@ class AgentskillsExportTests(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t, cases=cases)
-            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual(0, code)
             first = json.loads(Path(stats["path"]).read_text(encoding="utf-8"))["evals"][0]
             self.assertEqual((prompt, " Reads a.csv ; Reports rows", [behavior, "Reports rows"]), (first["prompt"], first["expected_output"], first["assertions"]))
@@ -1403,7 +1354,7 @@ class AgentskillsExportTests(unittest.TestCase):
             folder = self.make_eval(t)
             snapshot = sorted(str(x) for x in Path(t).rglob("*"))
             for out in (Path(t) / "evals", Path(t) / "evals" / "x", folder, folder / "sub"):
-                code, findings, _ = studio.export_agentskills(folder, "demo-skill", out)
+                code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", out)
                 self.assertEqual((2, True), (code, any("must not be under evals/" in f["message"] for f in findings)), str(out))
             self.assertEqual(snapshot, sorted(str(x) for x in Path(t).rglob("*")))
             old = os.getcwd()
@@ -1422,8 +1373,8 @@ class AgentskillsExportTests(unittest.TestCase):
             repo = Path(t) / "repo"
             (repo / "standards").mkdir(parents=True)
             (repo / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("x", encoding="utf-8")
-            (repo / "templates" / "skill-template").mkdir(parents=True)
-            (repo / "templates" / "skill-template" / "SKILL.md").write_text("x", encoding="utf-8")
+            (repo / ".claude-plugin").mkdir()
+            (repo / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
             (repo / "evals").mkdir()
             other = Path(t) / "other"
             other.mkdir()
@@ -1452,7 +1403,7 @@ class AgentskillsExportTests(unittest.TestCase):
 
     def test_x_colon_in_fixture_name_refused(self):
         for bad in ("fixtures/a:b.csv", "fixtures/a.csv:hid", "C:fixtures/a.csv", "fixtures/dir:/a.csv"):
-            source, parts, problem = studio.export_fixture_source(Path("."), bad)
+            source, parts, problem = studio_evals.export_fixture_source(Path("."), bad)
             self.assertEqual((None, [], True), (source, parts, "unsafe fixture path" in problem), bad)
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t, fixtures={"a.csv": b"1", "b.csv": b"2"})
@@ -1476,7 +1427,7 @@ class AgentskillsExportTests(unittest.TestCase):
                 folder = self.make_eval(t)
                 out = Path(t) / "out"
                 files = out / "demo-skill" / "evals" / "files"
-                self.assertEqual(0, studio.export_agentskills(folder, "demo-skill", out)[0])
+                self.assertEqual(0, studio_evals.export_agentskills(folder, "demo-skill", out)[0])
                 survivor = files / "b.csv"
                 survivor.write_bytes(b"old")
                 (files / "a.csv").unlink()
@@ -1488,12 +1439,12 @@ class AgentskillsExportTests(unittest.TestCase):
                     if label.startswith("second") and len(calls) == 2:
                         raise OSError("disk full")
                     return real(src, dst)
-                with mock.patch.object(studio.shutil, "copyfileobj", side_effect=flaky):
+                with mock.patch.object(shutil, "copyfileobj", side_effect=flaky):
                     if label.startswith("evals"):
-                        with mock.patch.object(studio.tempfile, "mkstemp", side_effect=OSError("denied")):
-                            code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                        with mock.patch.object(tempfile, "mkstemp", side_effect=OSError("denied")):
+                            code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
                     else:
-                        code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
+                        code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
                 self.assertEqual((1, "EX8", 0), (code, findings[0]["code"], stats["exported"]), label)
                 self.assertEqual(["b.csv"], sorted(x.name for x in out.rglob("*") if x.is_file()), label)  # only the file that existed before the run
                 self.assertTrue(survivor.is_file(), label)
@@ -1538,8 +1489,8 @@ class ExportFixtureHardeningTests(unittest.TestCase):
                 touched.append(("copyfile", str(src)))
             return real_copy(src, dst, *args, **kwargs)
         with mock.patch("builtins.open", spy_open), mock.patch.object(os, "stat", spy_stat), \
-                mock.patch.object(Path, "stat", spy_path_stat), mock.patch.object(studio.shutil, "copyfile", spy_copy):
-            code, findings, stats = studio.export_agentskills(folder, "demo-skill", out)
+                mock.patch.object(Path, "stat", spy_path_stat), mock.patch.object(shutil, "copyfile", spy_copy):
+            code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out)
         return code, findings, stats, touched
 
     def one_fixture_eval(self, base, name, content=b"CANARY"):
@@ -1572,7 +1523,7 @@ class ExportFixtureHardeningTests(unittest.TestCase):
             data["cases"][0]["fixtures"] = ["fixtures/environment.csv", "fixtures/authors.json"]
             data["cases"][1]["fixtures"] = ["fixtures/pem.csv", "fixtures/monkey.csv"]
             (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
-            code, _, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, _, stats = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((0, 2), (code, stats["exported"]))
             self.assertEqual(["authors.json", "environment.csv", "monkey.csv", "pem.csv"], sorted(x.name for x in (Path(t) / "out" / "demo-skill" / "evals" / "files").iterdir()))
 
@@ -1615,10 +1566,10 @@ class ExportFixtureHardeningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             home = Path(t) / "home"
             (home / ".secret").mkdir(parents=True)
-            studio._secret_dirs.cache_clear()
+            _engine.clear_caches()
             try:
                 with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
-                    self.assertEqual("secret-zone", studio.zone_reason(home / ".secret" / "e"))
+                    self.assertEqual("secret-zone", studio_fs.zone_reason(home / ".secret" / "e"))
                     folder = self.make_eval(home / ".secret", fixtures={"canary.csv": b"CANARY"})
                     data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
                     data["cases"][0]["fixtures"] = ["fixtures/canary.csv"]
@@ -1626,13 +1577,13 @@ class ExportFixtureHardeningTests(unittest.TestCase):
                     (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
                     self.assert_refused_untouched(folder, t, {"canary.csv", "cases.json"}, "fake HOME/.secret")
             finally:
-                studio._secret_dirs.cache_clear()
+                _engine.clear_caches()
 
     def test_x_cloud_placeholder_or_resolved_zone_refused(self):
         from unittest import mock
         with tempfile.TemporaryDirectory() as t:
             folder = self.one_fixture_eval(t, "canary.csv")
-            with mock.patch.object(studio, "path_is_cloud", lambda path: os.path.basename(os.fspath(path)) == "canary.csv"):
+            with mock.patch.object(studio_fs, "path_is_cloud", lambda path: os.path.basename(os.fspath(path)) == "canary.csv"):
                 findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "placeholder")
             self.assertIn("cloud placeholder", findings[0]["message"])
         with tempfile.TemporaryDirectory() as t:
@@ -1674,18 +1625,18 @@ class ExportFixtureHardeningTests(unittest.TestCase):
         # the per-fixture entry point (also used by the export loop) must not need the eval-level pre-pass: it decides from names, nothing exists on disk here
         with tempfile.TemporaryDirectory() as t:
             for zone in ("OneDrive - X", ".secret", "SharePoint"):
-                source, parts, problem = studio.export_fixture_source(Path(t) / zone / "evals" / "demo-skill", "fixtures/a.csv")
+                source, parts, problem = studio_evals.export_fixture_source(Path(t) / zone / "evals" / "demo-skill", "fixtures/a.csv")
                 self.assertEqual((None, [], True), (source, parts, "inside a secret or cloud-synced folder" in problem), zone)
             for name in (".env", "auth.json", "k.pem"):
-                source, _, problem = studio.export_fixture_source(Path(t) / "e", "fixtures/" + name)
+                source, _, problem = studio_evals.export_fixture_source(Path(t) / "e", "fixtures/" + name)
                 self.assertEqual((None, True), (source, "secret or credential name" in problem), name)
-            self.assertEqual("missing/outside eval fixture 'fixtures/a.csv'", studio.export_fixture_source(Path(t) / "e", "fixtures/a.csv")[2])
+            self.assertEqual("missing/outside eval fixture 'fixtures/a.csv'", studio_evals.export_fixture_source(Path(t) / "e", "fixtures/a.csv")[2])
 
     def test_x_cases_json_that_is_not_valid_still_reports_ev1(self):
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
             (folder / "cases.json").write_text("{not json", encoding="utf-8")
-            code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+            code, findings, _ = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, "EV1"), (code, findings[0]["code"]), findings)
 
 
@@ -1758,7 +1709,7 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
         source = folder / "fixtures" / "a.csv"
         outside = Path(t) / "outside.csv"
         outside.write_bytes(b"CANARY")
-        real, done = studio.is_link, []
+        real, done = studio_fs.is_link, []
 
         def spy(path):
             if not done and os.path.basename(os.fspath(path)) == "demo-skill" and "out" in Path(path).parts:
@@ -1766,8 +1717,8 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
                 source.unlink()
                 make_swap(source, outside)
             return real(path)
-        with mock.patch.object(studio, "is_link", spy):
-            result = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+        with mock.patch.object(studio_fs, "is_link", spy):
+            result = studio_evals.export_agentskills(folder, "demo-skill", Path(t) / "out")
         self.assertTrue(done, "swap hook never fired")
         return result
 
@@ -1817,40 +1768,40 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
         """đơn-vị-hàm-mới: unsafe_windows_name."""
         bad = ["a.", "a ", "CON", "con", "Nul.txt", "aux.csv", "COM1", "lpt9.x", "COM²", "LPT³.csv", "CONIN$", "conout$", "CLOCK$", "AUTH~1.JSO", "a~12", "a:b", "PRN "]
         for name in bad:
-            self.assertTrue(studio.unsafe_windows_name(name), name)
+            self.assertTrue(studio_fs.unsafe_windows_name(name), name)
         for name in ["a.csv", "Data.csv", "console.csv", "com10", "com", "lpt0", "x~y", "Dữ liệu.csv", "confile", "a b.csv"]:
-            self.assertIsNone(studio.unsafe_windows_name(name), name)
+            self.assertIsNone(studio_fs.unsafe_windows_name(name), name)
 
     def test_don_vi_ham_moi_open_nofollow_read_and_create_exclusive(self):
         """đơn-vị-hàm-mới: open_nofollow_read / create_exclusive."""
         with tempfile.TemporaryDirectory() as t:
             f = Path(t) / "f.bin"
-            with studio.create_exclusive(f) as handle:
+            with studio_fs.create_exclusive(f) as handle:
                 handle.write(b"abc")
             with self.assertRaises(FileExistsError):
-                studio.create_exclusive(f)
-            with studio.open_nofollow_read(f, os.lstat(f)) as handle:
+                studio_fs.create_exclusive(f)
+            with studio_fs.open_nofollow_read(f, os.lstat(f)) as handle:
                 self.assertEqual(b"abc", handle.read())
             other = Path(t) / "g.bin"
             other.write_bytes(b"zzz")
             with self.assertRaises(OSError):
-                studio.open_nofollow_read(f, os.lstat(other))  # a different identity than the one checked
+                studio_fs.open_nofollow_read(f, os.lstat(other))  # a different identity than the one checked
             try:
                 os.link(f, Path(t) / "h.bin")
             except OSError:
                 pass
             else:
                 with self.assertRaises(OSError):
-                    studio.open_nofollow_read(f, os.lstat(f))  # two names
+                    studio_fs.open_nofollow_read(f, os.lstat(f))  # two names
             link = Path(t) / "l.bin"
             try:
                 os.symlink(other, link)
             except (OSError, NotImplementedError):
                 return
             with self.assertRaises(OSError):
-                studio.open_nofollow_read(link, os.lstat(link))  # a symlink source is refused on every OS: the handle is the target's, the lstat is the link's
+                studio_fs.open_nofollow_read(link, os.lstat(link))  # a symlink source is refused on every OS: the handle is the target's, the lstat is the link's
             with self.assertRaises(OSError):
-                studio.create_exclusive(link)
+                studio_fs.create_exclusive(link)
 
     def test_unit_create_exclusive_refuses_any_existing_name_even_a_link(self):
         """đơn-vị-hàm-mới: a name that lexists (a dangling symlink on Windows, where O_EXCL follows it) is never opened; no handle, no file."""
@@ -1859,7 +1810,7 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
             target = Path(t) / "victim.bin"
             with mock.patch.object(os.path, "lexists", return_value=True):
                 with self.assertRaises(FileExistsError):
-                    studio.create_exclusive(target)
+                    studio_fs.create_exclusive(target)
             self.assertFalse(target.exists())
 
     def test_unit_create_exclusive_rejects_a_handle_that_is_not_the_named_path(self):
@@ -1869,14 +1820,14 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
             f = Path(t) / "f.bin"
             as_link = os.stat_result((stat.S_IFLNK | 0o777, 1, 1, 1, 0, 0, 0, 0, 0, 0))
             with mock.patch.object(os.path, "lexists", return_value=False), mock.patch.object(os, "lstat", return_value=as_link):  # lexists calls lstat: pin it
-                with self.assertRaises(studio.UnsafeOpen):
-                    studio.create_exclusive(f)
+                with self.assertRaises(studio_fs.UnsafeOpen):
+                    studio_fs.create_exclusive(f)
             self.assertEqual(0, f.stat().st_size if f.exists() else 0)  # nothing was written
             f.unlink(missing_ok=True)
             other = os.stat_result((stat.S_IFREG | 0o666, 987654321, 1, 1, 0, 0, 0, 0, 0, 0))
             with mock.patch.object(os.path, "lexists", return_value=False), mock.patch.object(os, "lstat", return_value=other):
-                with self.assertRaises(studio.UnsafeOpen):
-                    studio.create_exclusive(f)
+                with self.assertRaises(studio_fs.UnsafeOpen):
+                    studio_fs.create_exclusive(f)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+{
+  "must_contain": [
+    "hello|invalid-numeric|non-?numeric|not (?:a )?(?:parseable )?(?:number|numeric)",
+    "(?:hello|numeric|number|invalid).{0,80}(?:(?:rows?|lines?)\\s*#?\\s*(?:3|2)\\b|\\\"row\\\":\\s*3\\b)|(?:(?:rows?|lines?)\\s*#?\\s*(?:3|2)\\b|\\\"row\\\":\\s*3\\b).{0,80}(?:hello|numeric|number|invalid)",
+    "amount"
+  ],
+  "must_not_contain": [
+    "no issues found|all (?:amounts? )?(?:are )?numeric"
+  ],
+  "files_read_expected": [
+    "scripts/validate_csv.py"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "case_id": "csv-negative",
+  "pair_id": "data-quality-audit/csv-negative/codex",
+  "timestamp": "2026-10-17T16:57:33.000Z",
+  "runtime": "codex",
+  "model": "gpt-6-luna",
+  "with_skill": true,
+  "kind": "near-miss",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "d89622b8d04505fd1ec9e12699a0b9585898f41e2b504c872d30ac625b5563fe",
+    "transcript_sha256_filtered": "266d2795634766da2cc484ea5a0d244ec435a0d05a184801dd396b7fa80cff6f",
+    "line_numbers_refer_to": "filtered transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T16-57-33Z_codex_csv-negative_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-17-skill-studio-eval/evidence/transcripts/2026-10-17T16-57-33Z_codex_csv-negative_with.jsonl (OpcOS repo; filtered copy: tool calls, tool results cut to 500 chars, skill catalogue as names only, no system prompt, paths and e-mail redacted; full copy stays outside git, identified by sha256 above)",
+  "cwd": "~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T16-57-33Z_csv-negative_with",
+  "skill_sha256_loaded": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "skill_sha256_repo": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "pinned_model": "gpt-6-luna",
+  "actual_model": "gpt-6-luna",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports; Codex: ~/.codex/AGENTS.md)",
+  "ledger_id": "0a835974-86aa-43ae-8389-032d897a55dd",
+  "wall_seconds": 28.5,
+  "timeout_s": 300,
+  "output_excerpt": "`CALCULATE` evaluates an expression under a modified filter context. It can add filters, replace existing filters on the same columns, or remove filters—so a measure can answer a question such as “sales for one year” even when the current report context selects a different year.\n\nFor example:\n\n```DAX\nSales for 2025 =\nCALCULATE ( [Total Sales], 'Date'[Year] = 2025 )\n```\n\nThis evaluates `[Total Sale",
+  "status": "ran",
+  "batch": "SPR-18-TK3-20261017",
+  "stderr_tail": "[bridge] cảnh báo: biến thuộc namespace codex nhưng CHƯA có trong danh sách trắng nên KHÔNG tới callee: CODEX_BRIDGE — nếu thật sự cần, thêm vào CODEX_TOOL_ENV.allow trong bridges/lib/env.mjs\n"
+}

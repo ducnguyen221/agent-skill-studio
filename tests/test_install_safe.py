@@ -3,6 +3,7 @@
 Labels: bắt-lỗi = goes through the CLI `install` that exists at df875ce and goes red by exit code/assertion;
 đơn-vị-hàm-mới = a new helper; tương-đương = same result as before."""
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -170,25 +171,24 @@ class InstallSafeTests(unittest.TestCase):
 
     def test_don_vi_ham_moi_move_aside_copies_across_devices(self):
         """đơn-vị-hàm-mới: move_aside falls back to copy-then-delete when rename fails (EXDEV), and keeps the old skill when the copy fails."""
-        import importlib.util
         from unittest import mock
-        spec = importlib.util.spec_from_file_location("studio_tk4_impl", ROOT / "studio.py")
-        studio = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(studio)
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import _engine
+        studio_dist = _engine.dist
         with tempfile.TemporaryDirectory() as t:
             src, dst = Path(t) / "src", Path(t) / "dst"
             src.mkdir()
             (src / "a.txt").write_text("a", encoding="utf-8")
-            with mock.patch.object(studio.os, "rename", side_effect=OSError(18, "cross-device")):
-                studio.move_aside(src, dst)
+            with mock.patch.object(os, "rename", side_effect=OSError(18, "cross-device")):
+                studio_dist.move_aside(src, dst)
             self.assertEqual(("a", False), ((dst / "a.txt").read_text(encoding="utf-8"), src.exists()))
             src.mkdir()
             (src / "a.txt").write_text("a", encoding="utf-8")
             dst2 = Path(t) / "dst2"
-            with mock.patch.object(studio.os, "rename", side_effect=OSError(18, "cross-device")), \
-                    mock.patch.object(studio.shutil, "copytree", side_effect=OSError("disk full")):
+            with mock.patch.object(os, "rename", side_effect=OSError(18, "cross-device")), \
+                    mock.patch.object(shutil, "copytree", side_effect=OSError("disk full")):
                 with self.assertRaises(OSError):
-                    studio.move_aside(src, dst2)
+                    studio_dist.move_aside(src, dst2)
             self.assertEqual((True, False), ((src / "a.txt").is_file(), dst2.exists()))
 
 

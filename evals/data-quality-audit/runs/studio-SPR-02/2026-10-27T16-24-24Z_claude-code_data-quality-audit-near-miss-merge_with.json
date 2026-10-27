@@ -1,0 +1,32 @@
+{
+  "case_id": "data-quality-audit-near-miss-merge",
+  "pair_id": "data-quality-audit/data-quality-audit-near-miss-merge/claude-code",
+  "timestamp": "2026-10-27T16:24:24.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "near-miss",
+  "should_trigger": false,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "<local>/opcos/batch-f1e3f71/plugin (git archive f1e3f717d653df24844306425afc46a6fd95643c, autocrlf=false)",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "656623af82d1028927e74e78e6ef5fe21fe0a98e16c78918d78b3596769a3409",
+    "line_numbers_refer_to": "original transcript",
+    "redacted_copy": "ledger evidence/transcripts-TK14/data-quality-audit_data-quality-audit-near-miss-merge.jsonl (OpcOS repo, not committed here)"
+  },
+  "output_excerpt": "Đã ghép `orders.csv` với `customers.csv` theo `customer_id`. Cả 3 đơn đều khớp với một khách hàng, nên không có dòng nào bị mất:\n\n| order_id | customer_id | amount | name |\n|---|---|---|---|\n| 1 | c1 | 10 | Alice |\n| 2 | c2 | 20 | Bob |\n| 3 | c1 | 30 | Alice |\n\nHai file nhỏ nên tôi ghép tay, không chạy script và không tạo file nào. Mỗi `customer_id` trong `customers.csv` chỉ xuất hiện một lần, nên phép ghép không làm nhân đôi dòng.",
+  "cwd": "<local>/opcos/batch-f1e3f71/runs/data-quality-audit-near-miss-merge",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "6e330e4b-d0dc-44c8-a594-c7fe3f333001",
+  "ledger_id": "6e330e4b-d0dc-44c8-a594-c7fe3f333001",
+  "wall_seconds": 11.0,
+  "timeout_s": 600,
+  "status": "ran",
+  "batch": "SPR-02-TK14-f1e3f71",
+  "cost_usd": 0.27892340000000004
+}

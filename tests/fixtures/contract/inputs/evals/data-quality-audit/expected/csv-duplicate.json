@@ -1,0 +1,13 @@
+{
+  "must_contain": [
+    "(?:duplicat|repeat|same key|appears).{0,80}(?:(?:rows?|lines?)\\s*#?\\s*(?:4|3)\\b|\\\"row\\\":\\s*4\\b|\\b(?:2|1)\\b\\s*(?:and|&|,|/|-)\\s*(?:4|3)\\b)|(?:(?:rows?|lines?)\\s*#?\\s*(?:4|3)\\b|\\\"row\\\":\\s*4\\b|\\b(?:2|1)\\b\\s*(?:and|&|,|/|-)\\s*(?:4|3)\\b).{0,80}(?:duplicat|repeat|same key|appears)",
+    "amount.{0,60}(?:blank|empty|missing|null)|(?:blank|empty|missing|null).{0,60}amount"
+  ],
+  "must_not_contain": [
+    "\\bno\\b.{0,15}(?:duplicat|repeat)|(?:duplicat|repeat)\\w*\\W{0,3}(?:none|not found|absent)|without duplicat",
+    "no issues found"
+  ],
+  "files_read_expected": [
+    "scripts/validate_csv.py"
+  ]
+}

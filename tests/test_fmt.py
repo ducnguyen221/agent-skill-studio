@@ -14,9 +14,14 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("studio_fmt_impl", ROOT / "studio.py")
-studio = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(studio)
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
+
+studio = _engine.engine
+studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
+studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_fmt = _engine.fmt  # SPR-02 TK4c
 
 SKILL = "---\nname: demo-skill\ndescription: Checks a toy example. Use when testing fmt.\n---\n\n# Demo\n\nBody text here.\n"
 
@@ -28,7 +33,7 @@ def run(*argv, root=None):
         stack.enter_context(contextlib.redirect_stdout(out))
         stack.enter_context(contextlib.redirect_stderr(err))
         if root is not None:
-            stack.enter_context(mock.patch.object(studio, "repo_root", lambda start: Path(root)))
+            stack.enter_context(mock.patch.object(studio_fs, "repo_root", lambda start: Path(root)))
         try:
             code = studio.main(["fmt", *argv])
         except SystemExit as exc:
@@ -69,7 +74,7 @@ class FmtTests(unittest.TestCase):
                             ("no-final-newline", SKILL.rstrip("\n")),
                             ("two-final-newlines", SKILL + "\n")):
             with self.subTest(label):
-                _, found = studio.fmt_text(text, "skill")
+                _, found = studio_fmt.fmt_text(text, "skill")
                 self.assertEqual(set(codes(found)), {"FT1"}, found)
                 path = write(self.tmp / label / "SKILL.md", text)
                 before = path.read_bytes()
@@ -87,14 +92,14 @@ class FmtTests(unittest.TestCase):
         self.assertEqual(run("--fix", str(path))[0], 0)
         self.assertEqual(path.read_bytes(), first, "second --fix must change no byte")
         self.assertEqual(run("--check", str(path))[0], 0)
-        again, found = studio.fmt_text(first.decode("utf-8"), "skill")
+        again, found = studio_fmt.fmt_text(first.decode("utf-8"), "skill")
         self.assertEqual((again, found), (first.decode("utf-8"), []))
 
     def test_fmt_fix_never_changes_body_text(self):
         fence = "`" * 3
         text = ("---\nmetadata:\n  version: 2\ndescription: Checks. Use when testing.\nname: demo\n---\n\n"
                 "# Demo   \r\n\r\n" + fence + "bash\r\npython studio.py new x  \r\n" + fence + "\r\n\r\n| a | b |\r\n|---|---|\r\n| 1 | 2 |   \r\n\r\nSee C:/Users/x/y.md and ../a/b.md.\r\n\r\n\r\n")
-        new, _ = studio.fmt_text(text, "skill")
+        new, _ = studio_fmt.fmt_text(text, "skill")
         self.assertEqual(body_of(new).split(), body_of(text).split())
         path = write(self.tmp / "SKILL.md", text)
         self.assertEqual(run("--fix", str(path))[0], 0)
@@ -104,34 +109,34 @@ class FmtTests(unittest.TestCase):
     def test_fmt_orders_frontmatter_keys(self):
         text = ("---\nmetadata:\n  author: x\ndescription: Checks. Use when testing.\nx-extra: 1\nname: demo\n"
                 "allowed-tools: Read\nlicense: MIT\ncompatibility: any\nzeta: 2\n---\n\n# Demo\n")
-        new, found = studio.fmt_text(text, "skill")
+        new, found = studio_fmt.fmt_text(text, "skill")
         self.assertIn("FT2", codes(found))
         keys = [m.group(1) for m in re.finditer(r"(?m)^([A-Za-z][\w-]*):", new.split("---")[1])]
         self.assertEqual(keys, ["name", "description", "license", "compatibility", "allowed-tools", "metadata", "x-extra", "zeta"])
         self.assertIn("metadata:\n  author: \"x\"\n", new)  # the indented block travelled with its key
-        self.assertEqual(studio.fmt_text(new, "skill")[1], [])
-        _, found = studio.fmt_text(text, "studio-doc")
+        self.assertEqual(studio_fmt.fmt_text(new, "skill")[1], [])
+        _, found = studio_fmt.fmt_text(text, "studio-doc")
         self.assertNotIn("FT2", codes(found), "FT2 is for skills only")
 
     def test_fmt_quotes_metadata_values(self):
         text = "---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  version: 1\n  stable: true\n  note: 'it''s'\n  quoted: \"already\"\n  word: plain\n---\n\n# Demo\n"
-        new, found = studio.fmt_text(text, "skill")
+        new, found = studio_fmt.fmt_text(text, "skill")
         self.assertEqual(codes(found).count("FT3"), 4, found)
         self.assertIn('  version: "1"\n', new)
         self.assertIn('  stable: "true"\n', new)
         self.assertIn('  note: "it\'s"\n', new)
         self.assertIn('  quoted: "already"\n', new)
         self.assertIn('  word: "plain"\n', new)
-        parsed, problems, _ = studio.parse_frontmatter(new, Path("SKILL.md"))
+        parsed, problems, _ = studio_fs.parse_frontmatter(new, Path("SKILL.md"))
         self.assertEqual(problems, [])
         self.assertEqual(parsed["metadata"], {"version": "1", "stable": "true", "note": "it's", "quoted": "already", "word": "plain"})
-        self.assertNotIn("FT3", codes(studio.fmt_text(text, "studio-doc")[1]), "FT3 is for skills only")
+        self.assertNotIn("FT3", codes(studio_fmt.fmt_text(text, "studio-doc")[1]), "FT3 is for skills only")
 
     def test_fmt_doc_missing_min_frontmatter_ft4(self):
         base = self.tmp / "repo"
         doc = write(base / "standards" / "X.md", "# Title\n\nBody.\n")
-        self.assertEqual(studio.classify_md(doc, base), "studio-doc")
-        _, found = studio.fmt_text("# Title\n\nBody.\n", "studio-doc")
+        self.assertEqual(studio_fmt.classify_md(doc, base), "studio-doc")
+        _, found = studio_fmt.fmt_text("# Title\n\nBody.\n", "studio-doc")
         self.assertEqual(codes(found), ["FT4"])
         self.assertIn("title", found[0]["message"])
         before = doc.read_bytes()
@@ -139,16 +144,16 @@ class FmtTests(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("FT4", out)
         self.assertEqual(doc.read_bytes(), before, "--fix never adds frontmatter")
-        _, found = studio.fmt_text("---\ntitle: \"T\"\nstatus: active\n---\n\n# T\n", "studio-doc")
+        _, found = studio_fmt.fmt_text("---\ntitle: \"T\"\nstatus: active\n---\n\n# T\n", "studio-doc")
         self.assertEqual(codes(found), ["FT4"])
         self.assertIn("updated", found[0]["message"])
-        self.assertEqual(studio.fmt_text("---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\nkind: entry\n---\n\n# T\n", "studio-doc")[1], [])
+        self.assertEqual(studio_fmt.fmt_text("---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\nkind: entry\n---\n\n# T\n", "studio-doc")[1], [])
 
     def test_fmt_pr1_process_shape(self):
         base = self.tmp / "repo"
         bad = write(base / "references" / "NEW_WORKFLOW.md", "# New\n\n## Contents\n\nSome text only.\n")
-        self.assertEqual(studio.classify_md(bad, base), "process")
-        found = studio.check_process_shape("# New\n\nSome text only.\n")
+        self.assertEqual(studio_fmt.classify_md(bad, base), "process")
+        found = studio_fmt.check_process_shape("# New\n\nSome text only.\n")
         self.assertTrue(found and set(codes(found)) == {"PR1"})
         self.assertTrue(all(f["level"] == "WARN" for f in found))
         code, out, _ = run("--check", str(bad), root=base)
@@ -156,14 +161,14 @@ class FmtTests(unittest.TestCase):
         self.assertIn("PR1", out)
         en = ("# Name\n\n> **Conclusion:** x.\n\n## When to use / not\n\n- a\n\n## Steps\n\n### Step 1 — Do\n\n- Command: c\n- Expect: e\n- Stop if: s\n\n## Gotchas\n\n- g\n\n## Done when\n\n- d\n")
         vi = ("# Tên\n\n> **Kết luận:** x.\n\n## Khi nào dùng / Không dùng\n\n- a\n\n## Bước\n\n### Bước 1 — Làm\n\n- Lệnh: c\n- Kỳ vọng: e\n- Dừng nếu: s\n\n## Gotchas\n\n- g\n\n## Kiểm xong\n\n- d\n")
-        self.assertEqual(studio.check_process_shape(en), [])
-        self.assertEqual(studio.check_process_shape(vi), [])
-        self.assertEqual(codes(studio.check_process_shape(en.replace("- Stop if: s\n", ""))), ["PR1"])
+        self.assertEqual(studio_fmt.check_process_shape(en), [])
+        self.assertEqual(studio_fmt.check_process_shape(vi), [])
+        self.assertEqual(codes(studio_fmt.check_process_shape(en.replace("- Stop if: s\n", ""))), ["PR1"])
 
     def test_fmt_never_adds_contents(self):
         text = "---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\n---\n\n# T\n" + "\n".join("## Section %d  \n\ntext\n" % i for i in range(1, 40)) + "\n\n"
         self.assertGreater(len(text.splitlines()), 100)
-        new, _ = studio.fmt_text(text, "studio-doc")
+        new, _ = studio_fmt.fmt_text(text, "studio-doc")
         headings = lambda t: [ln.rstrip() for ln in t.splitlines() if ln.startswith("#")]
         self.assertEqual(headings(new), headings(text))
         self.assertEqual(sum(1 for ln in new.splitlines() if ln.startswith("## ")), sum(1 for ln in text.splitlines() if ln.startswith("## ")))
@@ -204,19 +209,19 @@ class FmtMoreTests(unittest.TestCase):
             self.assertEqual(code, 0, out)
         self.assertEqual(path.stat().st_mtime_ns, before, "a clean file is not rewritten")
         self.assertEqual([p.name for p in self.tmp.iterdir()], ["SKILL.md"], "no backup, no temp file")
-        self.assertEqual(studio.fmt_text(SKILL, "skill"), (SKILL, []))
-        self.assertEqual(studio.fmt_text("", "other"), ("", []))
+        self.assertEqual(studio_fmt.fmt_text(SKILL, "skill"), (SKILL, []))
+        self.assertEqual(studio_fmt.fmt_text("", "other"), ("", []))
 
     def test_fmt_body_with_code_block_and_paths_keeps_every_word(self):
         fence = "`" * 3
         body = "# T\n\n" + fence + "powershell\nGet-Content C:\\Users\\x\\a.txt   \n" + fence + "\n\nSee [a](../b/c.md) and `x  y`.\n"
-        new, _ = studio.fmt_text(SKILL.split("# Demo")[0] + body, "skill")
+        new, _ = studio_fmt.fmt_text(SKILL.split("# Demo")[0] + body, "skill")
         self.assertEqual(new.split(), (SKILL.split("# Demo")[0] + body).split())
         self.assertIn("C:\\Users\\x\\a.txt\n", new)
 
     def test_fmt_frontmatter_crlf_and_bom_fixed(self):
         text = "\ufeff---\r\nname: demo\r\ndescription: Checks. Use when testing.\r\nmetadata:\r\n  version: 1\r\n---\r\n\r\n# T\r\n"
-        new, found = studio.fmt_text(text, "skill")
+        new, found = studio_fmt.fmt_text(text, "skill")
         self.assertEqual(set(codes(found)), {"FT1", "FT3"})
         self.assertEqual(new, "---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  version: \"1\"\n---\n\n# T\n")
 
@@ -243,7 +248,7 @@ class FmtMoreTests(unittest.TestCase):
         self.assertEqual(code, 1, "frontmatter that starts late is reported, not moved")
         self.assertIn("FT5", out)
         quiet = "# T\n\n" + fence + "\n---\nname: x\n---\n" + fence + "\n"
-        self.assertEqual([f["code"] for f in studio.fmt_text(quiet, "skill")[1]], [])
+        self.assertEqual([f["code"] for f in studio_fmt.fmt_text(quiet, "skill")[1]], [])
 
     def test_fmt_fix_skips_symlink_and_junction(self):
         real = self.tmp / "real"
@@ -307,7 +312,7 @@ class FmtMoreTests(unittest.TestCase):
         write(base / "auth.json.md", "# ok  \n")
         write(base / "OneDrive - X" / "a.md", "# C  \n")
         write(base / ".secret" / "s.md", "# C  \n")
-        write(base / "big.md", "# B  \n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))
+        write(base / "big.md", "# B  \n" + "x" * (studio_const.DOCTOR_MAX_FILE_BYTES + 1))
         (base / "bad.md").write_bytes(b"\xff\xfe\x00bad")
         before = tree_snapshot(base)
         code, out, _ = run("--fix", str(base))
@@ -333,7 +338,7 @@ class FmtMoreTests(unittest.TestCase):
     def test_fmt_refuses_to_write_if_words_would_change(self):
         path = write(self.tmp / "SKILL.md", SKILL.replace("Demo", "Demo "))
         before = path.read_bytes()
-        with mock.patch.object(studio, "fmt_text", lambda text, kind, profile="portable": (text.replace("Body", "Other").rstrip() + "\n", [])):
+        with mock.patch.object(studio_fmt, "fmt_text", lambda text, kind, profile="portable": (text.replace("Body", "Other").rstrip() + "\n", [])):
             code, out, _ = run("--fix", str(path))
         self.assertEqual(code, 1, "a refused write is not a clean run")
         self.assertIn("skipped (would-change-text)", out)
@@ -341,7 +346,7 @@ class FmtMoreTests(unittest.TestCase):
 
     def test_fmt_write_failure_exit_2(self):
         path = write(self.tmp / "SKILL.md", SKILL.replace("Demo", "Demo "))
-        with mock.patch.object(studio, "_write_fixed", side_effect=OSError(13, "denied")):
+        with mock.patch.object(studio_fmt, "_write_fixed", side_effect=OSError(13, "denied")):
             code, _, err = run("--fix", str(path))
         self.assertEqual(code, 2)
         self.assertIn("cannot write", err)
@@ -349,47 +354,47 @@ class FmtMoreTests(unittest.TestCase):
     def test_fmt_backup_name_never_overwrites(self):
         path = write(self.tmp / "SKILL.md", "# T  \n")
         fixed = {"stamp": None}
-        real_now = studio.datetime
+        real_now = studio_fmt.datetime
 
         class Fixed(real_now):
             @classmethod
             def now(cls, tz=None):
                 return real_now(2026, 10, 23, 1, 2, 3)
 
-        with mock.patch.object(studio, "datetime", Fixed):
-            studio._write_fixed(path, b"# T\n", True)
+        with mock.patch.object(studio_fmt, "datetime", Fixed):
+            studio_fmt._write_fixed(path, b"# T\n", True)
             path.write_bytes(b"# T  \n")
-            studio._write_fixed(path, b"# T\n", True)
+            studio_fmt._write_fixed(path, b"# T\n", True)
         self.assertEqual(sorted(p.name for p in self.tmp.iterdir()), ["SKILL.md", "SKILL.md.bak-20261023T010203", "SKILL.md.bak-20261023T010203-1"])
 
     def test_fmt_text_rejects_unknown_profile_and_accepts_opcos(self):
         with self.assertRaises(ValueError):
-            studio.fmt_text(SKILL, "skill", "nope")
-        self.assertEqual(studio.fmt_text(SKILL, "skill", "opcos"), (SKILL, []))
+            studio_fmt.fmt_text(SKILL, "skill", "nope")
+        self.assertEqual(studio_fmt.fmt_text(SKILL, "skill", "opcos"), (SKILL, []))
         self.assertEqual(run("--check", "--profile", "opcos", str(write(self.tmp / "SKILL.md", SKILL)))[0], 0)
 
     def test_classify_md(self):
         base = self.tmp
-        self.assertEqual(studio.classify_md(base / "x" / "SKILL.vi.md", base), "skill")
-        self.assertEqual(studio.classify_md(base / "standards" / "A.md", base), "studio-doc")
-        self.assertEqual(studio.classify_md(base / "content" / "A.md", base), "studio-doc")
-        self.assertEqual(studio.classify_md(base / "content" / "exemplar" / "A.md", base), "other")
-        self.assertEqual(studio.classify_md(base / "templates" / "README.md", base), "studio-doc")
-        self.assertEqual(studio.classify_md(base / "templates" / "project" / "README.md", base), "other")
-        self.assertEqual(studio.classify_md(base / "references" / "PROCESS_TEMPLATE.md", base), "process")
-        self.assertEqual(studio.classify_md(base / "references" / "AUDIT_WORKFLOW.md", base), "process")
-        self.assertEqual(studio.classify_md(base / "standards" / "A.md", None), "other")
-        self.assertEqual(studio.classify_md(base / "standards" / "A.md", self.tmp / "elsewhere"), "other")
+        self.assertEqual(studio_fmt.classify_md(base / "x" / "SKILL.vi.md", base), "skill")
+        self.assertEqual(studio_fmt.classify_md(base / "standards" / "A.md", base), "studio-doc")
+        self.assertEqual(studio_fmt.classify_md(base / "content" / "A.md", base), "studio-doc")
+        self.assertEqual(studio_fmt.classify_md(base / "content" / "exemplar" / "A.md", base), "other")
+        self.assertEqual(studio_fmt.classify_md(base / "templates" / "README.md", base), "studio-doc")
+        self.assertEqual(studio_fmt.classify_md(base / "templates" / "project" / "README.md", base), "other")
+        self.assertEqual(studio_fmt.classify_md(base / "references" / "PROCESS_TEMPLATE.md", base), "process")
+        self.assertEqual(studio_fmt.classify_md(base / "references" / "AUDIT_WORKFLOW.md", base), "process")
+        self.assertEqual(studio_fmt.classify_md(base / "standards" / "A.md", None), "other")
+        self.assertEqual(studio_fmt.classify_md(base / "standards" / "A.md", self.tmp / "elsewhere"), "other")
 
     def test_shipped_process_template_matches_pr1(self):
-        path = ROOT / "templates" / "skill-template-full" / "references" / "PROCESS_TEMPLATE.md"
-        self.assertEqual(studio.check_process_shape(path.read_text(encoding="utf-8")), [])
+        path = ROOT / "skills" / "skill-creator-studio" / "assets" / "skill-template-full" / "references" / "PROCESS_TEMPLATE.md"
+        self.assertEqual(studio_fmt.check_process_shape(path.read_text(encoding="utf-8")), [])
 
     def test_fmt_misplaced_blank_lines_before_frontmatter(self):
-        new, found = studio.fmt_text("\n\n" + SKILL, "skill")
+        new, found = studio_fmt.fmt_text("\n\n" + SKILL, "skill")
         self.assertEqual(codes(found), ["FT5"])
         self.assertEqual(new, SKILL)
-        self.assertEqual(studio.fmt_text("\n\n# plain\n", "other"), ("\n\n# plain\n", []), "blank lines are only removed ahead of a frontmatter")
+        self.assertEqual(studio_fmt.fmt_text("\n\n# plain\n", "other"), ("\n\n# plain\n", []), "blank lines are only removed ahead of a frontmatter")
 
 
 # ---- round 3 (Opus re-review of round 2) --------------------------------------------------------------------------------------------
@@ -402,17 +407,17 @@ class FmtRound3Tests(unittest.TestCase):
 
     # (3) a metadata value ends where the line ends, not at the first Unicode space
     def test_fmt_keeps_a_unicode_space_at_the_end_of_a_metadata_value(self):
-        self.assertEqual(studio._quote_meta("  v: abc\u00a0"), ('  v: "abc\u00a0"', "fixed"))
+        self.assertEqual(studio_fmt._quote_meta("  v: abc\u00a0"), ('  v: "abc\u00a0"', "fixed"))
         text = "---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  v: abc\u00a0\n---\n\n# T\n"
-        new, found = studio.fmt_text(text, "skill")
+        new, found = studio_fmt.fmt_text(text, "skill")
         self.assertEqual(codes(found), ["FT3"])
         self.assertEqual(new, text.replace("v: abc\u00a0", 'v: "abc\u00a0"'))
-        self.assertEqual(studio.fmt_text(new, "skill")[1], [])
+        self.assertEqual(studio_fmt.fmt_text(new, "skill")[1], [])
 
     # (4) a file over the size limit was not checked: exit 1, whichever way it was reached
     def test_fmt_file_over_the_size_limit_in_a_folder_is_exit_1(self):
         write(self.tmp / "ok.md", "# Ok\n")
-        write(self.tmp / "big.md", "# B  \n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))  # trailing spaces: an FT1 nobody saw
+        write(self.tmp / "big.md", "# B  \n" + "x" * (studio_const.DOCTOR_MAX_FILE_BYTES + 1))  # trailing spaces: an FT1 nobody saw
         for mode in ("--check", "--fix"):
             with self.subTest(mode):
                 code, out, _ = run(mode, str(self.tmp))
@@ -434,8 +439,8 @@ class FmtRound3Tests(unittest.TestCase):
         for opening in (" ---", "\t---", "  ---"):
             with self.subTest(repr(opening)):
                 text = SKILL.replace("---\nname", opening + "\nname", 1)
-                self.assertIsNone(studio._fm_bounds(text.split("\n")))
-                new, found = studio.fmt_text(text, "skill")
+                self.assertIsNone(studio_fmt._fm_bounds(text.split("\n")))
+                new, found = studio_fmt.fmt_text(text, "skill")
                 self.assertEqual(codes(found), ["FT5"])
                 self.assertFalse(found[0]["fixable"])
                 self.assertEqual(found[0]["line"], 1)
@@ -447,12 +452,12 @@ class FmtRound3Tests(unittest.TestCase):
 
     def test_fmt_indented_dashes_that_are_no_frontmatter_stay_quiet(self):
         text = " ---\nJust a rule line and a paragraph.\n---\n\n# T\n"
-        self.assertEqual(studio.fmt_text(text, "skill"), (text, []))
-        self.assertEqual(studio.fmt_text(" ---\nname: x\n---\n", "other"), (" ---\nname: x\n---\n", []))
+        self.assertEqual(studio_fmt.fmt_text(text, "skill"), (text, []))
+        self.assertEqual(studio_fmt.fmt_text(" ---\nname: x\n---\n", "other"), (" ---\nname: x\n---\n", []))
 
     def test_fmt_indented_opening_after_blank_lines_is_reported_too(self):
         text = "\n\n" + SKILL.replace("---\nname", " ---\nname", 1)
-        new, found = studio.fmt_text(text, "skill")
+        new, found = studio_fmt.fmt_text(text, "skill")
         self.assertEqual(codes(found), ["FT5"])
         self.assertEqual(new, text)
 
@@ -460,7 +465,7 @@ class FmtRound3Tests(unittest.TestCase):
     def test_fmt_temp_file_failure_removes_the_backup(self):
         path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
         before = path.read_bytes()
-        with mock.patch.object(studio.tempfile, "mkstemp", side_effect=PermissionError(13, "denied")):
+        with mock.patch.object(tempfile, "mkstemp", side_effect=PermissionError(13, "denied")):
             code, _, err = run("--fix", str(path))
         self.assertEqual(code, 2, err)
         self.assertIn("cannot write", err)
@@ -475,7 +480,7 @@ class FmtRound3Tests(unittest.TestCase):
             target.flush()
             raise OSError(28, "no space")
 
-        with mock.patch.object(studio.shutil, "copyfileobj", half_copy):
+        with mock.patch.object(shutil, "copyfileobj", half_copy):
             code, _, err = run("--fix", str(path))
         self.assertEqual(code, 2, err)
         self.assertEqual([p.name for p in self.tmp.iterdir()], ["SKILL.md"])
@@ -563,8 +568,8 @@ class FmtBackupTests(unittest.TestCase):
 
     def test_studio_runs_no_subprocess(self):
         import ast
-        paths = [ROOT / "studio.py", ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py", *sorted((ROOT / "evals" / "tools").glob("*.py"))]
-        self.assertGreaterEqual(len(paths), 5, "studio.py twice and the eval tools")
+        paths = [*_engine.ENGINE_FILES, *sorted((ROOT / "evals" / "tools").glob("*.py"))]
+        self.assertGreaterEqual(len(paths), 4, "the engine and the eval tools")
         banned_os = ("system", "popen", "startfile")
         for path in paths:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -619,7 +624,7 @@ class FmtSafeWriteTests(unittest.TestCase):
         path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
         seen = []
         real = os.replace
-        with mock.patch.object(studio.os, "replace", side_effect=lambda src, dst: (seen.append(Path(src).name), real(src, dst))[1]):
+        with mock.patch.object(os, "replace", side_effect=lambda src, dst: (seen.append(Path(src).name), real(src, dst))[1]):
             self.assertEqual(run("--fix", str(path))[0], 0)
             write(path, SKILL.replace("\n", "\r\n"))
             self.assertEqual(run("--fix", str(path))[0], 0)
@@ -630,7 +635,7 @@ class FmtSafeWriteTests(unittest.TestCase):
     def test_fmt_failed_replace_leaves_nothing_behind(self):
         path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
         before = path.read_bytes()
-        with mock.patch.object(studio.os, "replace", side_effect=OSError(5, "access denied")):
+        with mock.patch.object(os, "replace", side_effect=OSError(5, "access denied")):
             code, _, err = run("--fix", str(path))
         self.assertEqual(code, 2, err)
         self.assertIn("cannot write", err)
@@ -644,7 +649,7 @@ class FmtSafeWriteTests(unittest.TestCase):
         os.chmod(path, stat.S_IREAD)
         self.addCleanup(os.chmod, path, stat.S_IREAD | stat.S_IWRITE)
         before = path.read_bytes()
-        with mock.patch.object(studio.shutil, "copy2", side_effect=AssertionError("a read-only file must be refused before a backup is made")):
+        with mock.patch.object(shutil, "copy2", side_effect=AssertionError("a read-only file must be refused before a backup is made")):
             code, _, err = run("--fix", str(path))
         self.assertEqual(code, 2, err)
         self.assertIn("cannot write", err)
@@ -659,7 +664,7 @@ class FmtSafeWriteTests(unittest.TestCase):
             calls.append((Path(src), Path(dst)))
             return real(src, dst)
 
-        with mock.patch.object(studio.shutil, "copymode", spy):
+        with mock.patch.object(shutil, "copymode", spy):
             self.assertEqual(run("--fix", str(path))[0], 0)
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][0], path)
@@ -722,7 +727,7 @@ class FmtPathTests(unittest.TestCase):
             return real(value, *args, **kwargs)
 
         for path, reason in ((cloud, "cloud"), (secret, "secret-zone")):
-            with self.subTest(reason), mock.patch.object(studio.os.path, "realpath", resolve):
+            with self.subTest(reason), mock.patch.object(os.path, "realpath", resolve):
                 before = path.read_bytes()
                 code, out, _ = run("--fix", str(path))
                 self.assertEqual(code, 1, out)
@@ -753,7 +758,7 @@ class FmtExitCodeTests(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
 
     def test_fmt_named_file_that_is_not_checked_is_exit_1(self):
-        big = write(self.tmp / "big.md", "# B\n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))
+        big = write(self.tmp / "big.md", "# B\n" + "x" * (studio_const.DOCTOR_MAX_FILE_BYTES + 1))
         secret = write(self.tmp / ".env.md", "# S\n")
         other = write(self.tmp / "notes.txt", "x\n")
         bad = self.tmp / "bad.md"
@@ -815,7 +820,7 @@ class FmtStuckValueTests(unittest.TestCase):
         for value in ("x # c", ">-", "|", "'only", "[a, b]", "a: b", "{k: v}", "x\t# c"):
             with self.subTest(value):
                 text = self.HEAD + "  note: " + value + "\n---\n\n# T\n"
-                new, found = studio.fmt_text(text, "skill")
+                new, found = studio_fmt.fmt_text(text, "skill")
                 self.assertEqual(new, text, "the line is left alone")
                 self.assertEqual(codes(found), ["FT3"], found)
                 self.assertFalse(found[0]["fixable"])
@@ -830,11 +835,11 @@ class FmtStuckValueTests(unittest.TestCase):
 
     def test_fmt_ft3_fixes_what_it_can_and_still_reports_the_rest(self):
         text = self.HEAD + "  version: 1\n  note: x # c\n---\n\n# T\n"
-        new, found = studio.fmt_text(text, "skill")
+        new, found = studio_fmt.fmt_text(text, "skill")
         self.assertIn('  version: "1"\n', new)
         self.assertIn("  note: x # c\n", new)
         self.assertEqual([(f["code"], f["fixable"]) for f in found], [("FT3", True), ("FT3", False)])
-        self.assertEqual([(f["code"], f["fixable"]) for f in studio.fmt_text(new, "skill")[1]], [("FT3", False)])
+        self.assertEqual([(f["code"], f["fixable"]) for f in studio_fmt.fmt_text(new, "skill")[1]], [("FT3", False)])
         path = write(self.tmp / "SKILL.md", text)
         self.assertEqual(run("--fix", str(path))[0], 1)
         first = path.read_bytes()
@@ -845,19 +850,19 @@ class FmtStuckValueTests(unittest.TestCase):
 class FmtFrontmatterEdgeTests(unittest.TestCase):
     def test_fmt_title_need_not_equal_the_heading(self):
         text = '---\ntitle: "Authoring Standard"\nstatus: active\nupdated: 2026-10-23\n---\n\n# Skill Authoring Standard\n'
-        self.assertEqual(studio.fmt_text(text, "studio-doc"), (text, []), "FT4 asks for the keys, not for a title that equals the H1")
+        self.assertEqual(studio_fmt.fmt_text(text, "studio-doc"), (text, []), "FT4 asks for the keys, not for a title that equals the H1")
 
     def test_fmt_closing_line_is_only_a_dashes_line_in_column_zero(self):
         text = "---\ndescription: >\n  Checks.\n  ---\n  Use when testing.\nname: demo\n---\n\n# T\n"
-        new, found = studio.fmt_text(text, "skill")
+        new, found = studio_fmt.fmt_text(text, "skill")
         self.assertEqual(codes(found), ["FT2"], "an indented '---' inside a block scalar does not close the frontmatter")
         self.assertEqual(new, "---\nname: demo\ndescription: >\n  Checks.\n  ---\n  Use when testing.\n---\n\n# T\n")
-        self.assertEqual(studio.fmt_text(new, "skill")[1], [])
-        self.assertEqual(studio._fm_bounds(text.split("\n")), (0, 6))
+        self.assertEqual(studio_fmt.fmt_text(new, "skill")[1], [])
+        self.assertEqual(studio_fmt._fm_bounds(text.split("\n")), (0, 6))
 
     def test_fmt_comment_in_column_zero_travels_with_the_key_before_it(self):
         text = "---\ndescription: Checks. Use when testing.\n# about the name\nname: demo\n---\n\n# T\n"
-        new, found = studio.fmt_text(text, "skill")
+        new, found = studio_fmt.fmt_text(text, "skill")
         self.assertEqual(codes(found), ["FT2"])
         self.assertEqual(new, "---\nname: demo\ndescription: Checks. Use when testing.\n# about the name\n---\n\n# T\n")
 
@@ -865,9 +870,9 @@ class FmtFrontmatterEdgeTests(unittest.TestCase):
         steps = "".join("### Step %d — Do\n\n- Command: c\n- Expect: e\n- Stop if: s\n\n" % i for i in range(1, 25))
         body = "# N\n\n> **Conclusion:** x.\n\n## When to use / not\n\n- a\n\n## Steps\n\n" + steps + "## Gotchas\n\n- g\n\n## Done when\n\n- d\n"
         self.assertGreater(len(body.splitlines()), 100)
-        self.assertEqual([f["message"] for f in studio.check_process_shape(body)], ["process file is over 100 lines and has no '## Contents'"])
-        self.assertEqual(studio.check_process_shape(body.replace("## When to use", "## Contents\n\n- x\n\n## When to use", 1)), [])
-        self.assertEqual(studio.check_process_shape(body.replace("## When to use", "## Mục lục\n\n- x\n\n## When to use", 1)), [])
+        self.assertEqual([f["message"] for f in studio_fmt.check_process_shape(body)], ["process file is over 100 lines and has no '## Contents'"])
+        self.assertEqual(studio_fmt.check_process_shape(body.replace("## When to use", "## Contents\n\n- x\n\n## When to use", 1)), [])
+        self.assertEqual(studio_fmt.check_process_shape(body.replace("## When to use", "## Mục lục\n\n- x\n\n## When to use", 1)), [])
 
 
 ATTACK_N = 100_000
@@ -880,7 +885,7 @@ class FmtSpeedTests(unittest.TestCase):
 
     def patterns(self):
         found = {}
-        for name, value in vars(studio).items():
+        for name, value in vars(studio_const).items():
             if name.startswith("FMT_") and isinstance(value, re.Pattern):
                 found[name] = value
             elif name.startswith("FMT_") and isinstance(value, tuple):
@@ -889,7 +894,7 @@ class FmtSpeedTests(unittest.TestCase):
                     if isinstance(pattern, re.Pattern):
                         found["%s[%d]" % (name, index)] = pattern
         for name in ("CONTENTS_RE", "FENCE_OPEN_RE", "FRONT_KEY_RE"):
-            found[name] = getattr(studio, name)
+            found[name] = getattr(studio_const, name)
         return found
 
     def timed(self, label, call, limit=5.0):
@@ -923,25 +928,25 @@ class FmtSpeedTests(unittest.TestCase):
             run_of = width * (ATTACK_N // len(width))
             meta = "---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  k: a" + run_of + "b\n---\n\n# T\n"
             heading = "# a" + run_of + "b\n\n## Steps\n"
-            self.timed("metadata line, %s" % label, lambda: studio.fmt_text(meta, "skill"))
-            self.timed("heading in fmt_text, %s" % label, lambda: studio.fmt_text(heading, "process"))
-            self.timed("heading in check_process_shape, %s" % label, lambda: studio.check_process_shape(heading))
-            self.timed("trailing run, %s" % label, lambda: studio.fmt_text("# a" + run_of, "other"))
+            self.timed("metadata line, %s" % label, lambda: studio_fmt.fmt_text(meta, "skill"))
+            self.timed("heading in fmt_text, %s" % label, lambda: studio_fmt.fmt_text(heading, "process"))
+            self.timed("heading in check_process_shape, %s" % label, lambda: studio_fmt.check_process_shape(heading))
+            self.timed("trailing run, %s" % label, lambda: studio_fmt.fmt_text("# a" + run_of, "other"))
         for token in ("---", "#", ":", "`", " #", "> ", "*", "-"):
             run_of = token * (ATTACK_N // len(token))
             for text in ("---\nname: demo\ndescription: Checks. Use when testing.\nmetadata:\n  k: " + run_of + "\n---\n\n# T\n",
                          "---\nname: " + run_of + "\n---\n\n# T\n", "# " + run_of + "\n", run_of + "\n", "---\n" + run_of + "\n---\n",
                          "\n\n---\ntitle: " + run_of + "\n---\n"):
                 for kind in ("skill", "studio-doc", "process", "other"):
-                    self.timed("%r %s" % (token, kind), lambda: studio.fmt_text(text, kind))
-                self.timed("%r process shape" % token, lambda: studio.check_process_shape(text))
+                    self.timed("%r %s" % (token, kind), lambda: studio_fmt.fmt_text(text, kind))
+                self.timed("%r process shape" % token, lambda: studio_fmt.check_process_shape(text))
 
     def test_check_process_shape_is_linear_in_the_number_of_steps(self):
         steps = "".join("### Step %d — Go\n\n- Command: c\n- Expect: e\n- Stop if: s\n\n" % i for i in range(1, 10_001))
         text = "# P\n\n> **Conclusion:** x.\n\n## Steps\n\n" + steps
-        self.timed("10 000 steps", lambda: studio.check_process_shape(text))
-        self.timed("10 000 headings", lambda: studio.check_process_shape("# P\n" + "".join("## S%d\n" % i for i in range(30_000))))
-        self.timed("fmt_text on a long file", lambda: studio.fmt_text(text, "process"))
+        self.timed("10 000 steps", lambda: studio_fmt.check_process_shape(text))
+        self.timed("10 000 headings", lambda: studio_fmt.check_process_shape("# P\n" + "".join("## S%d\n" % i for i in range(30_000))))
+        self.timed("fmt_text on a long file", lambda: studio_fmt.fmt_text(text, "process"))
 
 
 class FmtSmallTests(unittest.TestCase):
@@ -951,30 +956,30 @@ class FmtSmallTests(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
 
     def test_remove_quietly_never_raises(self):
-        studio._remove_quietly(self.tmp / "missing")  # nothing to remove
+        studio_fs._remove_quietly(self.tmp / "missing")  # nothing to remove
         plain = write(self.tmp / "plain", "x")
-        studio._remove_quietly(plain)
+        studio_fs._remove_quietly(plain)
         self.assertFalse(plain.exists())
         locked = write(self.tmp / "locked", "x")
         os.chmod(locked, stat.S_IREAD)
-        studio._remove_quietly(locked)  # a read-only file (a copied mode) goes: on Windows after losing the bit, on POSIX at once (unlink needs a writable folder, not a writable file)
+        studio_fs._remove_quietly(locked)  # a read-only file (a copied mode) goes: on Windows after losing the bit, on POSIX at once (unlink needs a writable folder, not a writable file)
         self.assertFalse(locked.exists())
-        with mock.patch.object(studio.os, "unlink", side_effect=PermissionError(13, "no")), mock.patch.object(studio.os, "chmod", side_effect=PermissionError(13, "no")):
-            studio._remove_quietly(plain)  # cannot even change the mode: still no exception
-        with mock.patch.object(studio.os, "unlink", side_effect=PermissionError(13, "no")):
-            studio._remove_quietly(plain)  # retried once after the chmod, still no exception
+        with mock.patch.object(os, "unlink", side_effect=PermissionError(13, "no")), mock.patch.object(os, "chmod", side_effect=PermissionError(13, "no")):
+            studio_fs._remove_quietly(plain)  # cannot even change the mode: still no exception
+        with mock.patch.object(os, "unlink", side_effect=PermissionError(13, "no")):
+            studio_fs._remove_quietly(plain)  # retried once after the chmod, still no exception
 
     def test_quote_meta_statuses(self):
-        self.assertEqual(studio._quote_meta("  version: 1"), ('  version: "1"', "fixed"))
-        self.assertEqual(studio._quote_meta('  version: "1"'), ('  version: "1"', "ok"))
-        self.assertEqual(studio._quote_meta("  # a comment"), ("  # a comment", "ok"))
-        self.assertEqual(studio._quote_meta("  key:"), ("  key:", "ok"))
-        self.assertEqual(studio._quote_meta("  note: x # c")[1], "stuck")
+        self.assertEqual(studio_fmt._quote_meta("  version: 1"), ('  version: "1"', "fixed"))
+        self.assertEqual(studio_fmt._quote_meta('  version: "1"'), ('  version: "1"', "ok"))
+        self.assertEqual(studio_fmt._quote_meta("  # a comment"), ("  # a comment", "ok"))
+        self.assertEqual(studio_fmt._quote_meta("  key:"), ("  key:", "ok"))
+        self.assertEqual(studio_fmt._quote_meta("  note: x # c")[1], "stuck")
 
     def test_fmt_too_many_folders_is_not_checked_and_exit_1(self):
         for name in ("a", "b", "c"):
             write(self.tmp / name / "x.md", "# X\n")
-        with mock.patch.object(studio, "DOCTOR_MAX_DIRS", 2):
+        with mock.patch.object(studio_const, "DOCTOR_MAX_DIRS", 2):
             code, out, _ = run("--check", str(self.tmp))
         self.assertEqual(code, 1, out)
         self.assertIn("skipped (too-many-folders)", out)

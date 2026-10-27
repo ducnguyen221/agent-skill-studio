@@ -17,9 +17,15 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("studio_rf1_impl", ROOT / "studio.py")
-studio = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(studio)
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
+
+studio = _engine.engine
+studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
+studio_fs = _engine.fs  # file-system helpers live in studio_fs
+studio_dist = _engine.dist  # SPR-02 TK4c
+studio_doctor = _engine.doctor  # SPR-02 TK4c
 
 
 def run(*argv):
@@ -97,7 +103,7 @@ class PackageFolderCaseTests(SkillCopy):
         """đơn-vị-hàm-mới: walk_files(skip_names=) compares names case-insensitively."""
         (self.skill / "EVALS").mkdir()
         (self.skill / "EVALS" / "f.csv").write_text("x\n", encoding="utf-8")
-        found = studio.walk_files(self.skill, skip_names=studio.SKIP_DIRS)[0]
+        found = studio_fs.walk_files(self.skill, skip_names=studio_const.SKIP_DIRS)[0]
         self.assertEqual([], [p for p in found if "EVALS" in p.parts])
 
 
@@ -115,23 +121,23 @@ class MoveAsideTests(unittest.TestCase):
         """đơn-vị-hàm-mới (move_aside does not exist at df875ce): a rename failing for a reason other than another device (a locked file) does not copy-then-delete; src stays complete, no half dst."""
         with mock.patch.object(os, "rename", side_effect=PermissionError(errno.EACCES, "in use")):
             with self.assertRaises(PermissionError):
-                studio.move_aside(self.src, self.dst)
+                studio_dist.move_aside(self.src, self.dst)
         self.assertEqual(["a.md", "sub", "z.md"], sorted(os.listdir(self.src)))
         self.assertFalse(self.dst.exists())
 
     def test_don_vi_ham_moi_exdev_copies_then_removes(self):
         """đơn-vị-hàm-mới (move_aside does not exist at df875ce): across devices the folder is copied and the source removed (as before)."""
         with mock.patch.object(os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")):
-            studio.move_aside(self.src, self.dst)
+            studio_dist.move_aside(self.src, self.dst)
         self.assertFalse(self.src.exists())
         self.assertEqual(["a.md", "sub", "z.md"], sorted(os.listdir(self.dst)))
 
     def test_don_vi_ham_moi_failed_delete_after_copy_reports_the_real_state(self):
         """đơn-vị-hàm-mới (MoveAsideError does not exist at df875ce): copy done but the old folder cannot be fully removed -> a distinct error that names the backup; the backup stays whole."""
         with mock.patch.object(os, "rename", side_effect=OSError(errno.EXDEV, "cross-device")), \
-                mock.patch.object(studio.shutil, "rmtree", side_effect=PermissionError(errno.EACCES, "in use")):
-            with self.assertRaises(studio.MoveAsideError) as ctx:
-                studio.move_aside(self.src, self.dst)
+                mock.patch.object(shutil, "rmtree", side_effect=PermissionError(errno.EACCES, "in use")):
+            with self.assertRaises(studio_dist.MoveAsideError) as ctx:
+                studio_dist.move_aside(self.src, self.dst)
         self.assertIn(str(self.dst), str(ctx.exception))
         self.assertEqual(["a.md", "sub", "z.md"], sorted(os.listdir(self.dst)))
 
@@ -163,13 +169,13 @@ class FmtIdentityTests(unittest.TestCase):
     def test_don_vi_ham_moi_fmt_passes_the_listing_identity_to_every_read(self):
         """đơn-vị-hàm-mới (open_nofollow_read does not exist at df875ce): fmt reads (--check) and backs up (--fix) with expect_stat set, so Windows compares the opened handle with the checked file too."""
         calls = []
-        real = studio.open_nofollow_read
+        real = studio_fs.open_nofollow_read
 
         def spy(path, expect_stat=None, single_link=True):
             calls.append((Path(path).name, expect_stat is not None))
             return real(path, expect_stat, single_link)
 
-        with mock.patch.object(studio, "open_nofollow_read", spy):
+        with mock.patch.object(studio_fs, "open_nofollow_read", spy):
             run("fmt", "--check", str(self.path))
             run("fmt", "--fix", str(self.path))
         self.assertGreaterEqual(len(calls), 3, calls)
@@ -222,7 +228,7 @@ class RootsFileCommentTimeTests(unittest.TestCase):
             listing.write_text("a" + " " * 40000 + "b\n", encoding="utf-8")
             started = time.perf_counter()
             with self.assertRaises(ValueError):
-                studio.parse_roots(None, str(listing), None)
+                studio_doctor.parse_roots(None, str(listing), None)
             self.assertLess(time.perf_counter() - started, 0.5)
 
     def test_bat_loi_comment_forms(self):
@@ -233,7 +239,7 @@ class RootsFileCommentTimeTests(unittest.TestCase):
             (base / "plain").mkdir()
             listing = base / "roots.txt"
             listing.write_text("# head\n%s   # note\n%s\n" % (base / "plain", base / "a#b"), encoding="utf-8")
-            self.assertEqual([base / "plain", base / "a#b"], studio.parse_roots(None, str(listing), None))
+            self.assertEqual([base / "plain", base / "a#b"], studio_doctor.parse_roots(None, str(listing), None))
 
 
 class ParseRootsOsErrorTests(unittest.TestCase):
@@ -242,7 +248,7 @@ class ParseRootsOsErrorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             with mock.patch.object(Path, "is_dir", side_effect=OSError(errno.ENAMETOOLONG, "File name too long")):
                 with self.assertRaises(ValueError) as ctx:
-                    studio.parse_roots(str(Path(t) / "x"), None, None)
+                    studio_doctor.parse_roots(str(Path(t) / "x"), None, None)
             self.assertIn("root not found", str(ctx.exception))
 
 

@@ -49,7 +49,7 @@ Agent Skill Studio/
 ├── AGENTS.md                    # Chỉ dẫn repo chung cho Codex/Antigravity
 ├── CLAUDE.md                    # Claude Code: import AGENTS.md và thêm adapter
 ├── GEMINI.md                    # Antigravity-specific notes, không sao chép rule chung
-├── studio.py                    # CLI: new / validate / audit / evals / package / install / sync-template / doctor / fmt
+├── studio.py                    # Shim: chạy engine trong skill (lệnh new / check / validate / audit / evals / package / install / doctor / fmt)
 ├── .claude-plugin/              # Manifest plugin Claude Code (plugin.json, marketplace.json)
 ├── .codex-plugin/               # Manifest plugin Codex (plugin.json)
 ├── standards/
@@ -77,16 +77,14 @@ Agent Skill Studio/
 │   ├── ANTIGRAVITY_ADAPTER.md
 │   └── CAPABILITY_MATRIX.md
 ├── templates/
-│   ├── README.md                # Hai template và khi nào dùng
-│   ├── project/                 # Mẫu AGENTS.md, CLAUDE.md, GEMINI.md
-│   ├── skill-template/          # Mặc định tối giản: SKILL.md (en) và SKILL.vi.md (vi)
-│   └── skill-template-full/     # --full: SKILL.md, references/, scripts/, assets/, agents/
+│   ├── README.md                # Hai template (ở skills/skill-creator-studio/assets/) và khi nào dùng
+│   └── project/                 # Mẫu AGENTS.md, CLAUDE.md, GEMINI.md
 ├── skills/
 │   ├── skill-creator-studio/    # Skill meta-factory: NEW / AUDIT / REFINE
 │   │   ├── SKILL.md
 │   │   ├── references/
-│   │   ├── scripts/studio.py    # CLI có thể chạy cả khi Skill được copy sang repo khác
-│   │   └── assets/              # skill-template/ và skill-template-full/: bản phân phối, được CI đồng bộ
+│   │   ├── scripts/             # Engine: studio.py (CLI) + 9 mô-đun studio_*.py; chạy cả khi Skill được copy sang repo khác
+│   │   └── assets/              # skill-template/ (SKILL.md en, SKILL.vi.md vi), skill-template-full/ (--full): bản duy nhất của hai khuôn
 │   └── data-quality-audit/     # Skill ví dụ có script xử lý CSV thật
 ├── evals/                      # KHÔNG được mang vào package Skill
 │   ├── RUNBOOK.md
@@ -109,7 +107,9 @@ Agent Skill Studio/
 └── .github/workflows/ci.yml    # Validation + unit tests + packaging smoke test
 ```
 
-> **Ghi chú cây đích:** cây trên là hiện trạng của repo. Sprint áp dụng kế tiếp (SPEC 9.15 của SPR-33) mới dời: `adapters/*` thành `docs/adapters.md`; xoá `registry/SKILL_CATALOG.md` (giữ `catalog.json`); `QA_REPORT.md`, `ECOSYSTEM.md`, `standards/ROBONUGGETS_46_RULE_MAP.md` vào `docs/`; `templates/project/` thành `templates/starter-project/`; `CLAUDE.md` gốc còn một dòng. Các đường API cứng (`studio.py`, `skills/*`, `standards/SKILL_AUTHORING_STANDARD.md`, `templates/skill-template/SKILL.md`, tên repo) đứng yên. Tới lúc đó, đường dẫn trong tài liệu này vẫn đúng như đã ghi.
+> **Ghi chú cây đích:** cây trên là hiện trạng của repo. Sprint áp dụng kế tiếp (SPEC 9.15 của SPR-33) mới dời: `adapters/*` thành `docs/adapters.md`; xoá `registry/SKILL_CATALOG.md` (giữ `catalog.json`); `QA_REPORT.md`, `ECOSYSTEM.md`, `standards/ROBONUGGETS_46_RULE_MAP.md` vào `docs/`; `templates/project/` thành `templates/starter-project/`; `CLAUDE.md` gốc còn một dòng. Các đường API cứng (`studio.py`, `skills/*`, `standards/SKILL_AUTHORING_STANDARD.md`, tên repo) đứng yên. Tới lúc đó, đường dẫn trong tài liệu này vẫn đúng như đã ghi.
+
+**Bố cục engine.** Một nguồn duy nhất: engine nằm trong skill ở `skills/skill-creator-studio/scripts/` gồm `studio.py` (CLI, chọn lệnh) và chín mô-đun `studio_const`, `studio_fs`, `studio_lint`, `studio_validate`, `studio_evals`, `studio_scaffold`, `studio_dist`, `studio_doctor`, `studio_fmt`. `studio.py` ở gốc repo chỉ là shim chạy engine đó, nên mọi lệnh bên dưới cho cùng kết quả dù gọi từ gốc repo hay từ thư mục skill. Hai khuôn Skill mới chỉ có ở `skills/skill-creator-studio/assets/`. Các mô-đun gọi nhau qua đối tượng mô-đun và không nhập lại tên của nhau (test `tests/test_engine_modules.py` giữ luật này).
 
 ### `references/`, `scripts/`, `assets/`, `evals/` khác nhau ra sao?
 
@@ -130,6 +130,8 @@ Yêu cầu: **Python 3.9+**, không cần `pip install` cho CLI lõi. Tất cả
 python3 studio.py --help
 # xem các skill mẫu và trạng thái
 python3 studio.py audit --all
+# kiểm một skill (thư mục hoặc SKILL.md) bằng lệnh `check`; `validate` và `audit` là bí danh giữ nguyên cờ, mã thoát và JSON (thêm `"type": "skill"` ở mỗi report chỉ với `check`)
+python3 studio.py check skills/skill-creator-studio
 # kiểm tra các skill sản xuất và bộ evals ngoại vi
 python3 studio.py validate --all --require-evals
 python3 studio.py evals --all
@@ -257,15 +259,23 @@ Tên file giống secret (cùng luật với `--export`, không phân biệt hoa
 
 Không bao giờ đọc nội dung placeholder cloud. `PINNED` một mình (file đã tải sẵn) không còn bị coi là placeholder; `PINNED` kèm `RECALL_ON_DATA_ACCESS`, `RECALL_ON_OPEN`, `OFFLINE` hay `UNPINNED` vẫn là cloud. `validate`/`doctor` giữ `SZ2` ở mức WARN.
 
+## Cổng `model_evaluated` (`evals --all`): mã `EV20`
+
+Khi engine nằm trong repo (tính từ chính file engine, không theo thư mục đang đứng), `evals --all` còn kiểm `registry/catalog.json`: mỗi lời khai `model_evaluated`, `status` và khối `evaluated` phải khớp số đếm lại từ log chạy dưới `evals/<skill>/runs/`. Mỗi vấn đề là một ERROR `EV20` (cả trong `--json`), thoát 1. Engine chép rời ra ngoài repo (skill rời, ZIP) bỏ qua cổng. Công cụ đếm là `evals/tools/activation.py` của chính repo đó; không nạp từ thư mục đang đứng hay biến môi trường.
+
+| Mã | Nghĩa | Cách sửa |
+|---|---|---|
+| `EV20` | Catalog hỏng hoặc không khớp bằng chứng (`model_evaluated: true` thiếu số đếm đủ ngưỡng, `status` lệch cờ, thiếu `ab-<ngày>.json`...); trong repo thiếu `registry/catalog.json` hoặc `evals/tools/activation.py`; cây `runs/` có symlink/junction, placeholder cloud hoặc vượt trần duyệt (`runs dir not safe to count`, khi đó không đếm gì) | Sửa catalog hoặc bổ sung log đúng; đặt lại file thiếu; bỏ link khỏi `runs/`, tải file cloud thủ công, thu gọn cây |
+
 ## Phát hành
 
 Trước khi phát hành: `python3 studio.py doctor`, rồi `fmt --check` trên danh sách file của đợt (13 đường của SPR-33, phải thoát 0 và báo `0 skipped`):
 
 ```bash
-python3 studio.py fmt --check standards/MEMO-SKILL-V0.md standards/SKILL_AUTHORING_STANDARD.md standards/SOURCE_TRACEABILITY.md standards/EVALUATION_STANDARD.md standards/CORE_STANDARD.md standards/README.md standards/VIETNAMESE_SKILL_WRITING.md content templates/skill-template templates/skill-template-full templates/README.md
+python3 studio.py fmt --check standards/MEMO-SKILL-V0.md standards/SKILL_AUTHORING_STANDARD.md standards/SOURCE_TRACEABILITY.md standards/EVALUATION_STANDARD.md standards/CORE_STANDARD.md standards/README.md standards/VIETNAMESE_SKILL_WRITING.md content skills/skill-creator-studio/assets/skill-template skills/skill-creator-studio/assets/skill-template-full templates/README.md
 ```
 
-`fmt --check` không kèm đường thì thoát 2; `fmt --check --all` hiện thoát 1 vì còn dòng cũ và file chuẩn không được chạm trong đợt này. Sau đó `validate --all --require-evals`, `evals --all`, `sync-template --check` và `python3 -m unittest discover -s tests`. Ghi số đo vào [QA_REPORT.md](QA_REPORT.md), thêm mục vào [CHANGELOG.md](CHANGELOG.md) (chỉ thêm, không ghi đè), rồi mới tăng version. `model_evaluated` giữ `false` cho đến khi `registry/catalog.json` có đủ bằng chứng đếm lại được.
+`fmt --check` không kèm đường thì thoát 2; `fmt --check --all` hiện thoát 1 vì còn dòng cũ và file chuẩn không được chạm trong đợt này. Sau đó `validate --all --require-evals`, `evals --all` và `python3 -m unittest discover -s tests`. Ghi số đo vào [QA_REPORT.md](QA_REPORT.md), thêm mục vào [CHANGELOG.md](CHANGELOG.md) (chỉ thêm, không ghi đè), rồi mới tăng version. `model_evaluated` giữ `false` cho đến khi `registry/catalog.json` có đủ bằng chứng đếm lại được.
 
 ## Đọc tài liệu theo nhiệm vụ
 

@@ -17,6 +17,10 @@ CODE = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
 _SPEC = importlib.util.spec_from_file_location("studio_rules_impl", CODE)
 studio = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(studio)
+studio_const = sys.modules["studio_const"]  # sibling modules the engine just imported (SPR-02 TK4a)
+studio_fs = sys.modules["studio_fs"]
+studio_lint = sys.modules["studio_lint"]
+studio_validate = sys.modules["studio_validate"]
 
 GOOD_DESC = "Does a small job. Use when testing the validator."
 
@@ -67,7 +71,7 @@ class StudioCase(unittest.TestCase):
 
     def validate(self, folder, target=None):
         """target=None calls the pre-TK2 signature (portable default)."""
-        return studio.validate_skill(folder) if target is None else studio.validate_skill(folder, target=target)
+        return studio_validate.validate_skill(folder) if target is None else studio_validate.validate_skill(folder, target=target)
 
 
 class ReservedNameTest(StudioCase):
@@ -122,8 +126,8 @@ class TargetTest(StudioCase):
         findings = self.validate(folder, "claude-code")
         self.assertNotIn("FM1", codes(findings))
         self.assertEqual([f["code"] for f in findings if f["level"] == "ERROR"], [])
-        meta, parse_findings, _ = studio.parse_frontmatter(folder.joinpath("SKILL.md").read_text(encoding="utf-8"), folder / "SKILL.md",
-                                                           studio.CLAUDE_CODE_KEYS)
+        meta, parse_findings, _ = studio_fs.parse_frontmatter(folder.joinpath("SKILL.md").read_text(encoding="utf-8"), folder / "SKILL.md",
+                                                           studio_const.CLAUDE_CODE_KEYS)
         self.assertEqual(parse_findings, [])
         self.assertEqual(meta["metadata"]["version"], "1.0")
         self.assertIn("PreToolUse:", meta["hooks"])
@@ -432,14 +436,14 @@ class VietnameseLintTest(StudioCase):
     def test_vi_detect_lang_threshold(self):
         def ratio_body(accented, total=1000):
             return "a" * (total - accented) + "ế" * accented
-        self.assertEqual(studio.detect_lang(ratio_body(29)), "en")  # 2.9 %
-        self.assertEqual(studio.detect_lang(ratio_body(30)), "vi")  # 3.0 %
-        self.assertEqual(studio.detect_lang(""), "en")
+        self.assertEqual(studio_lint.detect_lang(ratio_body(29)), "en")  # 2.9 %
+        self.assertEqual(studio_lint.detect_lang(ratio_body(30)), "vi")  # 3.0 %
+        self.assertEqual(studio_lint.detect_lang(""), "en")
         nfd = unicodedata.normalize("NFD", ratio_body(30))
         self.assertNotEqual(nfd, ratio_body(30))
-        self.assertEqual(studio.detect_lang(nfd), "vi", "an NFD body must still be recognised as Vietnamese")
+        self.assertEqual(studio_lint.detect_lang(nfd), "vi", "an NFD body must still be recognised as Vietnamese")
         padded = "```\n" + "ế" * 500 + "\n```\n| " + "ế" * 500 + " |\n`" + "ế" * 500 + "` " + "a" * 100
-        self.assertEqual(studio.detect_lang(padded), "en", "code, table rows and backtick spans are not counted")
+        self.assertEqual(studio_lint.detect_lang(padded), "en", "code, table rows and backtick spans are not counted")
 
     def test_vi_lint_nfd_flags_vi1(self):
         nfd_line = unicodedata.normalize("NFD", "Việc kiểm dữ liệu cần làm trước khi gửi.")
@@ -547,18 +551,18 @@ class VietnameseLintTest(StudioCase):
 
     def test_lint_vi_abbreviations_decimals_and_paths_stay_whole(self):
         text = "Bản v1.0 và e.g. mục 3.5 " + " ".join(["việc"] * 35) + " xong."
-        self.assertEqual(studio._vi_sentences(studio.prose_lines(text)), [(1, 42)], "'e.g.', 'v1.0' and '3.5' do not split")
+        self.assertEqual(studio_lint._vi_sentences(studio_lint.prose_lines(text)), [(1, 42)], "'e.g.', 'v1.0' and '3.5' do not split")
         paths = "Xem standards/README.md. Rồi chạy studio.py validate. Hết."
-        self.assertEqual([w for _, w in studio._vi_sentences(studio.prose_lines(paths))], [2, 4, 1])
+        self.assertEqual([w for _, w in studio_lint._vi_sentences(studio_lint.prose_lines(paths))], [2, 4, 1])
 
     def test_lint_vi_indented_code_and_link_targets_skipped(self):
         body = vi_body("", "    22/10/2026 " + " ".join(["việc"] * 45) + ".", "", "Xem [tài liệu](docs/22/10/2026) để biết thêm.")
         self.assertEqual([c for c in codes(self.vi(body)) if c.startswith("VI")], [])
-        self.assertEqual(studio.prose_lines("a\n\n```\nb\n```\nc\n| t |\n\n    d\n    e"), [(1, "a"), (6, "c")])
+        self.assertEqual(studio_lint.prose_lines("a\n\n```\nb\n```\nc\n| t |\n\n    d\n    e"), [(1, "a"), (6, "c")])
 
     def test_lint_vi_missing_manifest_uses_default_lines(self):
         meta = {"name": "x", "description": "Kiểm tra", "metadata": {"author": "Đức"}}
-        found = studio.lint_vietnamese(meta, vi_body(), 4, self.tmp / "none" / "SKILL.md")
+        found = studio_lint.lint_vietnamese(meta, vi_body(), 4, self.tmp / "none" / "SKILL.md")
         self.assertEqual(sorted((f["code"], f["line"]) for f in found), [("VI4", 2), ("VI4", 3)])
 
     def test_lint_vi_frontmatter_vi_ok_and_cli_exit_zero(self):
@@ -594,21 +598,21 @@ class VietnameseLintTest(StudioCase):
         self.assertEqual(len(of(self.vi(vi_body("", bare, bare + "."), "vi-ctl"), "VI3")), 1, "control: two plain lines are one 60-word sentence")
 
     def test_lint_vi_urls_and_comments_leave_prose_lines(self):
-        self.assertEqual(studio.prose_lines("Xem https://example.com/22/10/2026 xong."), [(1, "Xem   xong.")])
-        self.assertEqual(studio.prose_lines("A <!-- 22/10/2026 --> B"), [(1, "A   B")])
+        self.assertEqual(studio_lint.prose_lines("Xem https://example.com/22/10/2026 xong."), [(1, "Xem   xong.")])
+        self.assertEqual(studio_lint.prose_lines("A <!-- 22/10/2026 --> B"), [(1, "A   B")])
         multi = "Đầu.\n<!--\nNgày 22/10/2026 trong ghi chú\n-->\nCuối."
-        self.assertEqual(studio.prose_lines(multi), [(1, "Đầu."), (5, "Cuối.")])
-        self.assertEqual(studio.prose_lines("Trước <!-- mở\nđóng --> sau."), [(1, "Trước "), (2, " sau.")])
-        self.assertEqual(studio.prose_lines("Trước `<!--` giữa\nvẫn là văn xuôi."), [(1, "Trước   giữa"), (2, "vẫn là văn xuôi.")], "backticked '<!--' opens nothing")
+        self.assertEqual(studio_lint.prose_lines(multi), [(1, "Đầu."), (5, "Cuối.")])
+        self.assertEqual(studio_lint.prose_lines("Trước <!-- mở\nđóng --> sau."), [(1, "Trước "), (2, " sau.")])
+        self.assertEqual(studio_lint.prose_lines("Trước `<!--` giữa\nvẫn là văn xuôi."), [(1, "Trước   giữa"), (2, "vẫn là văn xuôi.")], "backticked '<!--' opens nothing")
         body = vi_body("", "<!--", "Ngày 22/10/2026 trong ghi chú nhiều dòng.", "-->", "Ngày 22/10/2026 nằm ngoài.", "Xem https://example.com/22/10/2026 thôi.")
         self.assertEqual([f["line"] for f in of(self.vi(body), "VI2")], [12], "only the date outside the comment and the URL is reported")
 
     def test_lint_vi_frontmatter_list_dict_and_comments(self):
         meta = {"name": "x", "description": "Does a job. Use when testing.", "tags": ["ok", "Đức"], "metadata": {"deep": {"who": "Đức"}, "plain": "ok"}}
-        found = of(studio.lint_vietnamese(meta, vi_body(), 4, self.tmp / "none" / "SKILL.md"), "VI4")
+        found = of(studio_lint.lint_vietnamese(meta, vi_body(), 4, self.tmp / "none" / "SKILL.md"), "VI4")
         self.assertEqual(sorted(f["message"].split("'")[1] for f in found), ["metadata.deep.who", "tags[1]"])
         clean = {"name": "x", "description": "Does a job. Use when testing.", "tags": ["ok"], "metadata": {"deep": {"who": "ok"}}}
-        self.assertEqual(studio.lint_vietnamese(clean, vi_body(), 4, self.tmp / "none" / "SKILL.md"), [])
+        self.assertEqual(studio_lint.lint_vietnamese(clean, vi_body(), 4, self.tmp / "none" / "SKILL.md"), [])
         listed = of(self.vi(vi_body(), "vi-list", extra=('tags: ["Đức"]',)), "VI4")
         self.assertEqual([f["line"] for f in listed], [4], "a flow-list value with diacritics is reported")
         # a comment on a frontmatter line is not part of the value
@@ -624,8 +628,8 @@ class VietnameseLintTest(StudioCase):
 
 class RepoStaysCleanTest(StudioCase):
     def test_validate_all_has_no_errors_or_warnings(self):
-        for folder in studio.skill_dirs(ROOT):
-            findings = studio.validate_skill(folder, eval_root=ROOT / "evals", require_evals=True)
+        for folder in studio_fs.skill_dirs(ROOT):
+            findings = studio_validate.validate_skill(folder, eval_root=ROOT / "evals", require_evals=True)
             self.assertEqual([(f["code"], f["level"]) for f in findings], [], str(folder))
 
 
