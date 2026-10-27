@@ -303,22 +303,20 @@ def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None
                 for entry in entries:
                     child = Path(entry.path)
                     try:
+                        if entry.is_symlink():  # the order of walk_files: a symlink first; its target is never asked about, so every symlink is reported
+                            skip(child, "link")
+                            continue
                         is_dir = entry.is_dir(follow_symlinks=False)
                         is_file = entry.is_file(follow_symlinks=False)
                     except OSError:
                         continue
-                    if is_dir or is_file:
-                        if fs.entry_is_cloud(entry):
-                            skip(child, "cloud")
-                            continue
-                    if entry.is_symlink() or (is_dir and fs.is_link(child)):
-                        try:
-                            to_dir = is_dir or entry.is_dir()  # a POSIX symlink to a folder is not is_dir(follow_symlinks=False): ask what it points at
-                        except OSError:
-                            to_dir = False
-                        if to_dir or entry.name.lower().endswith(".md"):
+                    if (is_dir or is_file) and fs.entry_is_cloud(entry):
+                        skip(child, "cloud")
+                        continue
+                    if is_dir:
+                        if fs.is_link(child):  # a junction (any reparse point) is a folder for is_dir(follow_symlinks=False)
                             skip(child, "link")
-                    elif is_dir:
+                            continue
                         if entry.name in C.FMT_PRUNE_DIRS or (entry.name == "runs" and "evals" in (x.casefold() for x in child.parts)):
                             continue
                         if fs.zone_named(entry.name):

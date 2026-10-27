@@ -121,10 +121,27 @@ def repo_root(start: Path) -> Path | None:
 
 
 def skill_dirs(root: Path) -> list[Path]:
-    p = root / "skills"
-    if not p.is_dir():
+    """The folders under `root/skills` that hold a SKILL.md. A link (symlink, junction), a cloud placeholder and a `skills` folder that is
+    itself a link are neither listed nor entered, and nothing is stat-ed through a link (SPR-02 FR7.1: the pattern of walk_files)."""
+    base = root / "skills"
+    if is_link(base) or path_is_cloud(base):
         return []
-    return sorted(x for x in p.iterdir() if x.is_dir() and (x / "SKILL.md").exists())
+    try:
+        with os.scandir(base) as scan:
+            entries = list(scan)
+    except OSError:
+        return []
+    found = []
+    for entry in entries:
+        path = Path(entry.path)
+        try:
+            if entry.is_symlink() or entry_is_cloud(entry) or not entry.is_dir(follow_symlinks=False) or is_link(path):
+                continue
+        except OSError:
+            continue
+        if (path / "SKILL.md").exists():
+            found.append(path)
+    return sorted(found)
 
 
 def is_link(path: Path) -> bool:
@@ -597,8 +614,11 @@ def _remove_quietly(path) -> None:
 
 
 def _is_dir_quiet(path: Path) -> bool:
-    """Path.is_dir() that also treats an OSError the stdlib does not swallow (ENAMETOOLONG on POSIX) as 'not a directory'."""
+    """True for a real folder. A link (symlink, junction), a cloud placeholder, a missing path and an OSError the stdlib does not swallow
+    (ENAMETOOLONG on POSIX) are 'not a directory'; one lstat, so the target of a link is never stat-ed (SPR-02 FR7.1)."""
+    if is_link(path) or path_is_cloud(path):
+        return False
     try:
-        return path.is_dir()
+        return stat.S_ISDIR(os.lstat(path).st_mode)
     except OSError:
         return False

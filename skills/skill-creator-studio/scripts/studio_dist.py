@@ -22,8 +22,18 @@ import studio_validate as validate
 
 
 def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
-    findings = validate.validate_skill(folder)
     manifest = folder / "SKILL.md"
+    # Decided before anything reads SKILL.md (validate_skill and the draft-marker test both do): a link, a cloud placeholder or a file in a
+    # cloud/secret zone is refused and not opened (SPR-02 FR7.2).
+    if fs.is_link(manifest):
+        problem = "is a symlink or junction; not read"
+    elif fs.path_is_cloud(manifest):
+        problem = "is a cloud placeholder; not read"
+    else:
+        problem = fs.input_file_problem(manifest)
+    if problem:
+        return [], [fs.emit("ERROR", "PACK", manifest, 0, "SKILL.md %s; nothing is packaged" % problem)]
+    findings = validate.validate_skill(folder)
     if manifest.is_file() and re.search(r"<!--\s*STUDIO-DRAFT", manifest.read_text(encoding="utf-8")):
         findings.append(fs.emit("ERROR", "PACK", manifest, 0, "cannot package an unfinished template: remove draft marker after authoring"))
     files = []
@@ -117,16 +127,28 @@ class MoveAsideError(OSError):
     """The copy at `dst` is complete but the old folder could not be fully removed: it may be partly gone. The message names the copy."""
 
 
+class MoveAsideLinkError(OSError):
+    """The folder `src` holds a symlink, junction or cloud placeholder (or is too big to check) and was not copied; `src` is untouched."""
+
+
 def move_aside(src: Path, dst: Path) -> None:
     """Move the folder `src` to `dst` (same device: rename). Only when the rename fails because `dst` is on another device (EXDEV, Windows error 17) is the
     folder copied first and `src` deleted after; any other rename failure (a locked file, a permission) is raised at once with `src` untouched. A failed copy
-    removes the half-made `dst` and re-raises, so `src` stays whole; a failed delete after a good copy raises MoveAsideError."""
+    removes the half-made `dst` and re-raises, so `src` stays whole; a failed delete after a good copy raises MoveAsideError. Before that copy `src` is listed
+    without following links; a link or cloud placeholder inside it raises MoveAsideLinkError and nothing is copied."""
     try:
         os.rename(src, dst)
         return
     except OSError as exc:
         if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != 17:
             raise
+    paths, links, _dirs, cloud, cut = fs.walk_files(src)  # lists links and cloud placeholders, never enters or opens them (SPR-02 FR7.3)
+    if cut:
+        raise MoveAsideLinkError(0, "the old Skill folder %s is over the scan limit (%d entries or %d folder levels), so it cannot be checked for links before it is copied"
+                                 % (src, C.DOCTOR_MAX_FILES_PER_SKILL, C.DOCTOR_MAX_SKILL_DEPTH))
+    unsafe = sorted(links | cloud)
+    if unsafe:
+        raise MoveAsideLinkError(0, "the old Skill folder holds a link or cloud placeholder (%s); it is not copied, so the old Skill was left in place" % unsafe[0])
     try:
         shutil.copytree(src, dst, symlinks=True)
     except BaseException:
@@ -196,9 +218,18 @@ def cmd_install(args) -> int:
         if os.path.lexists(backup):
             print("ERROR: backup collision", file=sys.stderr)
             return 1
+        made_backups_dir = not os.path.lexists(backups_dir)
         try:
             backups_dir.mkdir(exist_ok=True)
             move_aside(dest, backup)
+        except MoveAsideLinkError as exc:
+            if made_backups_dir:
+                try:
+                    backups_dir.rmdir()
+                except OSError:
+                    pass
+            print("ERROR: %s. Nothing was changed; remove the link from the old Skill folder (or the folder itself) and run install again." % (exc.strerror or "the old Skill holds a link"), file=sys.stderr)
+            return 1
         except MoveAsideError as exc:
             print("ERROR: %s. Nothing new was installed; restore from the backup if the Skill folder is incomplete." % exc.strerror, file=sys.stderr)
             return 1
