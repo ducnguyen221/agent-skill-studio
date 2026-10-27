@@ -5,8 +5,10 @@ Internal module of `studio.py`; do not run it. It reaches other studio modules t
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import re
 import shutil
 import stat
 import tempfile
@@ -264,3 +266,216 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
         return refuse(1, "EX8", "cannot write export: %s (files created by this run were removed)" % exc, out_root)
     stats.update({"exported": len(evals), "excluded_negative": len(cases) - len(positive), "path": str(target)})
     return 0, [], stats
+
+# --- the `model_evaluated` gate of registry/catalog.json (SPR-02 TK6, FR6, RQ-018; moved as it was from tests/test_studio.py) ---
+
+def engine_repo_root() -> Path | None:
+    """The repository this engine file sits in (never the cwd), or None for an engine copied out of any repository."""
+    return fs.repo_root(Path(__file__))
+
+
+def _read_text(path) -> str:
+    """UTF-8 text of a plain file, opened without following a link and read up to DOCTOR_MAX_FILE_BYTES; ValueError when larger or not UTF-8."""
+    with fs.open_nofollow_read(path, os.lstat(path), single_link=False) as handle:
+        data = handle.read(C.DOCTOR_MAX_FILE_BYTES + 1)
+    if len(data) > C.DOCTOR_MAX_FILE_BYTES:
+        raise ValueError("%s is larger than %d bytes" % (path, C.DOCTOR_MAX_FILE_BYTES))
+    return data.decode("utf-8")
+
+
+def _load_json(path):
+    return json.loads(_read_text(path))
+
+
+def _activation_path() -> Path | None:
+    """evals/tools/activation.py of the engine's own repository when it is a plain file there; None otherwise."""
+    root = engine_repo_root()
+    if root is None:
+        return None
+    path = root / "evals" / "tools" / "activation.py"
+    if not path.is_file() or fs.is_link(path) or fs.path_is_cloud(path):
+        return None
+    return path
+
+
+def _load_activation():
+    """The module of evals/tools/activation.py, loaded from the engine's repository only: not from the cwd, not from an environment variable."""
+    path = _activation_path()
+    if path is None:
+        raise RuntimeError("evals/tools/activation.py is missing in the repository of the engine")
+    spec = importlib.util.spec_from_file_location("activation_impl", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _runs_unsafe(runs_root: Path) -> str | None:
+    """Why the runs/ tree cannot be counted safely (a link, a cloud placeholder, or more than the walk limits), else None. Nothing is opened."""
+    if fs.is_link(runs_root) or fs.path_is_cloud(runs_root):
+        return "%s is a link or a cloud placeholder" % runs_root
+    _found, links, _dirs, cloud, cut = fs.walk_files(runs_root)
+    if links:
+        return "link %s" % sorted(links)[0]
+    if cloud:
+        return "cloud placeholder %s" % sorted(cloud)[0]
+    if cut:
+        return "more than %d entries or %d levels under %s" % (C.DOCTOR_MAX_FILES_PER_SKILL, C.DOCTOR_MAX_SKILL_DEPTH, runs_root)
+    return None
+
+
+def catalog_problems(root) -> list[str]:
+    """Every reason registry/catalog.json of the repository at `root` is not backed by counted run logs; a missing catalog or tool is a reason too."""
+    root = Path(root)
+    catalog = root / "registry" / "catalog.json"
+    if not catalog.is_file():
+        return ["registry/catalog.json is missing in the repository %s; the model_evaluated gate cannot run" % root]
+    if fs.is_link(catalog) or fs.path_is_cloud(catalog):
+        return ["registry/catalog.json is a link or a cloud placeholder; it is not read"]
+    if _activation_path() is None:
+        return ["evals/tools/activation.py is missing in the repository of the engine (or is a link or a cloud placeholder); the model_evaluated gate cannot count run logs"]
+    try:
+        return model_evaluated_problems(catalog, root)
+    except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
+        return ["registry/catalog.json or its evidence cannot be read: %s: %s" % (type(exc).__name__, exc)]
+
+
+RESULT_VALUES = ("passed", "below-threshold", "partial", "not_run")
+BATCH_SHA_RE = re.compile(r"[0-9a-f]{40}")
+AB_THRESHOLDS = (("positive_triggered", lambda v: v >= 4, ">= 4"), ("negative_triggered", lambda v: v == 0, "== 0"),
+                 ("worse", lambda v: v == 0, "== 0"), ("better", lambda v: v >= 3, ">= 3"), ("pairs", lambda v: v == 5, "== 5"))
+
+
+def model_evaluated_problems(catalog_path, root):
+    """Return the list of reasons the catalog's model_evaluated / status claims are not backed by counted run logs."""
+    problems = []
+    catalog = _load_json(Path(catalog_path))
+    for skill in catalog["skills"]:
+        name, targets = skill["name"], set(skill["targets"])
+        flag, ev = skill.get("model_evaluated"), skill.get("evaluated")
+        tag = "%s:" % name
+        if "model_evaluated" in skill and not isinstance(flag, bool):
+            problems.append("%s model_evaluated=%r must be a JSON bool" % (tag, flag))
+        if (skill.get("status") == "model-evaluated") != (flag is True):
+            problems.append("%s status %r does not match model_evaluated=%r (model-evaluated only for true)" % (tag, skill.get("status"), flag))
+        runs_root = Path(root) / skill["evals"] / "runs"
+        if runs_root.is_dir():  # nothing under runs/ is opened, listed further or counted until the whole tree is known to be plain files (FR6.4)
+            reason = _runs_unsafe(runs_root)
+            if reason:
+                problems.append("%s runs dir not safe to count: %s" % (tag, reason))
+                continue
+        # every runtime that appears in any run log must be a declared target
+        for f in sorted(list(runs_root.glob("*/*.json")) + list(runs_root.glob("*/smoke/*.json"))) if runs_root.is_dir() else []:
+            try:
+                log = _load_json(f)
+            except (ValueError, OSError):
+                continue
+            if isinstance(log, dict) and "runtime" in log and "with_skill" in log and log["runtime"] not in targets:
+                problems.append("%s log %s has runtime %r not in targets %s" % (tag, f.name, log["runtime"], sorted(targets)))
+        if ev is None:
+            if flag is True:
+                problems.append("%s model_evaluated=true without an `evaluated` block" % tag)
+            continue
+        result, batch_sha = ev.get("result"), ev.get("batch_sha")
+        if result not in RESULT_VALUES:
+            problems.append("%s evaluated.result %r must be one of %s" % (tag, result, list(RESULT_VALUES)))
+        if not isinstance(batch_sha, str) or not BATCH_SHA_RE.fullmatch(batch_sha):
+            problems.append("%s evaluated.batch_sha %r must be 40 lowercase hex" % (tag, batch_sha))
+        if ev.get("batch_sha_kind") not in ("commit", "tree"):
+            problems.append("%s evaluated.batch_sha_kind %r must be 'commit' or 'tree' (required with batch_sha)" % (tag, ev.get("batch_sha_kind")))
+        below = False  # a ran harness missed AB_THRESHOLDS (or has no counted row); only reported as a problem when the flag is true
+        sprint, harnesses = ev.get("sprint"), ev.get("harnesses")
+        if not sprint or not isinstance(harnesses, dict):
+            problems.append("%s evaluated needs sprint and harnesses" % tag)
+            continue
+        if flag is True and set(harnesses) != targets:
+            problems.append("%s evaluated.harnesses keys %s != targets %s" % (tag, sorted(harnesses), sorted(targets)))
+        if set(harnesses) - targets:
+            problems.append("%s evaluated.harnesses has harness outside targets: %s" % (tag, sorted(set(harnesses) - targets)))
+        runs_dir = runs_root / sprint
+        counted = _load_activation().summarize(runs_dir) if runs_dir.is_dir() else {}
+        ran_logs = _ran_logs(runs_dir) if runs_dir.is_dir() else {}
+        cases_file = Path(root) / skill["evals"] / "cases.json"
+        cases = _load_json(cases_file).get("cases", []) if cases_file.is_file() else []
+        n_pos = sum(1 for c in cases if c.get("should_trigger") is True)
+        n_neg = sum(1 for c in cases if c.get("should_trigger") is False)
+        ab_report = ev.get("ab_report")
+        if ab_report is not None and not str(ab_report).replace("\\", "/").startswith("%s/runs/%s/" % (str(skill["evals"]).rstrip("/"), sprint)):
+            problems.append("%s ab_report %r must be under %s/runs/%s/" % (tag, ab_report, str(skill["evals"]).rstrip("/"), sprint))
+        elif flag is True and ab_report is None:
+            problems.append("%s model_evaluated=true needs evaluated.ab_report" % tag)
+        ab_name = "ab-%s.json" % ev.get("date", "")
+        ab_path = runs_dir / ab_name
+        ab = None
+        if any(v == "ran" for v in harnesses.values()):
+            if not ab_path.is_file():
+                problems.append("%s %s missing under %s" % (tag, ab_name, runs_dir.as_posix()))
+            else:
+                ab = _load_json(ab_path).get("per_runtime", {})
+        for h, state in sorted(harnesses.items()):
+            if state == "ran":
+                row = (ab or {}).get(h)
+                if ab is not None and row is None:
+                    problems.append("%s harness %s is ran but absent from %s" % (tag, h, ab_name))
+                    below = True
+                    continue
+                if row is None:
+                    below = True
+                if row is not None:
+                    for key, ok, text in AB_THRESHOLDS:
+                        if not ok(row.get(key, -1)):
+                            below = True
+                            if flag is True:  # flag false drops only this threshold application, never the integrity checks below
+                                problems.append("%s %s %s=%r required %s" % (tag, h, key, row.get(key), text))
+                    mine_logs = ran_logs.get(h, {"with": [], "base": []})
+                    pos = [l for l in mine_logs["with"] if l.get("kind") != "near-miss"]
+                    neg = [l for l in mine_logs["with"] if l.get("kind") == "near-miss"]
+                    if len(pos) != n_pos:
+                        problems.append("%s %s has %d positive logs but cases.json has %d positive cases" % (tag, h, len(pos), n_pos))
+                    if len(neg) != n_neg:
+                        problems.append("%s %s has %d negative logs but cases.json has %d negative cases" % (tag, h, len(neg), n_neg))
+                    ids = [l.get("case_id") for l in mine_logs["with"] if l.get("case_id") is not None]
+                    if len(ids) != len(set(ids)):
+                        problems.append("%s %s has duplicate case_id among its with-skill logs" % (tag, h))
+                    n_base = len(mine_logs["base"])
+                    if row.get("pairs") != n_base:
+                        problems.append("%s %s pairs=%r but %d baseline logs ran" % (tag, h, row.get("pairs"), n_base))
+                    if sum(row.get(k, 0) for k in ("better", "equal", "worse")) != row.get("pairs"):
+                        problems.append("%s %s better+equal+worse = %r != pairs %r" % (tag, h, sum(row.get(k, 0) for k in ("better", "equal", "worse")), row.get("pairs")))
+                    mine = counted.get(h, {"pos_trig": 0, "neg_trig": 0})
+                    for key, got in (("positive_triggered", mine["pos_trig"]), ("negative_triggered", mine["neg_trig"])):
+                        if row.get(key) != got:
+                            problems.append("%s %s %s recount from logs = %r but %s says %r" % (tag, h, key, got, ab_name, row.get(key)))
+            elif isinstance(state, str) and state.startswith("not_run:") and len(state) > len("not_run:"):
+                if ab is not None and h in ab:
+                    problems.append("%s harness %s is %r but %s has per_runtime numbers for it" % (tag, h, state, ab_name))
+                if h in ran_logs:
+                    problems.append("%s harness %s is %r but %s has a ran log for it" % (tag, h, state, runs_dir.as_posix()))
+            else:
+                problems.append("%s harness %s state %r must be 'ran' or 'not_run:<reason>'" % (tag, h, state))
+        # `result` must equal the value recomputed from the harness states + threshold outcome. Priority when several apply:
+        # not_run > below-threshold > partial > passed (not_run = no harness ran; partial = a declared harness did not run, the rest pass).
+        n_ran = sum(1 for v in harnesses.values() if v == "ran")
+        core = "not_run" if n_ran == 0 else ("below-threshold" if below else "passed")
+        recomputed = "partial" if core == "passed" and n_ran < len(harnesses) else core
+        if flag is True:
+            # flag true is not relaxed: every old check above stays, and the block must say passed (not_run:<reason> harnesses keep being tolerated as before)
+            if result != "passed" or core != "passed":
+                problems.append("%s model_evaluated=true needs evaluated.result == 'passed' (declared %r, recomputed %r)" % (tag, result, recomputed))
+        elif result == "passed":
+            problems.append("%s model_evaluated=false but evaluated.result is 'passed' (recomputed %r)" % (tag, recomputed))
+        elif result in RESULT_VALUES and result != recomputed:
+            problems.append("%s evaluated.result %r != recomputed %r" % (tag, result, recomputed))
+    return problems
+
+
+def _ran_logs(runs_dir):
+    """{runtime: {"with": [logs], "base": [logs]}} for every top-level run log with status ran (baseline logs included)."""
+    out = {}
+    for f in sorted(Path(runs_dir).glob("*.json")):
+        try:
+            log = _load_json(f)
+        except (ValueError, OSError):
+            continue
+        if isinstance(log, dict) and "runtime" in log and "with_skill" in log and log.get("status") == "ran":
+            out.setdefault(log["runtime"], {"with": [], "base": []})["with" if log["with_skill"] is True else "base"].append(log)
+    return out

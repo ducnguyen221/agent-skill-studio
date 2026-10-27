@@ -257,6 +257,14 @@ Tên file giống secret (cùng luật với `--export`, không phân biệt hoa
 
 Không bao giờ đọc nội dung placeholder cloud. `PINNED` một mình (file đã tải sẵn) không còn bị coi là placeholder; `PINNED` kèm `RECALL_ON_DATA_ACCESS`, `RECALL_ON_OPEN`, `OFFLINE` hay `UNPINNED` vẫn là cloud. `validate`/`doctor` giữ `SZ2` ở mức WARN.
 
+## Cổng `model_evaluated` (`evals --all`): mã `EV20`
+
+Khi engine nằm trong repo (tính từ chính file engine, không theo thư mục đang đứng), `evals --all` còn kiểm `registry/catalog.json`: mỗi lời khai `model_evaluated`, `status` và khối `evaluated` phải khớp số đếm lại từ log chạy dưới `evals/<skill>/runs/`. Mỗi vấn đề là một ERROR `EV20` (cả trong `--json`), thoát 1. Engine chép rời ra ngoài repo (skill rời, ZIP) bỏ qua cổng. Công cụ đếm là `evals/tools/activation.py` của chính repo đó; không nạp từ thư mục đang đứng hay biến môi trường.
+
+| Mã | Nghĩa | Cách sửa |
+|---|---|---|
+| `EV20` | Catalog hỏng hoặc không khớp bằng chứng (`model_evaluated: true` thiếu số đếm đủ ngưỡng, `status` lệch cờ, thiếu `ab-<ngày>.json`...); trong repo thiếu `registry/catalog.json` hoặc `evals/tools/activation.py`; cây `runs/` có symlink/junction, placeholder cloud hoặc vượt trần duyệt (`runs dir not safe to count`, khi đó không đếm gì) | Sửa catalog hoặc bổ sung log đúng; đặt lại file thiếu; bỏ link khỏi `runs/`, tải file cloud thủ công, thu gọn cây |
+
 ## Phát hành
 
 Trước khi phát hành: `python3 studio.py doctor`, rồi `fmt --check` trên danh sách file của đợt (13 đường của SPR-33, phải thoát 0 và báo `0 skipped`):

@@ -121,11 +121,18 @@ def cmd_evals(args) -> int:
     for path in paths:
         findings = evals.check_evals(path)
         reports.append({"skill": path.name, "findings": findings})
+    gate_root, gate_dir = (evals.engine_repo_root() if args.all else None), None  # the gate follows the engine's repository, never the cwd; outside a repository it is skipped (FR6.2)
+    if gate_root is not None:
+        catalog = gate_root / "registry" / "catalog.json"
+        problems = evals.catalog_problems(gate_root)
+        if problems:
+            reports.append({"skill": "registry/catalog.json", "findings": [fs.emit("ERROR", "EV20", catalog, 0, p) for p in problems]})
+            gate_dir = catalog
     if args.json:
         print(json.dumps({"reports": reports, "model_runs_performed": 0}, ensure_ascii=False, indent=2))
     else:
         for item in reports:
-            validate.print_findings(eval_root / item["skill"], item["findings"])
+            validate.print_findings(gate_dir if gate_dir is not None and item is reports[-1] else eval_root / item["skill"], item["findings"])
         print("Schema-only evaluation: NO model sessions were executed.")
     return 1 if any(f["level"] == "ERROR" for x in reports for f in x["findings"]) else 0
 
