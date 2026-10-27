@@ -26,6 +26,8 @@ _ACT_SPEC = importlib.util.spec_from_file_location("activation_impl", ROOT / "ev
 activation = importlib.util.module_from_spec(_ACT_SPEC)
 _ACT_SPEC.loader.exec_module(activation)
 
+RESULT_VALUES = ("passed", "below-threshold", "partial", "not_run")
+BATCH_SHA_RE = re.compile(r"[0-9a-f]{40}")
 AB_THRESHOLDS = (("positive_triggered", lambda v: v >= 4, ">= 4"), ("negative_triggered", lambda v: v == 0, "== 0"),
                  ("worse", lambda v: v == 0, "== 0"), ("better", lambda v: v >= 3, ">= 3"), ("pairs", lambda v: v == 5, "== 5"))
 
@@ -55,6 +57,12 @@ def model_evaluated_problems(catalog_path, root):
             if flag is True:
                 problems.append("%s model_evaluated=true without an `evaluated` block" % tag)
             continue
+        result, batch_sha = ev.get("result"), ev.get("batch_sha")
+        if result not in RESULT_VALUES:
+            problems.append("%s evaluated.result %r must be one of %s" % (tag, result, list(RESULT_VALUES)))
+        if not isinstance(batch_sha, str) or not BATCH_SHA_RE.fullmatch(batch_sha):
+            problems.append("%s evaluated.batch_sha %r must be 40 lowercase hex" % (tag, batch_sha))
+        below = False  # a ran harness missed AB_THRESHOLDS (or has no counted row); only reported as a problem when the flag is true
         sprint, harnesses = ev.get("sprint"), ev.get("harnesses")
         if not sprint or not isinstance(harnesses, dict):
             problems.append("%s evaluated needs sprint and harnesses" % tag)
@@ -88,11 +96,16 @@ def model_evaluated_problems(catalog_path, root):
                 row = (ab or {}).get(h)
                 if ab is not None and row is None:
                     problems.append("%s harness %s is ran but absent from %s" % (tag, h, ab_name))
+                    below = True
                     continue
+                if row is None:
+                    below = True
                 if row is not None:
                     for key, ok, text in AB_THRESHOLDS:
                         if not ok(row.get(key, -1)):
-                            problems.append("%s %s %s=%r required %s" % (tag, h, key, row.get(key), text))
+                            below = True
+                            if flag is True:  # flag false drops only this threshold application, never the integrity checks below
+                                problems.append("%s %s %s=%r required %s" % (tag, h, key, row.get(key), text))
                     mine_logs = ran_logs.get(h, {"with": [], "base": []})
                     pos = [l for l in mine_logs["with"] if l.get("kind") != "near-miss"]
                     neg = [l for l in mine_logs["with"] if l.get("kind") == "near-miss"]
@@ -119,6 +132,19 @@ def model_evaluated_problems(catalog_path, root):
                     problems.append("%s harness %s is %r but %s has a ran log for it" % (tag, h, state, runs_dir.as_posix()))
             else:
                 problems.append("%s harness %s state %r must be 'ran' or 'not_run:<reason>'" % (tag, h, state))
+        # `result` must equal the value recomputed from the harness states + threshold outcome. Priority when several apply:
+        # not_run > below-threshold > partial > passed (not_run = no harness ran; partial = a declared harness did not run, the rest pass).
+        n_ran = sum(1 for v in harnesses.values() if v == "ran")
+        core = "not_run" if n_ran == 0 else ("below-threshold" if below else "passed")
+        recomputed = "partial" if core == "passed" and n_ran < len(harnesses) else core
+        if flag is True:
+            # flag true is not relaxed: every old check above stays, and the block must say passed (not_run:<reason> harnesses keep being tolerated as before)
+            if result != "passed" or core != "passed":
+                problems.append("%s model_evaluated=true needs evaluated.result == 'passed' (declared %r, recomputed %r)" % (tag, result, recomputed))
+        elif result == "passed":
+            problems.append("%s model_evaluated=false but evaluated.result is 'passed' (recomputed %r)" % (tag, recomputed))
+        elif result in RESULT_VALUES and result != recomputed:
+            problems.append("%s evaluated.result %r != recomputed %r" % (tag, result, recomputed))
     return problems
 
 
@@ -135,7 +161,7 @@ def _ran_logs(runs_dir):
     return out
 
 
-def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, status=None, model_evaluated=True, claim_positive=4, mutate=None, flag=None):
+def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, status=None, model_evaluated=True, claim_positive=4, mutate=None, flag=None, trig=4, result=None, batch_sha=None):
     """Build a temp catalog + run logs (claude-code, codex ran; antigravity not_run). Returns (catalog_path, root).
 
     mutate(runs_dir, ab_dict, harnesses_dict, evaluated_dict) may break the evidence before it is written (gate self-tests)."""
@@ -149,12 +175,13 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
     for rt in runtimes:
         for i in range(5):
             (runs / ("%s_pos%d.json" % (rt, i))).write_text(json.dumps(
-                {"runtime": rt, "case_id": "pos%d" % i, "with_skill": True, "status": "ran", "kind": "typical", "triggered": i < 4}), encoding="utf-8")
+                {"runtime": rt, "case_id": "pos%d" % i, "with_skill": True, "status": "ran", "kind": "typical", "triggered": i < trig}), encoding="utf-8")
             (runs / ("%s_base%d.json" % (rt, i))).write_text(json.dumps(
                 {"runtime": rt, "case_id": "pos%d" % i, "with_skill": False, "status": "ran", "kind": "typical", "triggered": False}), encoding="utf-8")
         for i in range(3):
             (runs / ("%s_neg%d.json" % (rt, i))).write_text(json.dumps(
                 {"runtime": rt, "case_id": "neg%d" % i, "with_skill": True, "status": "ran", "kind": "near-miss", "triggered": False}), encoding="utf-8")
+    claim_positive = trig if claim_positive == 4 else claim_positive
     row = lambda: {"positive_triggered": claim_positive, "negative_triggered": 0, "better": 3, "equal": 2, "worse": 0, "pairs": 5}
     ab = {"per_runtime": {"claude-code": row(), "codex": row()}}
     harnesses = {"claude-code": "ran", "codex": "ran", "antigravity": "not_run:headless-no-skill-catalog"}
@@ -163,7 +190,9 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
     if status is None:
         status = "model-evaluated" if model_evaluated else "prototype-static-validated"
     evaluated = {"sprint": "SPR-18", "date": "2026-10-18", "harnesses": harnesses,
-                 "ab_report": "evals/fake-skill/runs/SPR-18/ab-2026-10-18.md"}
+                 "ab_report": "evals/fake-skill/runs/SPR-18/ab-2026-10-18.md",
+                 "result": result if result is not None else ("passed" if (model_evaluated if flag is None else flag) else "partial"),
+                 "batch_sha": batch_sha if batch_sha is not None else "a" * 40}
     if mutate:
         mutate(runs, ab, harnesses, evaluated)
     if write_ab:
@@ -376,6 +405,86 @@ class StudioTests(unittest.TestCase):
             catalog, root = _fake_evidence(Path(t) / "b", model_evaluated=False, status="model-evaluated")  # false + status model-evaluated
             problems = model_evaluated_problems(catalog, root)
             self.assertTrue(any("status" in p for p in problems), problems)
+
+    # --- SC8 / FR9: `evaluated.result` + `batch_sha`; flag false drops only the AB_THRESHOLDS application ---
+
+    def _gate(self, **kw):
+        with tempfile.TemporaryDirectory() as t:
+            catalog, root = _fake_evidence(Path(t), **kw)
+            return model_evaluated_problems(catalog, root)
+
+    def test_gate_false_below_threshold_with_matching_counts_is_green(self):
+        """SC8-1 (accepting): flag false + result below-threshold, counts recounted from logs (3/5) really below threshold -> green."""
+        self.assertEqual([], self._gate(model_evaluated=False, trig=3, result="below-threshold"))
+
+    def test_gate_false_below_threshold_but_counts_meet_thresholds_is_red(self):
+        """SC8-2 (bắt-lỗi): flag false + below-threshold while the recounted numbers meet every threshold -> red (result != recomputed)."""
+        problems = self._gate(model_evaluated=False, trig=4, result="below-threshold")
+        self.assertTrue(any("result" in p and "recomputed" in p for p in problems), problems)
+
+    def test_gate_false_with_passed_is_red(self):
+        """SC8-3 (bắt-lỗi): flag false + result passed is never allowed."""
+        problems = self._gate(model_evaluated=False, trig=4, result="passed")
+        self.assertTrue(any("passed" in p and "false" in p for p in problems), problems)
+        problems = self._gate(model_evaluated=False, trig=3, result="passed")
+        self.assertTrue(any("passed" in p and "false" in p for p in problems), problems)
+
+    def test_gate_true_with_below_threshold_is_red(self):
+        """SC8-4 (bắt-lỗi): flag true is not relaxed: below-threshold counts stay red, and result must be passed."""
+        problems = self._gate(model_evaluated=True, trig=3, result="below-threshold")
+        self.assertTrue(any("positive_triggered" in p and ">= 4" in p for p in problems), problems)
+        self.assertTrue(any("result" in p and "passed" in p for p in problems), problems)
+        problems = self._gate(model_evaluated=True, trig=4, result="partial")
+        self.assertTrue(any("result" in p and "passed" in p for p in problems), problems)
+
+    def test_gate_overlap_not_run_harness_and_below_threshold_is_below_threshold(self):
+        """SC8-5 (chồng nghĩa): antigravity not_run AND a ran harness below threshold -> must be below-threshold, not partial."""
+        self.assertEqual([], self._gate(model_evaluated=False, trig=3, result="below-threshold"))
+        problems = self._gate(model_evaluated=False, trig=3, result="partial")
+        self.assertTrue(any("result" in p and "recomputed" in p and "below-threshold" in p for p in problems), problems)
+
+    def test_gate_false_partial_and_integrity_checks_still_apply(self):
+        """FR9.2: flag false only skips AB_THRESHOLDS; log-vs-ab recount, ab_report location and missing ab file stay red."""
+        self.assertEqual([], self._gate(model_evaluated=False, trig=4, result="partial"))
+        problems = self._gate(model_evaluated=False, trig=3, result="below-threshold", claim_positive=5)
+        self.assertTrue(any("recount" in p for p in problems), problems)
+        problems = self._gate(model_evaluated=False, result="partial", write_ab=False)
+        self.assertTrue(any("missing" in p for p in problems), problems)
+
+        def bad_report(runs, ab, h, ev):
+            ev["ab_report"] = "elsewhere/ab.md"
+        self._gate_red(bad_report, "ab_report", model_evaluated=False, result="partial")
+
+    def test_gate_result_enum_and_batch_sha_format(self):
+        """FR9.1: result must be a known value and batch_sha 40 lowercase hex."""
+        problems = self._gate(model_evaluated=False, result="great")
+        self.assertTrue(any("result" in p and "great" in p for p in problems), problems)
+        for bad in ("abc1234", "G" * 40, "A" * 40):
+            problems = self._gate(model_evaluated=False, result="partial", batch_sha=bad)
+            self.assertTrue(any("batch_sha" in p for p in problems), (bad, problems))
+
+    def test_gate_not_run_when_no_harness_ran(self):
+        """FR9.1: no harness ran at all -> result not_run; claiming below-threshold is red."""
+        def m(runs, ab, h, ev):
+            for k in ("claude-code", "codex"):
+                h[k] = "not_run:no-quota"
+            for f in runs.glob("*.json"):
+                f.unlink()
+        self._gate_red(m, "recomputed", model_evaluated=False, result="partial", write_ab=False)
+        with tempfile.TemporaryDirectory() as t:
+            catalog, root = _fake_evidence(Path(t), model_evaluated=False, result="not_run", write_ab=False, mutate=m)
+            self.assertEqual([], model_evaluated_problems(catalog, root))
+
+    def test_runbook_has_batch_rules_section(self):
+        """FR8.1: RUNBOOK «Luật lô» exists and names the four mandatory phrases, with PowerShell and bash examples."""
+        text = (ROOT / "evals" / "RUNBOOK.md").read_text(encoding="utf-8")
+        self.assertIn("## Luật lô", text)
+        section = text[text.index("## Luật lô"):]
+        for phrase in ("--plugin-dir", "redact.py", "SHA lô", "git archive"):
+            self.assertIn(phrase, section, phrase)
+        self.assertIn("```powershell", section)
+        self.assertIn("```bash", section)
+        self.assertIn("--main-skill-dir", section)
 
     def test_gate_red_log_count_differs_from_ab_report(self):
         with tempfile.TemporaryDirectory() as t:
