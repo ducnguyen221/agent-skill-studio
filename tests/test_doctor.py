@@ -22,6 +22,8 @@ _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine  # noqa: E402
 
 studio = _engine.engine
+studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
+studio_fs = _engine.fs  # file-system helpers live in studio_fs
 
 SKILL = "---\nname: %s\ndescription: Checks a toy example. Use when testing the doctor command.\n%s---\n\n# Title\n\nShort body.\n"
 
@@ -338,7 +340,7 @@ class DoctorTests(unittest.TestCase):
             sk = make_skill(Path(tmp), "big-body")
             head = (sk / "SKILL.md").read_bytes()
             body_start = head.index(b"---\n\n") + len(b"---\n")  # the validator body starts at the blank line after the closing ---
-            fill = studio.CODEX_BODY_MAX_BYTES - len(head[body_start:])
+            fill = studio_const.CODEX_BODY_MAX_BYTES - len(head[body_start:])
             (sk / "SKILL.md").write_bytes(head + b"x" * fill)
             self.assertEqual([f for f in studio.validate_skill(sk) if f["code"] == "ST3"], [], "exactly the limit is allowed")
             (sk / "SKILL.md").write_bytes(head + b"x" * (fill + 1))
@@ -385,7 +387,7 @@ class DoctorTests(unittest.TestCase):
         self.assertEqual(list(report), ["schema", "generated_at", "studio_version", "roots", "skills", "skipped", "totals", "new_vs_baseline"])
         self.assertEqual(report["schema"], 1)
         self.assertRegex(report["generated_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
-        self.assertEqual(report["studio_version"], studio.VERSION)
+        self.assertEqual(report["studio_version"], studio_const.VERSION)
         self.assertEqual(len(report["roots"]), 1)
         self.assertEqual(list(report["totals"]), ["skills", "errors", "warnings", "notes"])
         self.assertEqual(report["new_vs_baseline"], [])
@@ -406,7 +408,7 @@ class DoctorTests(unittest.TestCase):
             root = Path(tmp) / "root"
             make_skill(root / "a" / "b" / "c", "deep-skill")
             make_skill(root, "near-skill")
-            with mock.patch.object(studio, "DOCTOR_MAX_DEPTH", 2):
+            with mock.patch.object(studio_const, "DOCTOR_MAX_DEPTH", 2):
                 report = json.loads(run("--roots", str(root), "--json")[1])
             self.assertEqual([s["name"] for s in report["skills"]], ["near-skill"])
             self.assertIn("limit", {s["reason"] for s in report["skipped"]})
@@ -473,9 +475,9 @@ class DoctorTests(unittest.TestCase):
             (sk / "references" / ".env.md").write_bytes(b"x\n" * 300)  # would be an ST5 ERROR if it were read
             (sk / "references" / "ok.md").write_bytes(b"short\n")
             self.assertEqual([f for f in studio.validate_skill(sk) if f["code"] == "ST5"], [])
-            self.assertTrue(studio.is_sensitive_name(".env.local") and studio.is_sensitive_name("Auth.JSON") and studio.is_sensitive_name("x.credentials.json"))
-            self.assertTrue(studio.is_sensitive_name("a.pem") and studio.is_sensitive_name("b.key"))
-            self.assertFalse(studio.is_sensitive_name("SKILL.md") or studio.is_sensitive_name("environment.md"))
+            self.assertTrue(studio_fs.is_sensitive_name(".env.local") and studio_fs.is_sensitive_name("Auth.JSON") and studio_fs.is_sensitive_name("x.credentials.json"))
+            self.assertTrue(studio_fs.is_sensitive_name("a.pem") and studio_fs.is_sensitive_name("b.key"))
+            self.assertFalse(studio_fs.is_sensitive_name("SKILL.md") or studio_fs.is_sensitive_name("environment.md"))
 
     def test_doctor_cli_subprocess_exit_codes(self):
         env = dict(os.environ, PYTHONUTF8="1")
@@ -525,7 +527,7 @@ class DoctorHardeningTests(unittest.TestCase):
                 make_skill(root, "trap-manifest")
                 flags = {root / "KPIM Joint Stock Company": bit, root / "trap-manifest" / "SKILL.md": bit,
                          ok / "references" / "placeholder.md": bit, ok / "references" / "sub": bit}
-                with mock.patch.object(studio, "CLOUD_ATTRS_AVAILABLE", True), cloud_flagged(flags), watching() as calls:
+                with mock.patch.object(studio_const, "CLOUD_ATTRS_AVAILABLE", True), cloud_flagged(flags), watching() as calls:
                     code, out, err = run("--roots", str(root), "--json")
                 report = json.loads(out)
                 self.assertEqual(code, 0, (hex(bit), out, err))
@@ -565,8 +567,8 @@ class DoctorHardeningTests(unittest.TestCase):
                 self.assertEqual(run("--roots", str(home / "proj"))[0], 0)
             if os.name == "nt":  # a drive that is not the home drive: only the "is a root" rule can refuse it
                 with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
-                    self.assertTrue(studio.root_too_broad("Z:\\") and studio.root_too_broad("\\\\tk9-nohost.invalid\\share"))
-                    self.assertFalse(studio.root_too_broad("Z:\\work"))
+                    self.assertTrue(studio_fs.root_too_broad("Z:\\") and studio_fs.root_too_broad("\\\\tk9-nohost.invalid\\share"))
+                    self.assertFalse(studio_fs.root_too_broad("Z:\\work"))
             with mock.patch.object(os, "scandir", spy):
                 scans.clear()
                 self.assertEqual(run("--roots", str(Path.home()))[0], 2, "the real home folder is a root that is too broad")
@@ -718,7 +720,7 @@ class DoctorHardeningTests(unittest.TestCase):
 
     def test_doctor_size_cap_skips_oversized_files(self):
         cap = 2000
-        with mock.patch.object(studio, "DOCTOR_MAX_FILE_BYTES", cap), tempfile.TemporaryDirectory() as tmp:
+        with mock.patch.object(studio_const, "DOCTOR_MAX_FILE_BYTES", cap), tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve() / "root"
             big_ref = make_skill(root, "big-ref")
             (big_ref / "references").mkdir()
@@ -786,8 +788,8 @@ class DoctorHardeningTests(unittest.TestCase):
         pieces = ["<!--", "-->", "x", " ", "\n", "-", ">", "!", "<", "--"]
         for _ in range(4000):
             sample = "".join(rng.choice(pieces) for _ in range(rng.randint(0, 14)))
-            self.assertEqual(studio.strip_html_comments(sample), re.sub(r"<!--.*?-->", " ", sample), repr(sample))
-            self.assertEqual(studio.strip_html_comments(sample, "#"), re.sub(r"<!--.*?-->", "#", sample), repr(sample))
+            self.assertEqual(studio_fs.strip_html_comments(sample), re.sub(r"<!--.*?-->", " ", sample), repr(sample))
+            self.assertEqual(studio_fs.strip_html_comments(sample, "#"), re.sub(r"<!--.*?-->", "#", sample), repr(sample))
 
     def test_zone_reason_secret_branches(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -798,11 +800,11 @@ class DoctorHardeningTests(unittest.TestCase):
             _engine.clear_caches()
             with mock.patch.dict(os.environ, {"HOME": str(alias), "USERPROFILE": str(alias)}):
                 try:
-                    self.assertEqual(studio.zone_reason(tmp / "elsewhere" / ".secret" / "k.json"), "secret-zone", "a .secret folder outside HOME")
-                    self.assertEqual(studio.zone_reason(tmp / "elsewhere" / ".SECRET" / "k.json"), "secret-zone", "case does not matter on any platform")
-                    self.assertEqual(studio.zone_reason(alias / ".secret" / "k.json"), "secret-zone", "HOME spelled through the link")
-                    self.assertEqual(studio.zone_reason(tmp / "real" / "home" / ".secret"), "secret-zone", "HOME spelled by its real path")
-                    self.assertIsNone(studio.zone_reason(tmp / "real" / "home" / "work"))
+                    self.assertEqual(studio_fs.zone_reason(tmp / "elsewhere" / ".secret" / "k.json"), "secret-zone", "a .secret folder outside HOME")
+                    self.assertEqual(studio_fs.zone_reason(tmp / "elsewhere" / ".SECRET" / "k.json"), "secret-zone", "case does not matter on any platform")
+                    self.assertEqual(studio_fs.zone_reason(alias / ".secret" / "k.json"), "secret-zone", "HOME spelled through the link")
+                    self.assertEqual(studio_fs.zone_reason(tmp / "real" / "home" / ".secret"), "secret-zone", "HOME spelled by its real path")
+                    self.assertIsNone(studio_fs.zone_reason(tmp / "real" / "home" / "work"))
                 finally:
                     _engine.clear_caches()
 
@@ -859,11 +861,11 @@ class DoctorRound3Tests(unittest.TestCase):
         for _ in range(24000):
             sample = "".join(rng.choice(pieces) for _ in range(rng.randint(0, 16)))
             for repl in (" ", "#"):
-                if studio.strip_code_spans(sample, repl) != old.sub(repl, sample):
+                if studio_fs.strip_code_spans(sample, repl) != old.sub(repl, sample):
                     different.append(sample)
         self.assertEqual(different[:5], [], "%d samples differ from the old regex" % len(different))
-        self.assertEqual(studio.strip_code_spans("a `b` c ``d`e`` f"), "a   c   f")
-        self.assertEqual(studio.strip_code_spans("no code here"), "no code here")
+        self.assertEqual(studio_fs.strip_code_spans("a `b` c ``d`e`` f"), "a   c   f")
+        self.assertEqual(studio_fs.strip_code_spans("no code here"), "no code here")
 
     def test_hostile_backtick_bodies_finish_fast(self):
         for case in ("run", "alt", "pairs", "triples", "run30"):
@@ -912,14 +914,14 @@ class DoctorRound3Tests(unittest.TestCase):
         rng = random.Random(5)
         for _ in range(8000):
             sample = "".join(rng.choice("<>a <") for _ in range(rng.randint(0, 12)))
-            self.assertEqual(studio.has_xml_tag(sample), bool(re.search(r"<[^>]+>", sample)), repr(sample))
+            self.assertEqual(studio_fs.has_xml_tag(sample), bool(re.search(r"<[^>]+>", sample)), repr(sample))
         start = __import__("time").perf_counter()
-        studio.has_xml_tag("<" * 100000)
-        studio.has_xml_tag("<>" * 100000)
+        studio_fs.has_xml_tag("<" * 100000)
+        studio_fs.has_xml_tag("<>" * 100000)
         self.assertLess(__import__("time").perf_counter() - start, 1.0)
         start = __import__("time").perf_counter()
-        studio.ABSOLUTE_LINK_RE.search("a" * 100000)
-        studio.ABSOLUTE_LINK_RE.match("a" * 100000)
+        studio_const.ABSOLUTE_LINK_RE.search("a" * 100000)
+        studio_const.ABSOLUTE_LINK_RE.match("a" * 100000)
         self.assertLess(__import__("time").perf_counter() - start, 1.0, "a scheme-looking run of letters must not be quadratic")
 
     def test_root_too_broad_looks_through_links_and_short_names(self):
@@ -939,17 +941,17 @@ class DoctorRound3Tests(unittest.TestCase):
                 return real_scandir(path)
 
             with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}), mock.patch.object(os, "scandir", spy):
-                self.assertTrue(studio.root_too_broad(alias) and studio.root_too_broad(up))
+                self.assertTrue(studio_fs.root_too_broad(alias) and studio_fs.root_too_broad(up))
                 for broad in (alias, up, alias / "..", alias / "proj" / ".."):
                     self.assertEqual(run("--roots", str(broad), "--json")[0], 2, str(broad))
                 self.assertEqual(scans, [], "a refused run must not list anything")
                 if os.name == "nt":
-                    self.assertTrue(studio.root_too_broad("\\\\?\\" + str(home)))
+                    self.assertTrue(studio_fs.root_too_broad("\\\\?\\" + str(home)))
                     self.assertEqual(run("--roots", "\\\\?\\" + str(home))[0], 2)
                     spelled = short_name(home)
                     if spelled is None:
                         self.skipTest("8.3 names are off on this volume")
-                    self.assertTrue(studio.root_too_broad(spelled))
+                    self.assertTrue(studio_fs.root_too_broad(spelled))
                     self.assertEqual(run("--roots", str(spelled))[0], 2)
                     with mock.patch.dict(os.environ, {"HOME": str(spelled), "USERPROFILE": str(spelled)}):
                         self.assertEqual(run("--roots", str(home))[0], 2, "HOME in its short spelling, root in the long one")
@@ -963,7 +965,7 @@ class DoctorRound3Tests(unittest.TestCase):
             make_skill(real, "hidden-skill")
             alias = tmp / "alias"
             make_dir_link(self, alias, real)
-            with mock.patch.object(studio, "path_is_cloud", lambda p: norm(p) == norm(real)), watching() as calls:
+            with mock.patch.object(studio_fs, "path_is_cloud", lambda p: norm(p) == norm(real)), watching() as calls:
                 skills, skipped = studio.iter_skill_dirs([alias])
             self.assertEqual(skills, [])
             self.assertEqual([s["reason"] for s in skipped], ["cloud"])
@@ -1035,13 +1037,13 @@ class DoctorRound3Tests(unittest.TestCase):
                 deep = deep / ("d%d" % level)
             deep.mkdir(parents=True)
             (deep / "bottom.txt").write_bytes(b"x")
-            with mock.patch.object(studio, "DOCTOR_MAX_FILES_PER_SKILL", 50), watching() as calls:
+            with mock.patch.object(studio_const, "DOCTOR_MAX_FILES_PER_SKILL", 50), watching() as calls:
                 found = studio.validate_skill(sk)
             self.assertIn("SZ1", [f["code"] for f in found])
             self.assertTrue([f for f in found if f["code"] == "SZ1" and "50" in f["message"]])
             listed = [p for n, p, _ in calls if n == "scandir" and is_under(p, sk / "references")]
             self.assertLessEqual(len(listed), 2)
-            with mock.patch.object(studio, "DOCTOR_MAX_SKILL_DEPTH", 3), watching() as calls:
+            with mock.patch.object(studio_const, "DOCTOR_MAX_SKILL_DEPTH", 3), watching() as calls:
                 found = studio.validate_skill(sk)
             self.assertIn("SZ1", [f["code"] for f in found])
             self.assertFalse([p for n, p, _ in calls if n == "scandir" and p.endswith("d5")], "a folder below the depth cap is not listed")
@@ -1052,9 +1054,9 @@ class DoctorRound3Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp).resolve()
             plain = tmp / "notes.txt"
-            self.assertIsNone(studio.input_file_problem(plain))
+            self.assertIsNone(studio_fs.input_file_problem(plain))
             with mock.patch.object(Path, "resolve", lambda self, strict=False: tmp / ".env"):
-                self.assertIn("secret-looking", studio.input_file_problem(plain))
+                self.assertIn("secret-looking", studio_fs.input_file_problem(plain))
 
 
 class DoctorRound4Tests(unittest.TestCase):
@@ -1100,7 +1102,7 @@ class DoctorRound4Tests(unittest.TestCase):
             old = tmp / "old.json"
             old.write_bytes(b'{"schema": 1, "skills": []}')
             for flagged in (old, tmp):
-                with mock.patch.object(studio, "path_is_cloud", lambda p, flagged=flagged: norm(p) == norm(flagged)), watching() as calls:
+                with mock.patch.object(studio_fs, "path_is_cloud", lambda p, flagged=flagged: norm(p) == norm(flagged)), watching() as calls:
                     code, _, err = run("--roots", CLEAN_ROOTS, "--out", str(old))
                 self.assertEqual(code, 2, (str(flagged), err))
                 self.assertIn("cloud", err)
@@ -1138,12 +1140,12 @@ class DoctorRound4Tests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}), mock.patch.object(os, "scandir", spy):
                 for text in hostile:
-                    self.assertTrue(studio.root_too_broad(text), text)
+                    self.assertTrue(studio_fs.root_too_broad(text), text)
                     code, _, err = run("--roots", text, "--json")
                     self.assertEqual(code, 2, (text, err))
                 self.assertEqual(scans, [], "a refused run must not list anything")
-                self.assertFalse(studio.root_too_broad("\\\\server\\share\\skills"), "an ordinary share is not refused by name")
-                self.assertFalse(studio.root_too_broad("\\\\?\\UNC\\server\\share\\skills"))
+                self.assertFalse(studio_fs.root_too_broad("\\\\server\\share\\skills"), "an ordinary share is not refused by name")
+                self.assertFalse(studio_fs.root_too_broad("\\\\?\\UNC\\server\\share\\skills"))
                 self.assertEqual(run("--roots", str(home / "proj"))[0], 0)
                 if os.name == "nt":
                     self.assertEqual(run("--roots", "\\\\?\\" + str(home / "proj"))[0], 0, "a drive-letter extended path is still accepted")
@@ -1156,12 +1158,12 @@ class DoctorRound4Tests(unittest.TestCase):
             (real / "notes.txt").write_text("x", encoding="utf-8")
             alias = tmp / "alias"
             make_dir_link(self, alias, real)
-            with mock.patch.object(studio, "path_is_cloud", lambda p: norm(p) == norm(real / "notes.txt")):
-                self.assertIn("cloud", studio.input_file_problem(alias / "notes.txt") or "")
-            self.assertIsNone(studio.input_file_problem(alias / "notes.txt"))
+            with mock.patch.object(studio_fs, "path_is_cloud", lambda p: norm(p) == norm(real / "notes.txt")):
+                self.assertIn("cloud", studio_fs.input_file_problem(alias / "notes.txt") or "")
+            self.assertIsNone(studio_fs.input_file_problem(alias / "notes.txt"))
             for name in ("secrets.json", "Credentials.json", "id_rsa", "id_ed25519", ".env", "x.pem"):
-                self.assertIn("secret-looking", studio.input_file_problem(tmp / name) or "", name)
-            self.assertIsNone(studio.input_file_problem(tmp / "roots.txt"))
+                self.assertIn("secret-looking", studio_fs.input_file_problem(tmp / name) or "", name)
+            self.assertIsNone(studio_fs.input_file_problem(tmp / "roots.txt"))
 
 
 if __name__ == "__main__":

@@ -17,6 +17,8 @@ CODE = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
 _SPEC = importlib.util.spec_from_file_location("studio_rules_impl", CODE)
 studio = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(studio)
+studio_const = sys.modules["studio_const"]  # sibling modules the engine just imported (SPR-02 TK4a)
+studio_fs = sys.modules["studio_fs"]
 
 GOOD_DESC = "Does a small job. Use when testing the validator."
 
@@ -122,8 +124,8 @@ class TargetTest(StudioCase):
         findings = self.validate(folder, "claude-code")
         self.assertNotIn("FM1", codes(findings))
         self.assertEqual([f["code"] for f in findings if f["level"] == "ERROR"], [])
-        meta, parse_findings, _ = studio.parse_frontmatter(folder.joinpath("SKILL.md").read_text(encoding="utf-8"), folder / "SKILL.md",
-                                                           studio.CLAUDE_CODE_KEYS)
+        meta, parse_findings, _ = studio_fs.parse_frontmatter(folder.joinpath("SKILL.md").read_text(encoding="utf-8"), folder / "SKILL.md",
+                                                           studio_const.CLAUDE_CODE_KEYS)
         self.assertEqual(parse_findings, [])
         self.assertEqual(meta["metadata"]["version"], "1.0")
         self.assertIn("PreToolUse:", meta["hooks"])
@@ -624,7 +626,7 @@ class VietnameseLintTest(StudioCase):
 
 class RepoStaysCleanTest(StudioCase):
     def test_validate_all_has_no_errors_or_warnings(self):
-        for folder in studio.skill_dirs(ROOT):
+        for folder in studio_fs.skill_dirs(ROOT):
             findings = studio.validate_skill(folder, eval_root=ROOT / "evals", require_evals=True)
             self.assertEqual([(f["code"], f["level"]) for f in findings], [], str(folder))
 

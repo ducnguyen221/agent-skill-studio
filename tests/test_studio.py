@@ -22,6 +22,8 @@ _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine  # noqa: E402
 
 studio = _engine.engine
+studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
+studio_fs = _engine.fs  # file-system helpers live in studio_fs
 
 
 _ACT_SPEC = importlib.util.spec_from_file_location("activation_impl", ROOT / "evals" / "tools" / "activation.py")
@@ -215,7 +217,7 @@ class StudioTests(unittest.TestCase):
         return subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "studio.py"), *map(str, args)], cwd=ROOT, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def test_canonical_skills_have_no_static_errors(self):
-        for path in studio.skill_dirs(ROOT):
+        for path in studio_fs.skill_dirs(ROOT):
             findings = studio.validate_skill(path, eval_root=ROOT / "evals", require_evals=True)
             self.assertEqual([], [x for x in findings if x["level"] == "ERROR"], path.as_posix())
 
@@ -447,8 +449,8 @@ class StudioTests(unittest.TestCase):
             (good / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
             (no_manifest / "templates" / "skill-template").mkdir(parents=True)
             (no_manifest / "templates" / "skill-template" / "SKILL.md").write_text("x", encoding="utf-8")
-            self.assertEqual(good, studio.repo_root(good / "skills" / "s"))
-            self.assertIsNone(studio.repo_root(no_manifest / "skills" / "s"))
+            self.assertEqual(good, studio_fs.repo_root(good / "skills" / "s"))
+            self.assertIsNone(studio_fs.repo_root(no_manifest / "skills" / "s"))
 
     def test_sync_template_is_not_a_command_any_more(self):
         """bắt-lỗi: `studio.py sync-template [--check]` is an invalid command: argparse exit 2 and the command is not offered as a choice."""
@@ -462,7 +464,7 @@ class StudioTests(unittest.TestCase):
     def test_registry_matches_skill_folders(self):
         obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
         catalog_names = {x["name"] for x in obj["skills"]}
-        actual_names = {x.name for x in studio.skill_dirs(ROOT)}
+        actual_names = {x.name for x in studio_fs.skill_dirs(ROOT)}
         self.assertEqual(actual_names, catalog_names)
         for x in obj["skills"]:
             self.assertTrue((ROOT / x["path"] / "SKILL.md").is_file())
@@ -1008,14 +1010,14 @@ class TemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             plain = Path(t) / "plain"
             plain.mkdir()
-            self.assertFalse(studio.is_link(plain))
-            self.assertFalse(studio.is_link(Path(t) / "absent"))
+            self.assertFalse(studio_fs.is_link(plain))
+            self.assertFalse(studio_fs.is_link(Path(t) / "absent"))
             if os.name == "nt":
                 import _winapi
                 link = Path(t) / "junction"
                 _winapi.CreateJunction(str(plain), str(link))
                 try:
-                    self.assertTrue(studio.is_link(link))
+                    self.assertTrue(studio_fs.is_link(link))
                 finally:
                     os.rmdir(link)
 
@@ -1699,7 +1701,7 @@ class ExportFixtureHardeningTests(unittest.TestCase):
             _engine.clear_caches()
             try:
                 with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
-                    self.assertEqual("secret-zone", studio.zone_reason(home / ".secret" / "e"))
+                    self.assertEqual("secret-zone", studio_fs.zone_reason(home / ".secret" / "e"))
                     folder = self.make_eval(home / ".secret", fixtures={"canary.csv": b"CANARY"})
                     data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
                     data["cases"][0]["fixtures"] = ["fixtures/canary.csv"]
@@ -1713,7 +1715,7 @@ class ExportFixtureHardeningTests(unittest.TestCase):
         from unittest import mock
         with tempfile.TemporaryDirectory() as t:
             folder = self.one_fixture_eval(t, "canary.csv")
-            with mock.patch.object(studio, "path_is_cloud", lambda path: os.path.basename(os.fspath(path)) == "canary.csv"):
+            with mock.patch.object(studio_fs, "path_is_cloud", lambda path: os.path.basename(os.fspath(path)) == "canary.csv"):
                 findings = self.assert_refused_untouched(folder, t, {"canary.csv"}, "placeholder")
             self.assertIn("cloud placeholder", findings[0]["message"])
         with tempfile.TemporaryDirectory() as t:
@@ -1839,7 +1841,7 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
         source = folder / "fixtures" / "a.csv"
         outside = Path(t) / "outside.csv"
         outside.write_bytes(b"CANARY")
-        real, done = studio.is_link, []
+        real, done = studio_fs.is_link, []
 
         def spy(path):
             if not done and os.path.basename(os.fspath(path)) == "demo-skill" and "out" in Path(path).parts:
@@ -1847,7 +1849,7 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
                 source.unlink()
                 make_swap(source, outside)
             return real(path)
-        with mock.patch.object(studio, "is_link", spy):
+        with mock.patch.object(studio_fs, "is_link", spy):
             result = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
         self.assertTrue(done, "swap hook never fired")
         return result
@@ -1898,40 +1900,40 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
         """đơn-vị-hàm-mới: unsafe_windows_name."""
         bad = ["a.", "a ", "CON", "con", "Nul.txt", "aux.csv", "COM1", "lpt9.x", "COM²", "LPT³.csv", "CONIN$", "conout$", "CLOCK$", "AUTH~1.JSO", "a~12", "a:b", "PRN "]
         for name in bad:
-            self.assertTrue(studio.unsafe_windows_name(name), name)
+            self.assertTrue(studio_fs.unsafe_windows_name(name), name)
         for name in ["a.csv", "Data.csv", "console.csv", "com10", "com", "lpt0", "x~y", "Dữ liệu.csv", "confile", "a b.csv"]:
-            self.assertIsNone(studio.unsafe_windows_name(name), name)
+            self.assertIsNone(studio_fs.unsafe_windows_name(name), name)
 
     def test_don_vi_ham_moi_open_nofollow_read_and_create_exclusive(self):
         """đơn-vị-hàm-mới: open_nofollow_read / create_exclusive."""
         with tempfile.TemporaryDirectory() as t:
             f = Path(t) / "f.bin"
-            with studio.create_exclusive(f) as handle:
+            with studio_fs.create_exclusive(f) as handle:
                 handle.write(b"abc")
             with self.assertRaises(FileExistsError):
-                studio.create_exclusive(f)
-            with studio.open_nofollow_read(f, os.lstat(f)) as handle:
+                studio_fs.create_exclusive(f)
+            with studio_fs.open_nofollow_read(f, os.lstat(f)) as handle:
                 self.assertEqual(b"abc", handle.read())
             other = Path(t) / "g.bin"
             other.write_bytes(b"zzz")
             with self.assertRaises(OSError):
-                studio.open_nofollow_read(f, os.lstat(other))  # a different identity than the one checked
+                studio_fs.open_nofollow_read(f, os.lstat(other))  # a different identity than the one checked
             try:
                 os.link(f, Path(t) / "h.bin")
             except OSError:
                 pass
             else:
                 with self.assertRaises(OSError):
-                    studio.open_nofollow_read(f, os.lstat(f))  # two names
+                    studio_fs.open_nofollow_read(f, os.lstat(f))  # two names
             link = Path(t) / "l.bin"
             try:
                 os.symlink(other, link)
             except (OSError, NotImplementedError):
                 return
             with self.assertRaises(OSError):
-                studio.open_nofollow_read(link, os.lstat(link))  # a symlink source is refused on every OS: the handle is the target's, the lstat is the link's
+                studio_fs.open_nofollow_read(link, os.lstat(link))  # a symlink source is refused on every OS: the handle is the target's, the lstat is the link's
             with self.assertRaises(OSError):
-                studio.create_exclusive(link)
+                studio_fs.create_exclusive(link)
 
     def test_unit_create_exclusive_refuses_any_existing_name_even_a_link(self):
         """đơn-vị-hàm-mới: a name that lexists (a dangling symlink on Windows, where O_EXCL follows it) is never opened; no handle, no file."""
@@ -1940,7 +1942,7 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
             target = Path(t) / "victim.bin"
             with mock.patch.object(os.path, "lexists", return_value=True):
                 with self.assertRaises(FileExistsError):
-                    studio.create_exclusive(target)
+                    studio_fs.create_exclusive(target)
             self.assertFalse(target.exists())
 
     def test_unit_create_exclusive_rejects_a_handle_that_is_not_the_named_path(self):
@@ -1950,14 +1952,14 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
             f = Path(t) / "f.bin"
             as_link = os.stat_result((stat.S_IFLNK | 0o777, 1, 1, 1, 0, 0, 0, 0, 0, 0))
             with mock.patch.object(os.path, "lexists", return_value=False), mock.patch.object(os, "lstat", return_value=as_link):  # lexists calls lstat: pin it
-                with self.assertRaises(studio.UnsafeOpen):
-                    studio.create_exclusive(f)
+                with self.assertRaises(studio_fs.UnsafeOpen):
+                    studio_fs.create_exclusive(f)
             self.assertEqual(0, f.stat().st_size if f.exists() else 0)  # nothing was written
             f.unlink(missing_ok=True)
             other = os.stat_result((stat.S_IFREG | 0o666, 987654321, 1, 1, 0, 0, 0, 0, 0, 0))
             with mock.patch.object(os.path, "lexists", return_value=False), mock.patch.object(os, "lstat", return_value=other):
-                with self.assertRaises(studio.UnsafeOpen):
-                    studio.create_exclusive(f)
+                with self.assertRaises(studio_fs.UnsafeOpen):
+                    studio_fs.create_exclusive(f)
 
 
 if __name__ == "__main__":

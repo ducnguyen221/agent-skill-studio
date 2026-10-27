@@ -22,6 +22,8 @@ _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine  # noqa: E402
 
 studio = _engine.engine
+studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
+studio_fs = _engine.fs  # file-system helpers live in studio_fs
 
 
 def run(*argv):
@@ -99,7 +101,7 @@ class PackageFolderCaseTests(SkillCopy):
         """đơn-vị-hàm-mới: walk_files(skip_names=) compares names case-insensitively."""
         (self.skill / "EVALS").mkdir()
         (self.skill / "EVALS" / "f.csv").write_text("x\n", encoding="utf-8")
-        found = studio.walk_files(self.skill, skip_names=studio.SKIP_DIRS)[0]
+        found = studio_fs.walk_files(self.skill, skip_names=studio_const.SKIP_DIRS)[0]
         self.assertEqual([], [p for p in found if "EVALS" in p.parts])
 
 
@@ -165,13 +167,13 @@ class FmtIdentityTests(unittest.TestCase):
     def test_don_vi_ham_moi_fmt_passes_the_listing_identity_to_every_read(self):
         """đơn-vị-hàm-mới (open_nofollow_read does not exist at df875ce): fmt reads (--check) and backs up (--fix) with expect_stat set, so Windows compares the opened handle with the checked file too."""
         calls = []
-        real = studio.open_nofollow_read
+        real = studio_fs.open_nofollow_read
 
         def spy(path, expect_stat=None, single_link=True):
             calls.append((Path(path).name, expect_stat is not None))
             return real(path, expect_stat, single_link)
 
-        with mock.patch.object(studio, "open_nofollow_read", spy):
+        with mock.patch.object(studio_fs, "open_nofollow_read", spy):
             run("fmt", "--check", str(self.path))
             run("fmt", "--fix", str(self.path))
         self.assertGreaterEqual(len(calls), 3, calls)

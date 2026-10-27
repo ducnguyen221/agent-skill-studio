@@ -54,7 +54,9 @@ def emitted_codes(source: str) -> set:
                     assigned.setdefault(target.id, []).append(node.value)
     codes: set = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "emit" and len(node.args) > 1:
+        if isinstance(node, ast.Call) and len(node.args) > 1 and (
+                (isinstance(node.func, ast.Name) and node.func.id == "emit")
+                or (isinstance(node.func, ast.Attribute) and node.func.attr == "emit")):  # `fs.emit(...)` since the engine split (SPR-02 TK4a)
             arg = node.args[1]
             parts = assigned.get(arg.id, []) if isinstance(arg, ast.Name) else [arg]
             codes.update(c.value for part in parts for c in ast.walk(part) if isinstance(c, ast.Constant) and isinstance(c.value, str))

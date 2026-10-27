@@ -19,6 +19,8 @@ _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine  # noqa: E402
 
 studio = _engine.engine
+studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
+studio_fs = _engine.fs  # file-system helpers live in studio_fs
 
 SKILL = "---\nname: demo-skill\ndescription: Checks a toy example. Use when testing fmt.\n---\n\n# Demo\n\nBody text here.\n"
 
@@ -30,7 +32,7 @@ def run(*argv, root=None):
         stack.enter_context(contextlib.redirect_stdout(out))
         stack.enter_context(contextlib.redirect_stderr(err))
         if root is not None:
-            stack.enter_context(mock.patch.object(studio, "repo_root", lambda start: Path(root)))
+            stack.enter_context(mock.patch.object(studio_fs, "repo_root", lambda start: Path(root)))
         try:
             code = studio.main(["fmt", *argv])
         except SystemExit as exc:
@@ -124,7 +126,7 @@ class FmtTests(unittest.TestCase):
         self.assertIn('  note: "it\'s"\n', new)
         self.assertIn('  quoted: "already"\n', new)
         self.assertIn('  word: "plain"\n', new)
-        parsed, problems, _ = studio.parse_frontmatter(new, Path("SKILL.md"))
+        parsed, problems, _ = studio_fs.parse_frontmatter(new, Path("SKILL.md"))
         self.assertEqual(problems, [])
         self.assertEqual(parsed["metadata"], {"version": "1", "stable": "true", "note": "it's", "quoted": "already", "word": "plain"})
         self.assertNotIn("FT3", codes(studio.fmt_text(text, "studio-doc")[1]), "FT3 is for skills only")
@@ -309,7 +311,7 @@ class FmtMoreTests(unittest.TestCase):
         write(base / "auth.json.md", "# ok  \n")
         write(base / "OneDrive - X" / "a.md", "# C  \n")
         write(base / ".secret" / "s.md", "# C  \n")
-        write(base / "big.md", "# B  \n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))
+        write(base / "big.md", "# B  \n" + "x" * (studio_const.DOCTOR_MAX_FILE_BYTES + 1))
         (base / "bad.md").write_bytes(b"\xff\xfe\x00bad")
         before = tree_snapshot(base)
         code, out, _ = run("--fix", str(base))
@@ -414,7 +416,7 @@ class FmtRound3Tests(unittest.TestCase):
     # (4) a file over the size limit was not checked: exit 1, whichever way it was reached
     def test_fmt_file_over_the_size_limit_in_a_folder_is_exit_1(self):
         write(self.tmp / "ok.md", "# Ok\n")
-        write(self.tmp / "big.md", "# B  \n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))  # trailing spaces: an FT1 nobody saw
+        write(self.tmp / "big.md", "# B  \n" + "x" * (studio_const.DOCTOR_MAX_FILE_BYTES + 1))  # trailing spaces: an FT1 nobody saw
         for mode in ("--check", "--fix"):
             with self.subTest(mode):
                 code, out, _ = run(mode, str(self.tmp))
@@ -755,7 +757,7 @@ class FmtExitCodeTests(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
 
     def test_fmt_named_file_that_is_not_checked_is_exit_1(self):
-        big = write(self.tmp / "big.md", "# B\n" + "x" * (studio.DOCTOR_MAX_FILE_BYTES + 1))
+        big = write(self.tmp / "big.md", "# B\n" + "x" * (studio_const.DOCTOR_MAX_FILE_BYTES + 1))
         secret = write(self.tmp / ".env.md", "# S\n")
         other = write(self.tmp / "notes.txt", "x\n")
         bad = self.tmp / "bad.md"
@@ -882,7 +884,7 @@ class FmtSpeedTests(unittest.TestCase):
 
     def patterns(self):
         found = {}
-        for name, value in vars(studio).items():
+        for name, value in vars(studio_const).items():
             if name.startswith("FMT_") and isinstance(value, re.Pattern):
                 found[name] = value
             elif name.startswith("FMT_") and isinstance(value, tuple):
@@ -891,7 +893,7 @@ class FmtSpeedTests(unittest.TestCase):
                     if isinstance(pattern, re.Pattern):
                         found["%s[%d]" % (name, index)] = pattern
         for name in ("CONTENTS_RE", "FENCE_OPEN_RE", "FRONT_KEY_RE"):
-            found[name] = getattr(studio, name)
+            found[name] = getattr(studio_const, name)
         return found
 
     def timed(self, label, call, limit=5.0):
@@ -953,18 +955,18 @@ class FmtSmallTests(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
 
     def test_remove_quietly_never_raises(self):
-        studio._remove_quietly(self.tmp / "missing")  # nothing to remove
+        studio_fs._remove_quietly(self.tmp / "missing")  # nothing to remove
         plain = write(self.tmp / "plain", "x")
-        studio._remove_quietly(plain)
+        studio_fs._remove_quietly(plain)
         self.assertFalse(plain.exists())
         locked = write(self.tmp / "locked", "x")
         os.chmod(locked, stat.S_IREAD)
-        studio._remove_quietly(locked)  # a read-only file (a copied mode) goes: on Windows after losing the bit, on POSIX at once (unlink needs a writable folder, not a writable file)
+        studio_fs._remove_quietly(locked)  # a read-only file (a copied mode) goes: on Windows after losing the bit, on POSIX at once (unlink needs a writable folder, not a writable file)
         self.assertFalse(locked.exists())
         with mock.patch.object(studio.os, "unlink", side_effect=PermissionError(13, "no")), mock.patch.object(studio.os, "chmod", side_effect=PermissionError(13, "no")):
-            studio._remove_quietly(plain)  # cannot even change the mode: still no exception
+            studio_fs._remove_quietly(plain)  # cannot even change the mode: still no exception
         with mock.patch.object(studio.os, "unlink", side_effect=PermissionError(13, "no")):
-            studio._remove_quietly(plain)  # retried once after the chmod, still no exception
+            studio_fs._remove_quietly(plain)  # retried once after the chmod, still no exception
 
     def test_quote_meta_statuses(self):
         self.assertEqual(studio._quote_meta("  version: 1"), ('  version: "1"', "fixed"))
@@ -976,7 +978,7 @@ class FmtSmallTests(unittest.TestCase):
     def test_fmt_too_many_folders_is_not_checked_and_exit_1(self):
         for name in ("a", "b", "c"):
             write(self.tmp / name / "x.md", "# X\n")
-        with mock.patch.object(studio, "DOCTOR_MAX_DIRS", 2):
+        with mock.patch.object(studio_const, "DOCTOR_MAX_DIRS", 2):
             code, out, _ = run("--check", str(self.tmp))
         self.assertEqual(code, 1, out)
         self.assertIn("skipped (too-many-folders)", out)

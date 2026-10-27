@@ -5,6 +5,7 @@ Run: python -X utf8 -m pytest tests/test_content.py -q -p no:cacheprovider
 import importlib.util
 import json
 import re
+import sys
 import tempfile
 import unicodedata
 import unittest
@@ -15,6 +16,8 @@ CODE = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
 _SPEC = importlib.util.spec_from_file_location("studio_content_impl", CODE)
 studio = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(studio)
+studio_const = sys.modules["studio_const"]  # sibling modules the engine just imported (SPR-02 TK4a)
+studio_fs = sys.modules["studio_fs"]
 
 CONTENT = ROOT / "content"
 EXEMPLAR = CONTENT / "exemplar" / "writing-commit-messages"
@@ -117,7 +120,7 @@ def expected_export(skill_name: str, cases: list) -> dict:
 
 def skill_body(path: Path) -> str:
     text = read(path / "SKILL.md")
-    _meta, _findings, body_start = studio.parse_frontmatter(text, path / "SKILL.md")
+    _meta, _findings, body_start = studio_fs.parse_frontmatter(text, path / "SKILL.md")
     return "\n".join(text.splitlines()[body_start:])
 
 
@@ -140,13 +143,13 @@ class ContentKitTests(unittest.TestCase):
                 if pair["n"] in EXPECTED_BAD_CODES:
                     self.assertEqual(EXPECTED_BAD_CODES[pair["n"]], bad_findings, "Pair %d Bad must show exactly its own error" % pair["n"])
                 if pair["n"] == 5:
-                    self.assertRegex(bad, studio.FORCE_RE, "Pair 5 Bad must carry the forcing words")
+                    self.assertRegex(bad, studio_const.FORCE_RE, "Pair 5 Bad must carry the forcing words")
                 if pair["n"] == 4:
                     self.assertNotRegex(bad, r"(?i)(?:^|[^a-z])not for(?:[^a-z]|$)", "Pair 4 Bad must keep the near-miss gap (no 'not for')")
                 if pair["n"] == 3:
                     self.assertGreaterEqual(len(bad), 600)
-                    self.assertGreaterEqual(studio.TRIGGER_RE.search(bad).start(), 600, "Bad trigger must sit after 600 chars")
-                    self.assertLess(studio.TRIGGER_RE.search(good).start(), 500)
+                    self.assertGreaterEqual(studio_const.TRIGGER_RE.search(bad).start(), 600, "Bad trigger must sit after 600 chars")
+                    self.assertLess(studio_const.TRIGGER_RE.search(good).start(), 500)
         self.assertEqual(studio.detect_lang(VI_BODY), "vi", "VI_BODY must be Vietnamese so VI4 is really checked")
         # eval cases
         text = read(CONTENT / "eval-cases.md")
