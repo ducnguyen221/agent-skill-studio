@@ -215,6 +215,9 @@ def resolve_check_path(arg: str) -> Path:
         return path.parent
     if not path.is_file():
         return path
+    problem = fs.input_file_problem(path)  # before anything opens the file: secret or cloud zone, secret-looking name, stream, placeholder
+    if problem:
+        raise ValueError("%s %s" % (path, problem))
     if path.name.casefold() in RULES_FILE_NAMES:
         raise ValueError("check for type rules is not available yet (%s)" % path)
     if fs.is_link(path):
