@@ -6,6 +6,10 @@ folder that carries the engine, and the files repo_root() needs) plus the frozen
 tests/fixtures/contract/inputs, runs every case of cases.json through one of five ways of calling the engine, and
 normalises the result so it can be compared with golden.json.
 
+Normalisation beyond paths and times (engine 1211bfa behaves differently per OS, and the contract is the shared part):
+  - the sha256 of a file in a `tree` is taken after CRLF -> LF (cmd_new writes text without newline=, so Windows gives CRLF);
+  - in the JSON of `fmt` the `files` list is sorted by path (the folder walk order is OS-dependent). Nothing else is sorted.
+
   R  cwd = the repo copy, `python studio.py ...`
   C  cwd = another folder, absolute path to the repo copy's studio.py
   E  cwd = the engine skill folder of the copy, `python scripts/studio.py ...`
@@ -115,7 +119,7 @@ class Normaliser:
 
 
 def tree_of(path: Path) -> dict:
-    """{relative posix path: sha256 of the bytes | "<dir>"} for everything below `path`, sorted; "<missing>" if it does not exist."""
+    """{relative posix path: sha256 of the bytes with CRLF folded to LF | "<dir>"} for everything below `path`, sorted; "<missing>" if it does not exist."""
     if not path.exists():
         return {"<missing>": "<missing>"}
     out = {}
@@ -123,7 +127,7 @@ def tree_of(path: Path) -> dict:
         rel = p.relative_to(path).as_posix()
         if "__pycache__" in p.relative_to(path).parts:
             continue
-        out[rel] = "<dir>" if p.is_dir() else hashlib.sha256(p.read_bytes()).hexdigest()
+        out[rel] = "<dir>" if p.is_dir() else hashlib.sha256(p.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     return out
 
 
@@ -184,6 +188,8 @@ def run_case(case: dict, engine: Path, base: Path, shared_repo: Path) -> dict:
         if key == "stdout_json":
             try:
                 result[key] = norm.json(json.loads(proc.stdout))
+                if case["args"][0] == "fmt" and isinstance(result[key].get("files"), list):
+                    result[key]["files"].sort(key=lambda item: item["path"])
             except ValueError:
                 result[key] = {"<not json>": norm.text(proc.stdout)[:400]}
         elif key == "stdout_text":
