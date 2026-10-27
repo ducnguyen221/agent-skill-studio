@@ -42,7 +42,7 @@ class ForcingWordLintMutants(unittest.TestCase):
         self.assertEqual(ct10("- item\n\n    MUST continue the item\n"), [3])
 
     def test_c3_control_indented_block_outside_a_list_is_code(self):
-        """bắt-lỗi (giết C3): the same shape outside a list is code and stays unlinted (guards against over-linting the other way)."""
+        """tương-đương (guard, giết không đột biến nào): the same shape outside a list is code and stays unlinted; it pins the other side of C3."""
         self.assertEqual(ct10("Intro.\n\n    MUST be code\n"), [])
 
     def test_c4_reason_hidden_in_a_code_span_does_not_count(self):
