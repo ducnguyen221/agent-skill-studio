@@ -2,6 +2,8 @@
 
 ## Chưa phát hành
 
+- `registry/catalog.json`: khối `evaluated` nay được phép khi `model_evaluated: false`, thêm `result` (`passed`/`below-threshold`/`partial`/`not_run`, cổng tính lại từ log), `batch_sha` và `batch_sha_kind` (`commit`/`tree`); `data-quality-audit` ghi lô SPR-18 là `below-threshold`. Cờ `true` vẫn đòi đủ ngưỡng như cũ.
+- CI chạy ma trận `ubuntu-latest` + `windows-latest` × Python 3.9 + 3.12 (trước: một ô ubuntu, Python 3.11).
 - Thêm manifest plugin (`.claude-plugin/`, `.codex-plugin/`) và test đồng bộ version giữa các manifest.
 - Thêm log chạy phiên mới cho NEW / AUDIT / REFINE trên Claude Code, Codex và Antigravity (`evals/skill-creator-studio/runs/`): luồng công cụ đạt, skill chưa được kích hoạt tự động và chưa chạy baseline không-skill, nên `model_evaluated` vẫn `false`.
 - **agent-skill-studio:SPR-01 TK3 (chưa phát hành):** `package`/`install` thôi duyệt bằng `rglob`; gặp cloud, link, trần duyệt hoặc thư mục tên vùng thì ERROR mã mới `PACK` (không gói thiếu im lặng) và đọc file qua `open_nofollow_read`; cloud nhận thêm qua tag reparse `IO_REPARSE_TAG_CLOUD*` nên báo đúng nhãn cloud; `PINNED` một mình không còn là placeholder; `fmt --fix` tạo `.bak` độc quyền (không ghi xuyên link cài sẵn, lỗi giữa chừng không xoá file cài sẵn) và báo `skipped (link)` cho symlink thư mục trên POSIX.
