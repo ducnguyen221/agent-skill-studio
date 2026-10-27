@@ -25,7 +25,7 @@ SKILL = "---\nname: %s\ndescription: Checks a toy example. Use when testing the 
 def make_skill(parent: Path, name: str) -> Path:
     folder = parent / name
     folder.mkdir(parents=True)
-    (folder / "SKILL.md").write_text(SKILL % name, encoding="utf-8", newline="\n")
+    (folder / "SKILL.md").write_bytes((SKILL % name).encode("utf-8"))  # bytes: write_text(newline=) needs Python 3.10
     return folder
 
 

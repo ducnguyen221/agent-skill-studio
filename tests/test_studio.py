@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1847,9 +1848,35 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
             except (OSError, NotImplementedError):
                 return
             with self.assertRaises(OSError):
-                studio.open_nofollow_read(link, os.lstat(other))
+                studio.open_nofollow_read(link, os.lstat(link))  # a symlink source is refused on every OS: the handle is the target's, the lstat is the link's
             with self.assertRaises(OSError):
                 studio.create_exclusive(link)
+
+    def test_bat_loi_create_exclusive_refuses_any_existing_name_even_a_link(self):
+        """bắt-lỗi: a name that lexists (a dangling symlink on Windows, where O_EXCL follows it) is never opened; no handle, no file."""
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            target = Path(t) / "victim.bin"
+            with mock.patch.object(os.path, "lexists", return_value=True):
+                with self.assertRaises(FileExistsError):
+                    studio.create_exclusive(target)
+            self.assertFalse(target.exists())
+
+    def test_bat_loi_create_exclusive_rejects_a_handle_that_is_not_the_named_path(self):
+        """bắt-lỗi: after the open, fstat(fd) must match lstat(path); an lstat that is a link (or another file) closes the handle and raises."""
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            f = Path(t) / "f.bin"
+            as_link = os.stat_result((stat.S_IFLNK | 0o777, 1, 1, 1, 0, 0, 0, 0, 0, 0))
+            with mock.patch.object(os.path, "lexists", return_value=False), mock.patch.object(os, "lstat", return_value=as_link):  # lexists calls lstat: pin it
+                with self.assertRaises(studio.UnsafeOpen):
+                    studio.create_exclusive(f)
+            self.assertEqual(0, f.stat().st_size if f.exists() else 0)  # nothing was written
+            f.unlink(missing_ok=True)
+            other = os.stat_result((stat.S_IFREG | 0o666, 987654321, 1, 1, 0, 0, 0, 0, 0, 0))
+            with mock.patch.object(os.path, "lexists", return_value=False), mock.patch.object(os, "lstat", return_value=other):
+                with self.assertRaises(studio.UnsafeOpen):
+                    studio.create_exclusive(f)
 
 
 if __name__ == "__main__":

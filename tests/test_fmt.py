@@ -780,8 +780,8 @@ class FmtExitCodeTests(unittest.TestCase):
         make_dir_link(self, self.tmp / "lnk", real.parent)
         code, out, _ = run("--check", str(self.tmp))
         self.assertEqual(code, 0, out)
-        # POSIX: a directory symlink whose name does not end in .md is passed over without a report (CO of SPR-33, studio.py ~2201); Windows lists it as "link"
-        reasons = ("secret-name", "cloud-or-secret-zone", "link") if os.name == "nt" else ("secret-name", "cloud-or-secret-zone")
+        # FR3.2 (SPR-01): a directory symlink is reported as skipped (link) on every OS, never passed over silently
+        reasons = ("secret-name", "cloud-or-secret-zone", "link")
         for reason in reasons:
             self.assertIn("skipped (%s)" % reason, out)
         report = __import__("json").loads(run("--check", "--json", str(self.tmp))[1])
@@ -790,8 +790,8 @@ class FmtExitCodeTests(unittest.TestCase):
         if os.name != "nt":
             # the real thing it is safe for: the link is not followed, so r.md is read once, by its own path, never as lnk/r.md
             self.assertEqual(report["totals"]["files"], 2, out)
-            self.assertNotIn("lnk", out)
-            self.assertFalse(any("lnk" in str(item) for item in report["files"]), report["files"])
+            self.assertNotIn("lnk/", out)  # reported as a skipped link, never entered
+            self.assertFalse(any("lnk/" in str(item) for item in report["files"]), report["files"])
 
     def test_fmt_json_counts_the_files_that_block_the_exit(self):
         bad = self.tmp / "bad.md"

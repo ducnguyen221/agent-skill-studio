@@ -608,7 +608,20 @@ def open_nofollow_read(path, expect_stat=None, single_link: bool = True):
 def create_exclusive(path):
     """Create `path` for binary writing, failing (FileExistsError) when anything, a link included, is already there; never writes through a link."""
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    return os.fdopen(os.open(path, flags, 0o666), "wb")
+    if os.path.lexists(path):  # Windows has no O_NOFOLLOW and CREATE_NEW follows a dangling symlink: a name that is there at all, a link included, is refused first
+        raise FileExistsError(errno.EEXIST, "already exists (a link counts)", os.fspath(path))
+    fd = os.open(path, flags, 0o666)
+    try:
+        opened, named = os.fstat(fd), os.lstat(path)  # the handle must be the very file the name holds now, not a link's target
+        if stat.S_ISLNK(named.st_mode) or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino):
+            raise UnsafeOpen("created file is not the named path (link raced in): %s" % path)
+        return os.fdopen(fd, "wb")
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
 
 
 def link_in_chain(path, stop):
