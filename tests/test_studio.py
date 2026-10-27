@@ -1852,8 +1852,8 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 studio.create_exclusive(link)
 
-    def test_bat_loi_create_exclusive_refuses_any_existing_name_even_a_link(self):
-        """bắt-lỗi: a name that lexists (a dangling symlink on Windows, where O_EXCL follows it) is never opened; no handle, no file."""
+    def test_unit_create_exclusive_refuses_any_existing_name_even_a_link(self):
+        """đơn-vị-hàm-mới: a name that lexists (a dangling symlink on Windows, where O_EXCL follows it) is never opened; no handle, no file."""
         from unittest import mock
         with tempfile.TemporaryDirectory() as t:
             target = Path(t) / "victim.bin"
@@ -1862,8 +1862,8 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
                     studio.create_exclusive(target)
             self.assertFalse(target.exists())
 
-    def test_bat_loi_create_exclusive_rejects_a_handle_that_is_not_the_named_path(self):
-        """bắt-lỗi: after the open, fstat(fd) must match lstat(path); an lstat that is a link (or another file) closes the handle and raises."""
+    def test_unit_create_exclusive_rejects_a_handle_that_is_not_the_named_path(self):
+        """đơn-vị-hàm-mới: after the open, fstat(fd) must match lstat(path); an lstat that is a link (or another file) closes the handle and raises."""
         from unittest import mock
         with tempfile.TemporaryDirectory() as t:
             f = Path(t) / "f.bin"
