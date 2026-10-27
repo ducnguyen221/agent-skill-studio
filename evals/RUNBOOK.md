@@ -168,3 +168,5 @@ Cờ của `redact.py` xem `python -X utf8 evals/tools/redact.py --help`; ví d�
 Khối `evaluated` (`sprint`, `date`, `harnesses`, `ab_report`) thêm `result` ∈ `passed` | `below-threshold` | `partial` | `not_run` và `batch_sha` (40 hex).
 Cổng `model_evaluated_problems` tính lại `result` từ run log: ưu tiên `not_run` (không harness nào chạy) > `below-threshold` > `partial` (có harness khai `not_run:<lý do>`) > `passed`.
 `model_evaluated: false` chỉ bỏ phép áp ngưỡng `AB_THRESHOLDS`, mọi kiểm toàn vẹn giữ nguyên; `false` + `passed` đỏ. `true` giữ nguyên mọi kiểm cũ và đòi `result == passed`.
+`passed` nghĩa là mọi harness đã `ran` đều đạt ngưỡng và harness còn lại hoãn có lý do tường minh (`not_run:<lý do>`).
+`batch_sha_kind` (bắt buộc cùng `batch_sha`) ∈ `commit` | `tree`: lô mới phải `commit` (= HEAD sau review cuối); `tree` (băm cây thư mục skill) chỉ cho lô cũ không ghi SHA lô, như SPR-18.

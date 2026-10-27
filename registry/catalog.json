@@ -31,7 +31,8 @@
         "harnesses": {"claude-code": "ran", "codex": "ran", "antigravity": "not_run:headless-no-skill-catalog"},
         "ab_report": "evals/data-quality-audit/runs/SPR-18/ab-2026-10-18.md",
         "result": "below-threshold",
-        "batch_sha": "03697b12e174d5d407a2fac14e76e75b562752dc"
+        "batch_sha": "052559619a4c289c0611baf10cc5f2e2b33289d1",
+        "batch_sha_kind": "tree"
       }
     }
   ]

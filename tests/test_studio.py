@@ -62,6 +62,8 @@ def model_evaluated_problems(catalog_path, root):
             problems.append("%s evaluated.result %r must be one of %s" % (tag, result, list(RESULT_VALUES)))
         if not isinstance(batch_sha, str) or not BATCH_SHA_RE.fullmatch(batch_sha):
             problems.append("%s evaluated.batch_sha %r must be 40 lowercase hex" % (tag, batch_sha))
+        if ev.get("batch_sha_kind") not in ("commit", "tree"):
+            problems.append("%s evaluated.batch_sha_kind %r must be 'commit' or 'tree' (required with batch_sha)" % (tag, ev.get("batch_sha_kind")))
         below = False  # a ran harness missed AB_THRESHOLDS (or has no counted row); only reported as a problem when the flag is true
         sprint, harnesses = ev.get("sprint"), ev.get("harnesses")
         if not sprint or not isinstance(harnesses, dict):
@@ -161,7 +163,7 @@ def _ran_logs(runs_dir):
     return out
 
 
-def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, status=None, model_evaluated=True, claim_positive=4, mutate=None, flag=None, trig=4, result=None, batch_sha=None):
+def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, status=None, model_evaluated=True, claim_positive=4, mutate=None, flag=None, trig=4, result=None, batch_sha=None, kind="commit"):
     """Build a temp catalog + run logs (claude-code, codex ran; antigravity not_run). Returns (catalog_path, root).
 
     mutate(runs_dir, ab_dict, harnesses_dict, evaluated_dict) may break the evidence before it is written (gate self-tests)."""
@@ -192,7 +194,8 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
     evaluated = {"sprint": "SPR-18", "date": "2026-10-18", "harnesses": harnesses,
                  "ab_report": "evals/fake-skill/runs/SPR-18/ab-2026-10-18.md",
                  "result": result if result is not None else ("passed" if (model_evaluated if flag is None else flag) else "partial"),
-                 "batch_sha": batch_sha if batch_sha is not None else "a" * 40}
+                 "batch_sha": batch_sha if batch_sha is not None else "a" * 40,
+                 "batch_sha_kind": kind}
     if mutate:
         mutate(runs, ab, harnesses, evaluated)
     if write_ab:
@@ -462,6 +465,13 @@ class StudioTests(unittest.TestCase):
         for bad in ("abc1234", "G" * 40, "A" * 40):
             problems = self._gate(model_evaluated=False, result="partial", batch_sha=bad)
             self.assertTrue(any("batch_sha" in p for p in problems), (bad, problems))
+
+    def test_gate_batch_sha_kind_required_and_valid(self):
+        """batch_sha_kind is required with batch_sha and must be commit or tree."""
+        self.assertEqual([], self._gate(model_evaluated=False, result="partial", kind="tree"))
+        for bad in ("blob", None, ""):
+            problems = self._gate(model_evaluated=False, result="partial", kind=bad)
+            self.assertTrue(any("batch_sha_kind" in p for p in problems), (bad, problems))
 
     def test_gate_not_run_when_no_harness_ran(self):
         """FR9.1: no harness ran at all -> result not_run; claiming below-threshold is red."""
