@@ -44,6 +44,7 @@ STRICT_OPEN, STRICT_CLOSE = "<!-- studio:strict -->", "<!-- /studio:strict -->"
 CONTENTS_RE = re.compile(r"^##\s+(Table of Contents|Contents|Mục lục)\s*$", re.IGNORECASE)
 MD_LINK_RE = re.compile(r"\[([^\[\]]*)\]\([^()]*\)")  # [text](target) -> text; no nested brackets or parens, so a line of "[" stays linear
 FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+FENCE_OPEN_LIST_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")  # inside a list item a fence may sit deeper than 3 spaces (CommonMark: relative to the item)
 BACKTICK_RUN_RE = re.compile(r"`+")
 URL_RE = re.compile(r"https?://\S+")
 LIST_ITEM_RE = re.compile(r"^\s*([-*+]|\d+[.)])\s")
@@ -67,7 +68,7 @@ SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+")
 SENTENCE_ABBREV_RE = re.compile(r"\b(e\.g|i\.e)\.")
 TRIGGER_RE = re.compile(r"(?i)\b(use when|when to use|used when|for tasks involving)\b")
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-LINK_RE = re.compile(r"\[[^\[\]\n]*\]\(([^()\n]+)\)")  # one line, no nested brackets or parens: linear on hostile input
+LINK_RE = re.compile(r"\[[^\[\]\n]*\]\(((?:[^()\n]|\([^()\n]*\))+)\)")  # one line; the target may hold one level of balanced parens, x(1).md; the two branches start with different characters, so it stays linear
 ABSOLUTE_LINK_RE = re.compile(r"\A[A-Za-z][A-Za-z0-9+.\-]*:")  # a scheme (file:, smb:) or a drive letter (C:)
 FRONT_KEY_RE = re.compile(r"^([a-zA-Z][\w-]*):(?:\s+(.*))?$")
 META_KEY_RE = re.compile(r"^\s{2,}([\w.-]+):(?:\s+(.*))?$")
@@ -81,14 +82,14 @@ TEMPLATE_LANGS = ("en", "vi")
 # (source dir under templates/, mirror dir under skills/skill-creator-studio/assets/)
 TEMPLATE_PAIRS = (("skill-template", "skill-template"), ("skill-template-full", "skill-template-full"))
 PROFILES = ("portable", "opcos")
-DOCTOR_EXCLUDE_PARTS = (".claude/skills", ".agents/skills", ".worktrees", ".claude/worktrees", "node_modules", ".tmp", "__pycache__")
+DOCTOR_EXCLUDE_PARTS = (".claude/skills", ".agents/skills", ".worktrees", ".ads-worktrees", ".claude/worktrees", "node_modules", ".tmp", "__pycache__")
 DOCTOR_PRUNE_SILENT = frozenset({".git", ".venv", ".pytest_cache", ".mypy_cache"})  # never skills, never worth a skipped[] line
 CLOUD_MARKERS = ("OneDrive", "SharePoint")  # --skip-marker adds more: a synced folder need not carry either word
 # FILE_ATTRIBUTE_RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS | OFFLINE | UNPINNED: a cloud placeholder; opening it can start a download. PINNED (0x80000) is left out on purpose: a pinned file is already local
 CLOUD_ATTR_MASK = 0x40000 | 0x400000 | 0x1000 | 0x100000
 CLOUD_TAG_MASK, CLOUD_TAG = 0xFFFF0FFF, 0x9000001A  # IO_REPARSE_TAG_CLOUD and its CLOUD_1..CLOUD_F family (the tag's bits 12-15 vary)
 CLOUD_ATTRS_AVAILABLE = os.name == "nt"  # st_file_attributes exists on Windows only
-ST8_ALLOWED_DIRS = frozenset({"references", "scripts", "assets", "agents", "tests"})
+ST8_ALLOWED_DIRS = frozenset({"references", "scripts", "assets", "agents", "tests"})  # a folder name is compared in lower case here and against SKIP_DIRS (evals, tests, tooling folders), which stay quiet
 OPCOS_PROVENANCE_KEYS = frozenset({"source", "source_sha", "base_sha", "rewrite_before_public"})
 CODEX_BODY_MAX_BYTES = 8000  # [codex 0.147]; standards/SOURCE_TRACEABILITY.md A16
 DOCTOR_FAIL_ON = ("error", "warn", "new")
@@ -256,19 +257,45 @@ def _secret_dirs(home: str) -> tuple:
             os.path.join(os.path.normcase(os.path.realpath(home)), ".secret").casefold())
 
 
+def _long_name_text(text: str) -> str:
+    """On Windows, `text` with 8.3 short names (ONEDRI~1) replaced by the long names, for the longest prefix that exists; else `text`.
+    Asks the OS about names only (GetLongPathNameW lists directory entries; it opens no file). Any failure keeps `text`."""
+    if os.name != "nt" or "~" not in text:
+        return text
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        head, tail = text, []
+        while head:
+            size = ctypes.windll.kernel32.GetLongPathNameW(head, buf, len(buf))
+            if 0 < size < len(buf):
+                return os.path.join(buf.value, *reversed(tail)) if tail else buf.value
+            up, name = os.path.split(head)
+            if not name or up == head:
+                break
+            head, tail = up, tail + [name]
+    except (OSError, AttributeError, ImportError, ValueError):
+        pass
+    return text
+
+
 def zone_reason(path, markers=CLOUD_MARKERS) -> str | None:
     """'cloud' for a path naming one of `markers` (OneDrive, SharePoint and any --skip-marker; case-insensitive), 'secret-zone' for ~/.secret
     or any folder called .secret (any case, any platform), else None. Compares strings only: it never stats, lists or opens `path` (RK15)."""
-    text = os.path.normcase(os.path.abspath(os.fspath(path))).casefold()
-    if any(marker.casefold() in text for marker in markers):
+    given = os.path.abspath(os.fspath(path))
+    texts = [os.path.normcase(given).casefold()]
+    long_form = os.path.normcase(_long_name_text(given)).casefold()
+    if long_form != texts[0]:
+        texts.append(long_form)  # an 8.3 spelling (ONEDRI~1) hides the folder's real name from a string test
+    if any(marker.casefold() in text for text in texts for marker in markers):
         return "cloud"
-    if ".secret" in text.split(os.sep):
+    if any(".secret" in text.split(os.sep) for text in texts):
         return "secret-zone"
     try:
         secrets = _secret_dirs(str(Path.home()))
     except (RuntimeError, KeyError, OSError):
         return None
-    return "secret-zone" if any(text == s or text.startswith(s + os.sep) for s in secrets) else None
+    return "secret-zone" if any(text == s or text.startswith(s + os.sep) for text in texts for s in secrets) else None
 
 
 def _stat_is_cloud(info) -> bool:
@@ -931,7 +958,7 @@ def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
             if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), stripped):
                 fence = None
             continue
-        opened = FENCE_OPEN_RE.match(text)
+        opened = (FENCE_OPEN_LIST_RE if list_context else FENCE_OPEN_RE).match(text)
         if opened:
             fence = opened.group(1)
             prev_blank = False
@@ -971,6 +998,34 @@ def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
     return findings
 
 
+def lint_unclosed_comment(body: str, body_start: int, manifest: Path) -> list:
+    """CT11: a `<!--` outside code that no `-->` ever closes hides the rest of the body from the language and forcing-word lints."""
+    fence, list_context, opened_at = None, False, 0
+    for offset, line in enumerate(body.splitlines()):
+        text = unicodedata.normalize("NFC", line)
+        if fence:
+            if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), text.strip()):
+                fence = None
+            continue
+        if opened_at:
+            closed = text.find("-->")
+            if closed < 0:
+                continue
+            text, opened_at = text[closed + 3:], 0
+        opened = (FENCE_OPEN_LIST_RE if list_context else FENCE_OPEN_RE).match(text)
+        if opened:
+            fence = opened.group(1)
+            continue
+        if text.strip() and not text.startswith(("    ", "\t")):
+            list_context = bool(LIST_ITEM_RE.match(text))
+        rest = strip_html_comments(strip_code_spans(text))
+        if "<!--" in rest:
+            opened_at = body_start + offset + 1
+    if opened_at:
+        return [emit("WARN", "CT11", manifest, opened_at, "HTML comment opened here is never closed with '-->'; the rest of the body is read as comment text (language and SK-14 lints skip it)")]
+    return []
+
+
 def prose_lines(body: str) -> list[tuple[int, str]]:
     """Prose lines of a Markdown body as (1-based line number inside `body`, text); file line = body_start + number.
     Left out: blank lines, fenced and indented code, table rows, lines marked <!-- studio:vi-ok -->, and the lines of a
@@ -990,7 +1045,7 @@ def prose_lines(body: str) -> list[tuple[int, str]]:
                 continue
             text, in_comment = text[closed + 3:], False
             stripped = text.strip()
-        opened = FENCE_OPEN_RE.match(text)
+        opened = (FENCE_OPEN_LIST_RE if list_context else FENCE_OPEN_RE).match(text)
         if opened:
             fence, prev_blank = opened.group(1), False
             continue
@@ -1106,15 +1161,26 @@ def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path, fron
             front = manifest.read_text(encoding="utf-8").splitlines()[:body_start]
         except (OSError, UnicodeError):
             front = []
-    first_line: dict = {}  # key -> first frontmatter line that starts with "key:", built once (a scan per key was quadratic)
+    first_line: dict = {}  # top-level key -> its frontmatter line; nested[parent][key] -> the line under that parent (built once, a scan per key was quadratic)
+    nested: dict = {}
+    parent = None
     for number, raw in enumerate(front, 1):
         stripped = raw.lstrip()
         colon = stripped.find(":")
-        if colon > 0:
-            first_line.setdefault(stripped[:colon], number)
+        if colon <= 0:
+            continue
+        key = stripped[:colon]
+        if raw[:1] not in (" ", "\t"):
+            first_line.setdefault(key, number)
+            parent = key
+        elif parent is not None:
+            nested.setdefault(parent, {}).setdefault(key, number)
 
     def front_line(label: str, default: int) -> int:
-        return first_line.get(label.rsplit(".", 1)[-1], default)
+        parts = label.split("[")[0].split(".")
+        if len(parts) > 1:  # metadata.k: look under metadata:, not at a root key of the same name
+            return nested.get(parts[0], {}).get(parts[-1], first_line.get(parts[0], default))
+        return first_line.get(parts[0], default)
 
     def accented(value) -> bool:
         return isinstance(value, str) and _vi_counts(strip_html_comments(value))[1] > 0
@@ -1240,13 +1306,13 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     for key in meta:
         if key in PORTABLE_KEYS:
             continue
+        at = next((i + 1 for i, x in enumerate(all_lines[:body_start]) if x.startswith(key + ":")), 2)
         if claude and key in CLAUDE_CODE_KEYS:
-            at = next((i + 1 for i, x in enumerate(all_lines[:body_start]) if x.startswith(key + ":")), 2)
             findings.append(emit("WARN", "FM6", manifest, at, "frontmatter key '%s' is Claude Code only; claude.ai and the API reject it with a hard error" % key))
         elif profile == "opcos" and key in OPCOS_PROVENANCE_KEYS:
-            findings.append(emit("WARN", "FM4", manifest, 2, "provenance key '%s' is an OpcOS convention, not portable; move it under metadata before publishing" % key))
+            findings.append(emit("WARN", "FM4", manifest, at, "provenance key '%s' is an OpcOS convention, not portable; move it under metadata before publishing" % key))
         else:
-            findings.append(emit("ERROR", "FM4", manifest, 2, "unknown frontmatter key '%s' for target %s; allowed keys: %s; use metadata or a target adapter" % (key, target, ", ".join(allowed))))
+            findings.append(emit("ERROR", "FM4", manifest, at, "unknown frontmatter key '%s' for target %s; allowed keys: %s; use metadata or a target adapter" % (key, target, ", ".join(allowed))))
     if profile == "opcos" and not (isinstance(meta.get("metadata"), dict) and any(k.startswith("opcos_") for k in meta["metadata"])):
         findings.append(emit("NOTE", "MD1", manifest, 2, "no metadata.opcos_* key; OpcOS registry fields are optional"))
     extra = frontmatter_extra_len(all_lines, body_start)
@@ -1266,6 +1332,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     if tokens > BODY_TOKEN_MAX:
         findings.append(emit("WARN", "ST2", manifest, body_start + 1, "Skill body is about %d tokens (estimate, not a tokenizer); keep it under %d and move detail to references" % (tokens, BODY_TOKEN_MAX)))
     findings.extend(lint_forcing_words(body, body_start, manifest))
+    findings.extend(lint_unclosed_comment(body, body_start, manifest))
     findings.extend(lint_contents(manifest, body.splitlines(), "skill_body", body_start))
     findings.extend(lint_vietnamese(meta, body, body_start, manifest, all_lines[:body_start]))
     if re.search(r"<!--\s*STUDIO-DRAFT|\[FILL:|\bTODO\b|\bFIXME\b", body, re.IGNORECASE):
@@ -1352,7 +1419,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
             findings.append(emit("WARN", "SZ2", p, 0, "cloud placeholder (OneDrive/SharePoint attributes) inside the skill; not opened or listed"))
         elif p in tree_links:
             findings.append(emit("ERROR", "SEC", p, 0, "symlinks are not portable/safe in distributed skill packages"))
-        elif (p.parent == folder and p.name not in ST8_ALLOWED_DIRS and p.name not in SKIP_DIRS and not is_sensitive_name(p.name)
+        elif (p.parent == folder and p.name.lower() not in ST8_ALLOWED_DIRS and p.name.lower() not in SKIP_DIRS and not is_sensitive_name(p.name)
               and p in tree_dirs):
             findings.append(emit("WARN", "ST8", p, 0, "folder '%s' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill" % p.name))
     if eval_root is None:
@@ -1410,6 +1477,10 @@ def cmd_new(args) -> int:
     name = args.name
     if not NAME_RE.fullmatch(name) or len(name) > 64:
         print("ERROR: name must be lowercase kebab-case <=64 chars", file=sys.stderr)
+        return 2
+    word = next((w for w in RESERVED_NAME_WORDS if w in name), None)
+    if word:
+        print("ERROR: name must not contain the reserved word '%s' (FM5)" % word, file=sys.stderr)
         return 2
     if not args.description or len(args.description) > 1024 or "\n" in args.description:
         print("ERROR: --description is required, single line and <=1024 characters", file=sys.stderr)
@@ -2078,10 +2149,15 @@ def cmd_doctor(args) -> int:
         if problem:
             print("ERROR: baseline %s %s" % (args.baseline, problem), file=sys.stderr)
             return 2
-    scanned = iter_skill_dirs(roots, args.include_cache, skip_markers)
     out = None
-    if args.out:
+    if args.out:  # decided by name and by what the file holds before any root is walked; the scanned skills are added after the scan
         out = Path(os.path.abspath(os.path.expanduser(args.out)))
+        problem = _out_problem(out, roots, repo, [], args.include_cache, skip_markers)
+        if problem:
+            print("ERROR: %s" % problem, file=sys.stderr)
+            return 2
+    scanned = iter_skill_dirs(roots, args.include_cache, skip_markers)
+    if out is not None:
         problem = _out_problem(out, roots, repo, scanned[0], args.include_cache, skip_markers)
         if problem:
             print("ERROR: %s" % problem, file=sys.stderr)
