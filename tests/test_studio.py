@@ -1109,7 +1109,7 @@ class AgentskillsExportTests(unittest.TestCase):
         from unittest import mock
         with tempfile.TemporaryDirectory() as t:
             folder = self.make_eval(t)
-            with mock.patch.object(studio.shutil, "copyfile", side_effect=OSError("disk full")):
+            with mock.patch.object(studio.shutil, "copyfileobj", side_effect=OSError("disk full")):
                 code, findings, stats = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, 0, "EX8"), (code, stats["exported"], findings[0]["code"]))
 
@@ -1350,7 +1350,7 @@ class AgentskillsExportTests(unittest.TestCase):
 
     def test_x_failed_write_removes_files_this_run_created(self):
         from unittest import mock
-        real = shutil.copyfile
+        real = shutil.copyfileobj
         for label in ("second fixture fails", "evals.json fails"):
             with tempfile.TemporaryDirectory() as t:
                 folder = self.make_eval(t)
@@ -1368,9 +1368,9 @@ class AgentskillsExportTests(unittest.TestCase):
                     if label.startswith("second") and len(calls) == 2:
                         raise OSError("disk full")
                     return real(src, dst)
-                with mock.patch.object(studio.shutil, "copyfile", side_effect=flaky):
+                with mock.patch.object(studio.shutil, "copyfileobj", side_effect=flaky):
                     if label.startswith("evals"):
-                        with mock.patch.object(studio, "open", create=True, side_effect=OSError("denied")):
+                        with mock.patch.object(studio.tempfile, "mkstemp", side_effect=OSError("denied")):
                             code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
                     else:
                         code, findings, stats = studio.export_agentskills(folder, "demo-skill", out, force=True)
@@ -1567,6 +1567,170 @@ class ExportFixtureHardeningTests(unittest.TestCase):
             (folder / "cases.json").write_text("{not json", encoding="utf-8")
             code, findings, _ = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
             self.assertEqual((1, "EV1"), (code, findings[0]["code"]), findings)
+
+
+class ExportWindowsNameAndRaceTests(unittest.TestCase):
+    """SPR-01 TK2: Windows name aliases, normalised names, TOCTOU on the source, atomic evals.json. Labels: bắt-lỗi (red before the fix, goes through
+    the CLI or functions that already exist at df875ce) and đơn-vị-hàm-mới (the new helpers)."""
+
+    call = AgentskillsExportTests.call
+    make_eval = AgentskillsExportTests.make_eval
+
+    def named_eval(self, base, names, fixtures=None):
+        folder = self.make_eval(base, fixtures=fixtures or {"a.csv": b"1"})
+        data = json.loads((folder / "cases.json").read_text(encoding="utf-8"))
+        data["cases"][0]["fixtures"] = list(names)
+        data["cases"][1]["fixtures"] = []
+        (folder / "cases.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return folder
+
+    def cli_export(self, base, *extra):
+        return self.call("evals", "demo-skill", "--eval-root", Path(base) / "evals", "--export", "agentskills", "--out", Path(base) / "out", *extra)
+
+    def test_bat_loi_seven_aliases_refused_with_their_own_code(self):
+        """bắt-lỗi: the 7 aliases of dossier 3a, by CLI."""
+        expected = {"auth.json.": "EX9", "auth.json ": "EX9", "secrets.json ": "EX9", "k.pem.": "EX9", "AUTH~1.JSO": "EX11", "CON": "EX10", "NUL": "EX10"}
+        for alias, code in expected.items():
+            with tempfile.TemporaryDirectory() as t:
+                self.named_eval(t, ["fixtures/" + alias])
+                rc, out, err = self.cli_export(t)
+                self.assertEqual((1, True, False), (rc, code in out + err, (Path(t) / "out").exists()), (alias, out + err))
+
+    def test_bat_loi_combined_aliases_and_device_parent(self):
+        """bắt-lỗi: combined aliases and a device name as a parent component."""
+        expected = {"AUTH~1.JSO.": "EX9", "con.txt ": "EX9", "nul.csv": "EX10", "CONIN$": "EX10", "COM¹.csv": "EX10", "con/x.csv": "EX10", "dir./x.csv": "EX9"}
+        for alias, code in expected.items():
+            with tempfile.TemporaryDirectory() as t:
+                self.named_eval(t, ["fixtures/" + alias])
+                rc, out, err = self.cli_export(t)
+                self.assertEqual((1, True, False), (rc, code in out + err, (Path(t) / "out").exists()), (alias, out + err))
+
+    def test_bat_loi_nfd_name_written_as_nfc_keeping_case(self):
+        """bắt-lỗi: regression RF7 - disk name == files entry == NFC, case kept."""
+        nfd = unicodedata.normalize("NFD", "Dữ liệu.csv")
+        nfc = unicodedata.normalize("NFC", nfd)
+        with tempfile.TemporaryDirectory() as t:
+            try:
+                self.named_eval(t, ["fixtures/Data.csv", "fixtures/" + nfd], fixtures={"Data.csv": b"1", nfd: b"2"})
+            except OSError:
+                self.skipTest("cannot create an NFD-named file here")
+            rc, out, err = self.cli_export(t)
+            self.assertEqual(0, rc, out + err)
+            files = Path(t) / "out" / "demo-skill" / "evals" / "files"
+            listed = sorted(os.listdir(files))
+            data = json.loads((files.parent / "evals.json").read_text(encoding="utf-8"))
+            self.assertEqual(sorted(["Data.csv", nfc]), listed)
+            self.assertEqual(sorted(["evals/files/Data.csv", "evals/files/" + nfc]), sorted(data["evals"][0]["files"]))
+
+    def test_bat_loi_file_and_directory_collide(self):
+        """bắt-lỗi: fixture `x` and `x/y.csv` cannot both be exported."""
+        with tempfile.TemporaryDirectory() as t:
+            folder = self.named_eval(t, ["fixtures/x", "x/y.csv"], fixtures={"x": b"1"})
+            (folder / "x").mkdir()
+            (folder / "x" / "y.csv").write_bytes(b"2")
+            rc, out, err = self.cli_export(t)
+            self.assertEqual((1, True, False), (rc, "EX12" in out + err, (Path(t) / "out").exists()), out + err)
+
+    def swap_during_export(self, t, make_swap):
+        """Run the export; the moment it first asks is_link about the destination (after it checked the source), swap the source."""
+        from unittest import mock
+        folder = self.named_eval(t, ["fixtures/a.csv"], fixtures={"a.csv": b"SAFE"})
+        source = folder / "fixtures" / "a.csv"
+        outside = Path(t) / "outside.csv"
+        outside.write_bytes(b"CANARY")
+        real, done = studio.is_link, []
+
+        def spy(path):
+            if not done and os.path.basename(os.fspath(path)) == "demo-skill" and "out" in Path(path).parts:
+                done.append(1)
+                source.unlink()
+                make_swap(source, outside)
+            return real(path)
+        with mock.patch.object(studio, "is_link", spy):
+            result = studio.export_agentskills(folder, "demo-skill", Path(t) / "out")
+        self.assertTrue(done, "swap hook never fired")
+        return result
+
+    def assert_no_canary(self, t):
+        for p in (Path(t) / "out").rglob("*"):
+            if p.is_file():
+                self.assertNotIn(b"CANARY", p.read_bytes(), str(p))
+
+    def test_bat_loi_source_swapped_for_symlink_refused(self):
+        """bắt-lỗi: TOCTOU, source becomes a symlink between check and copy."""
+        def swap(source, outside):
+            try:
+                os.symlink(outside, source)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks are not available here")
+        with tempfile.TemporaryDirectory() as t:
+            code, findings, stats = self.swap_during_export(t, swap)
+            self.assert_no_canary(t)
+            self.assertEqual((1, 0), (code, stats["exported"]), findings)
+
+    def test_bat_loi_source_swapped_for_hard_link_refused(self):
+        """bắt-lỗi: TOCTOU, source becomes a hard link between check and copy."""
+        def swap(source, outside):
+            try:
+                os.link(outside, source)
+            except OSError:
+                self.skipTest("hard links are not available here")
+        with tempfile.TemporaryDirectory() as t:
+            code, findings, stats = self.swap_during_export(t, swap)
+            self.assert_no_canary(t)
+            self.assertEqual((1, 0), (code, stats["exported"]), findings)
+
+    def test_bat_loi_force_is_atomic_for_evals_json(self):
+        """bắt-lỗi: --force with os.replace failing keeps the old evals.json byte for byte and leaves no temp file."""
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            self.make_eval(t)
+            self.assertEqual(0, self.cli_export(t)[0])
+            target = Path(t) / "out" / "demo-skill" / "evals" / "evals.json"
+            target.write_text("OLD-CONTENT\n", encoding="utf-8")
+            with mock.patch.object(os, "replace", side_effect=OSError("boom")):
+                rc, out, err = self.cli_export(t, "--force")
+            self.assertEqual((1, "OLD-CONTENT\n"), (rc, target.read_text(encoding="utf-8")), out + err)
+            self.assertEqual(["evals.json"], [x for x in os.listdir(target.parent) if x != "files"])
+
+    def test_don_vi_ham_moi_unsafe_windows_name(self):
+        """đơn-vị-hàm-mới: unsafe_windows_name."""
+        bad = ["a.", "a ", "CON", "con", "Nul.txt", "aux.csv", "COM1", "lpt9.x", "COM²", "LPT³.csv", "CONIN$", "conout$", "CLOCK$", "AUTH~1.JSO", "a~12", "a:b", "PRN "]
+        for name in bad:
+            self.assertTrue(studio.unsafe_windows_name(name), name)
+        for name in ["a.csv", "Data.csv", "console.csv", "com10", "com", "lpt0", "x~y", "Dữ liệu.csv", "confile", "a b.csv"]:
+            self.assertIsNone(studio.unsafe_windows_name(name), name)
+
+    def test_don_vi_ham_moi_open_nofollow_read_and_create_exclusive(self):
+        """đơn-vị-hàm-mới: open_nofollow_read / create_exclusive."""
+        with tempfile.TemporaryDirectory() as t:
+            f = Path(t) / "f.bin"
+            with studio.create_exclusive(f) as handle:
+                handle.write(b"abc")
+            with self.assertRaises(FileExistsError):
+                studio.create_exclusive(f)
+            with studio.open_nofollow_read(f, os.lstat(f)) as handle:
+                self.assertEqual(b"abc", handle.read())
+            other = Path(t) / "g.bin"
+            other.write_bytes(b"zzz")
+            with self.assertRaises(OSError):
+                studio.open_nofollow_read(f, os.lstat(other))  # a different identity than the one checked
+            try:
+                os.link(f, Path(t) / "h.bin")
+            except OSError:
+                pass
+            else:
+                with self.assertRaises(OSError):
+                    studio.open_nofollow_read(f, os.lstat(f))  # two names
+            link = Path(t) / "l.bin"
+            try:
+                os.symlink(other, link)
+            except (OSError, NotImplementedError):
+                return
+            with self.assertRaises(OSError):
+                studio.open_nofollow_read(link, os.lstat(other))
+            with self.assertRaises(OSError):
+                studio.create_exclusive(link)
 
 
 if __name__ == "__main__":
