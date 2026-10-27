@@ -24,7 +24,16 @@
       "purpose": "Validate CSV data quality and report issues",
       "triggers": ["audit CSV", "data quality check", "CSV before Power BI"],
       "evals": "evals/data-quality-audit",
-      "model_evaluated": false
+      "model_evaluated": false,
+      "evaluated": {
+        "sprint": "SPR-18",
+        "date": "2026-10-18",
+        "harnesses": {"claude-code": "ran", "codex": "ran", "antigravity": "not_run:headless-no-skill-catalog"},
+        "ab_report": "evals/data-quality-audit/runs/SPR-18/ab-2026-10-18.md",
+        "result": "below-threshold",
+        "batch_sha": "052559619a4c289c0611baf10cc5f2e2b33289d1",
+        "batch_sha_kind": "tree"
+      }
     }
   ]
 }

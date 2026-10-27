@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import ast
 import bisect
+import errno
 import functools
 import hashlib
 import json
@@ -43,6 +44,7 @@ STRICT_OPEN, STRICT_CLOSE = "<!-- studio:strict -->", "<!-- /studio:strict -->"
 CONTENTS_RE = re.compile(r"^##\s+(Table of Contents|Contents|Mục lục)\s*$", re.IGNORECASE)
 MD_LINK_RE = re.compile(r"\[([^\[\]]*)\]\([^()]*\)")  # [text](target) -> text; no nested brackets or parens, so a line of "[" stays linear
 FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+FENCE_OPEN_LIST_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")  # inside a list item a fence may sit deeper than 3 spaces (CommonMark: relative to the item)
 BACKTICK_RUN_RE = re.compile(r"`+")
 URL_RE = re.compile(r"https?://\S+")
 LIST_ITEM_RE = re.compile(r"^\s*([-*+]|\d+[.)])\s")
@@ -66,7 +68,7 @@ SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+")
 SENTENCE_ABBREV_RE = re.compile(r"\b(e\.g|i\.e)\.")
 TRIGGER_RE = re.compile(r"(?i)\b(use when|when to use|used when|for tasks involving)\b")
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-LINK_RE = re.compile(r"\[[^\[\]\n]*\]\(([^()\n]+)\)")  # one line, no nested brackets or parens: linear on hostile input
+LINK_RE = re.compile(r"\[[^\[\]\n]*\]\(((?:[^()\n]|\([^()\n]*\))+)\)")  # one line; the target may hold one level of balanced parens, x(1).md; the two branches start with different characters, so it stays linear
 ABSOLUTE_LINK_RE = re.compile(r"\A[A-Za-z][A-Za-z0-9+.\-]*:")  # a scheme (file:, smb:) or a drive letter (C:)
 FRONT_KEY_RE = re.compile(r"^([a-zA-Z][\w-]*):(?:\s+(.*))?$")
 META_KEY_RE = re.compile(r"^\s{2,}([\w.-]+):(?:\s+(.*))?$")
@@ -80,13 +82,14 @@ TEMPLATE_LANGS = ("en", "vi")
 # (source dir under templates/, mirror dir under skills/skill-creator-studio/assets/)
 TEMPLATE_PAIRS = (("skill-template", "skill-template"), ("skill-template-full", "skill-template-full"))
 PROFILES = ("portable", "opcos")
-DOCTOR_EXCLUDE_PARTS = (".claude/skills", ".agents/skills", ".worktrees", ".claude/worktrees", "node_modules", ".tmp", "__pycache__")
+DOCTOR_EXCLUDE_PARTS = (".claude/skills", ".agents/skills", ".worktrees", ".ads-worktrees", ".claude/worktrees", "node_modules", ".tmp", "__pycache__")
 DOCTOR_PRUNE_SILENT = frozenset({".git", ".venv", ".pytest_cache", ".mypy_cache"})  # never skills, never worth a skipped[] line
 CLOUD_MARKERS = ("OneDrive", "SharePoint")  # --skip-marker adds more: a synced folder need not carry either word
-# FILE_ATTRIBUTE_RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS | OFFLINE | PINNED | UNPINNED: a cloud placeholder, or a file the sync client manages; opening it can start a download
-CLOUD_ATTR_MASK = 0x40000 | 0x400000 | 0x1000 | 0x80000 | 0x100000
+# FILE_ATTRIBUTE_RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS | OFFLINE | UNPINNED: a cloud placeholder; opening it can start a download. PINNED (0x80000) is left out on purpose: a pinned file is already local
+CLOUD_ATTR_MASK = 0x40000 | 0x400000 | 0x1000 | 0x100000
+CLOUD_TAG_MASK, CLOUD_TAG = 0xFFFF0FFF, 0x9000001A  # IO_REPARSE_TAG_CLOUD and its CLOUD_1..CLOUD_F family (the tag's bits 12-15 vary)
 CLOUD_ATTRS_AVAILABLE = os.name == "nt"  # st_file_attributes exists on Windows only
-ST8_ALLOWED_DIRS = frozenset({"references", "scripts", "assets", "agents", "tests"})
+ST8_ALLOWED_DIRS = frozenset({"references", "scripts", "assets", "agents", "tests"})  # a folder name is compared in lower case here and against SKIP_DIRS (evals, tests, tooling folders), which stay quiet
 OPCOS_PROVENANCE_KEYS = frozenset({"source", "source_sha", "base_sha", "rewrite_before_public"})
 CODEX_BODY_MAX_BYTES = 8000  # [codex 0.147]; standards/SOURCE_TRACEABILITY.md A16
 DOCTOR_FAIL_ON = ("error", "warn", "new")
@@ -254,27 +257,62 @@ def _secret_dirs(home: str) -> tuple:
             os.path.join(os.path.normcase(os.path.realpath(home)), ".secret").casefold())
 
 
+def _long_name_text(text: str) -> str:
+    """On Windows, `text` with 8.3 short names (ONEDRI~1) replaced by the long names, for the longest prefix that exists; else `text`.
+    Asks the OS about names only (GetLongPathNameW lists directory entries; it opens no file). Any failure keeps `text`."""
+    if os.name != "nt" or "~" not in text:
+        return text
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        head, tail = text, []
+        while head:
+            size = ctypes.windll.kernel32.GetLongPathNameW(head, buf, len(buf))
+            if 0 < size < len(buf):
+                return os.path.join(buf.value, *reversed(tail)) if tail else buf.value
+            up, name = os.path.split(head)
+            if not name or up == head:
+                break
+            head, tail = up, tail + [name]
+    except (OSError, AttributeError, ImportError, ValueError):
+        pass
+    return text
+
+
 def zone_reason(path, markers=CLOUD_MARKERS) -> str | None:
     """'cloud' for a path naming one of `markers` (OneDrive, SharePoint and any --skip-marker; case-insensitive), 'secret-zone' for ~/.secret
-    or any folder called .secret (any case, any platform), else None. Compares strings only: it never stats, lists or opens `path` (RK15)."""
-    text = os.path.normcase(os.path.abspath(os.fspath(path))).casefold()
-    if any(marker.casefold() in text for marker in markers):
+    or any folder called .secret (any case, any platform), else None. It never stats or opens `path` (RK15). One exception, Windows only: a spelling with an 8.3
+    short name ('~' + digit) is expanded by asking the OS for the long form (GetLongPathNameW), which reads directory entries (names only) of the folders along
+    the path, cloud folders included; nothing is opened and no file content is read."""
+    given = os.path.abspath(os.fspath(path))
+    texts = [os.path.normcase(given).casefold()]
+    long_form = os.path.normcase(_long_name_text(given)).casefold()
+    if long_form != texts[0]:
+        texts.append(long_form)  # an 8.3 spelling (ONEDRI~1) hides the folder's real name from a string test
+    if any(marker.casefold() in text for text in texts for marker in markers):
         return "cloud"
-    if ".secret" in text.split(os.sep):
+    if any(".secret" in text.split(os.sep) for text in texts):
         return "secret-zone"
     try:
         secrets = _secret_dirs(str(Path.home()))
     except (RuntimeError, KeyError, OSError):
         return None
-    return "secret-zone" if any(text == s or text.startswith(s + os.sep) for s in secrets) else None
+    return "secret-zone" if any(text == s or text.startswith(s + os.sep) for text in texts for s in secrets) else None
+
+
+def _stat_is_cloud(info) -> bool:
+    """Cloud attribute bits, or a cloud reparse tag (st_reparse_tag, Python 3.8+ on Windows). Reads the stat result only, never the file."""
+    if getattr(info, "st_file_attributes", 0) & CLOUD_ATTR_MASK:
+        return True
+    return (getattr(info, "st_reparse_tag", 0) & CLOUD_TAG_MASK) == CLOUD_TAG
 
 
 def entry_is_cloud(entry) -> bool:
-    """True when a directory entry carries Windows cloud attributes. DirEntry.stat(follow_symlinks=False) reads the listing, not the file."""
+    """True when a directory entry carries Windows cloud attributes or a cloud reparse tag. DirEntry.stat(follow_symlinks=False) reads the listing, not the file."""
     if not CLOUD_ATTRS_AVAILABLE:
         return False
     try:
-        return bool(getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0) & CLOUD_ATTR_MASK)
+        return _stat_is_cloud(entry.stat(follow_symlinks=False))
     except OSError:
         return False
 
@@ -284,7 +322,7 @@ def path_is_cloud(path) -> bool:
     if not CLOUD_ATTRS_AVAILABLE:
         return False
     try:
-        return bool(getattr(os.lstat(path), "st_file_attributes", 0) & CLOUD_ATTR_MASK)
+        return _stat_is_cloud(os.lstat(path))
     except OSError:
         return False
 
@@ -508,21 +546,113 @@ def secret_file_name(name: str) -> bool:
     return is_sensitive_name(name) or name.lower() in REJECT_NAMES
 
 
+WIN_DEVICE_NAMES = frozenset(["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$"]
+                             + ["COM%d" % n for n in range(1, 10)] + ["LPT%d" % n for n in range(1, 10)]
+                             + ["COM\u00b9", "COM\u00b2", "COM\u00b3", "LPT\u00b9", "LPT\u00b2", "LPT\u00b3"])
+WIN_NAME_CODES = {"stream": "EX4", "trailing": "EX9", "device": "EX10", "short": "EX11"}  # kind -> EX code; kinds are the first word of the reason
+SHORT_NAME_RE = re.compile(r"~[0-9]")
+
+
+def unsafe_windows_name(component: str) -> str | None:
+    """Why one path component is dangerous on Windows (whatever OS runs this), or None. The reason starts with its kind (see WIN_NAME_CODES):
+    'stream' (a ':'), 'trailing' (ends with a dot or a space: Windows drops it, so 'auth.json.' IS auth.json), 'device' (CON, NUL, COM1, CONIN$...
+    with or without an extension, any case), 'short' (8.3 alias such as AUTH~1.JSO). '.' and '..' are not judged here."""
+    if component in ("", ".", ".."):
+        return None
+    if ":" in component:
+        return "stream: '%s' contains ':' (drive letter or NTFS stream)" % component
+    if component[-1] in ". ":
+        return "trailing: '%s' ends with a dot or a space (Windows strips it, so it names another file)" % component
+    if component.split(".", 1)[0].rstrip(" ").upper() in WIN_DEVICE_NAMES:
+        return "device: '%s' is a reserved Windows device name" % component
+    if SHORT_NAME_RE.search(component):
+        return "short: '%s' looks like an 8.3 short name ('~' + digit), which can stand for a secret file" % component
+    return None
+
+
+class UnsafeOpen(OSError):
+    """A file or folder is not the one that was checked (link, second hard link, swapped identity). `code` is the EX code to report."""
+
+    def __init__(self, message: str, code: str = "EX13"):
+        super().__init__(message)
+        self.code = code
+
+
+def open_nofollow_read(path, expect_stat=None, single_link: bool = True):
+    """Open `path` for binary reading without following a link; return the file object. POSIX: O_NOFOLLOW. Windows (no O_NOFOLLOW): open, then compare
+    (st_dev, st_ino) of the open handle with `expect_stat` (the lstat taken when the file was checked). Both: the handle must be a regular file and,
+    with `single_link`, have exactly one name. Any mismatch raises UnsafeOpen. Windows residue: the open itself already follows a reparse point
+    before the comparison (see README, "Rủi ro còn lại")."""
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, getattr(errno, "EMLINK", -1)):
+            raise UnsafeOpen("source is a symlink: %s" % path) from exc
+        raise
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise UnsafeOpen("source is not a regular file: %s" % path)
+        if expect_stat is not None and (info.st_dev, info.st_ino) != (expect_stat.st_dev, expect_stat.st_ino):
+            raise UnsafeOpen("source changed between check and copy: %s" % path)
+        if single_link and info.st_nlink != 1:
+            raise UnsafeOpen("source has %d names (hard link): %s" % (info.st_nlink, path))
+        return os.fdopen(fd, "rb")
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
+
+
+def create_exclusive(path):
+    """Create `path` for binary writing, failing (FileExistsError) when anything, a link included, is already there; never writes through a link."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    if os.path.lexists(path):  # Windows has no O_NOFOLLOW and CREATE_NEW follows a dangling symlink: a name that is there at all, a link included, is refused first
+        raise FileExistsError(errno.EEXIST, "already exists (a link counts)", os.fspath(path))
+    fd = os.open(path, flags, 0o666)
+    try:
+        opened, named = os.fstat(fd), os.lstat(path)  # the handle must be the very file the name holds now, not a link's target
+        if stat.S_ISLNK(named.st_mode) or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino):
+            raise UnsafeOpen("created file is not the named path (link raced in): %s" % path)
+        return os.fdopen(fd, "wb")
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
+
+
+def link_in_chain(path, stop):
+    """The first link/junction among `path` and its parents up to and including `stop` (all of them when `stop` is not above `path`), else None."""
+    current, stop = Path(path), Path(stop)
+    while True:
+        if is_link(current):
+            return current
+        if current == stop or current.parent == current:
+            return None
+        current = current.parent
+
+
 def zone_named(name: str, markers=CLOUD_MARKERS) -> bool:
     """A single folder name that is a cloud/secret zone by itself (.secret, or one containing a marker such as OneDrive/SharePoint)."""
     low = name.casefold()
     return low == ".secret" or any(marker.casefold() in low for marker in markers)
 
 
-def walk_files(base: Path, markers=CLOUD_MARKERS, max_files: int | None = None, max_depth: int | None = None) -> tuple[list[Path], set, set, set, bool]:
+def walk_files(base: Path, markers=CLOUD_MARKERS, max_files: int | None = None, max_depth: int | None = None, skip_names=()) -> tuple[list[Path], set, set, set, bool]:
     """(every file and folder under `base`, sorted; the links, the real folders and the cloud placeholders the listing itself reports; cut short).
     A symlink or junction (any reparse point) is listed as a link and never entered, a folder named like a cloud/secret zone and
     anything carrying cloud attributes are listed but never entered or opened, and nothing else is stat-ed per entry except folders about to be entered.
     The walk stops after `max_files` entries (default DOCTOR_MAX_FILES_PER_SKILL) and does not enter folders `max_depth` levels down
-    (default DOCTOR_MAX_SKILL_DEPTH); either sets the last value, True."""
+    (default DOCTOR_MAX_SKILL_DEPTH); either sets the last value, True. An entry whose name is in `skip_names` (letter case ignored) is left out unlisted and unentered."""
     max_files = DOCTOR_MAX_FILES_PER_SKILL if max_files is None else max_files
     max_depth = DOCTOR_MAX_SKILL_DEPTH if max_depth is None else max_depth
     found, links, dirs, cloud, stack, cut = [], set(), set(), set(), [(base, 0)], False
+    skip_names = {name.casefold() for name in skip_names}  # Evals/ and TESTS/ are the same folder as evals/ and tests/ on Windows and macOS
     while stack and not cut:
         current, depth = stack.pop()
         try:
@@ -531,6 +661,8 @@ def walk_files(base: Path, markers=CLOUD_MARKERS, max_files: int | None = None, 
         except OSError:
             continue
         for entry in entries:
+            if entry.name.casefold() in skip_names:
+                continue
             if len(found) >= max_files:
                 cut = True
                 break
@@ -627,59 +759,73 @@ def export_eval_dirs(eval_dir: Path) -> list[Path]:
     return [eval_dir.resolve().parent] + [root / "evals" for root in (repo_root(here), repo_root(Path.cwd())) if root]
 
 
-def export_fixture_refusal(eval_dir: Path, relative: str) -> str:
-    """Why a fixture path from cases.json must not be exported, or "" when it may be. Reads names and link/cloud metadata (lstat) only: it never opens,
+def export_fixture_check(eval_dir: Path, relative: str) -> tuple[str, str]:
+    """(EX code, why) a fixture path from cases.json must not be exported, or ("", "") when it may be. Reads names and link/cloud metadata (lstat) only: it never opens,
     stats-through or follows the fixture itself, so a secret, a cloud placeholder or a link target is not touched before the answer (RK15)."""
     posix = relative.replace("\\", "/")
     parts = [x for x in posix.split("/")]
     if not posix or posix.startswith("/") or ":" in posix or any(x in ("", ".", "..") for x in parts):  # ':' also covers drive letters and NTFS streams (a.csv:hid)
-        return "unsafe fixture path '%s' (must be a plain relative path inside the eval folder, without ':')" % relative
+        return "EX4", "unsafe fixture path '%s' (must be a plain relative path inside the eval folder, without ':')" % relative
+    for part in parts:
+        bad_name = unsafe_windows_name(part)
+        if bad_name:
+            return WIN_NAME_CODES[bad_name.split(":", 1)[0]], "fixture '%s' has a Windows-dangerous name (%s); refusing to copy it" % (relative, bad_name.split(": ", 1)[1])
     for part in parts:
         if secret_file_name(part):
-            return "fixture '%s' has a secret or credential name ('%s': .env*, *.credentials.json, auth.json, *.pem, *.key, secrets.json...); refusing to copy it" % (relative, part)
+            return "EX4", "fixture '%s' has a secret or credential name ('%s': .env*, *.credentials.json, auth.json, *.pem, *.key, secrets.json...); refusing to copy it" % (relative, part)
         if zone_named(part):
-            return "fixture '%s' sits in a folder named like a secret or cloud-synced zone ('%s'); refusing to copy it" % (relative, part)
+            return "EX4", "fixture '%s' sits in a folder named like a secret or cloud-synced zone ('%s'); refusing to copy it" % (relative, part)
     if zone_reason(eval_dir / relative):
-        return "fixture '%s' is inside a secret or cloud-synced folder; refusing to copy it" % relative
+        return "EX4", "fixture '%s' is inside a secret or cloud-synced folder; refusing to copy it" % relative
     current = eval_dir
     for part in parts:
         current = current / part
         if is_link(current):
-            return "fixture '%s' goes through a symlink or junction; refusing to copy it" % relative
+            return "EX4", "fixture '%s' goes through a symlink or junction; refusing to copy it" % relative
         if path_is_cloud(current):
-            return "fixture '%s' is a cloud placeholder; refusing to copy it" % relative
+            return "EX4", "fixture '%s' is a cloud placeholder; refusing to copy it" % relative
     if zone_reason(Path(os.path.realpath(current.parent)) / parts[-1]):
-        return "fixture '%s' resolves into a secret or cloud-synced folder; refusing to copy it" % relative
+        return "EX4", "fixture '%s' resolves into a secret or cloud-synced folder; refusing to copy it" % relative
     try:
         info = os.lstat(current)
     except OSError:
-        return ""  # missing: reported by the caller
+        return "", ""  # missing: reported by the caller
     if stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
-        return "fixture '%s' is a hard link (%d names for one file); refusing to copy it" % (relative, info.st_nlink)
-    return ""
+        return "EX4", "fixture '%s' is a hard link (%d names for one file); refusing to copy it" % (relative, info.st_nlink)
+    return "", ""
 
 
-def export_eval_refusal(eval_dir: Path) -> str:
+def export_fixture_refusal(eval_dir: Path, relative: str) -> str:
+    """The message of export_fixture_check, or "" when the fixture may be exported."""
+    return export_fixture_check(eval_dir, relative)[1]
+
+
+def export_eval_check(eval_dir: Path) -> tuple[str, str]:
     """The first reason any fixture named in cases.json is refused (export_fixture_refusal), checked BEFORE check_evals stats a single fixture. An eval folder
     inside a secret or cloud-synced zone is refused without reading cases.json. Unreadable or malformed JSON gives "" so that check_evals reports it (EV1)."""
     if zone_reason(eval_dir):
-        return "eval folder is inside a secret or cloud-synced folder; refusing to read or export it"
+        return "EX4", "eval folder is inside a secret or cloud-synced folder; refusing to read or export it"
     try:
         cases = json.loads((eval_dir / "cases.json").read_text(encoding="utf-8"))["cases"]
         listed = [c["fixtures"] for c in cases if isinstance(c, dict) and isinstance(c.get("fixtures"), list)]
     except (ValueError, OSError, KeyError, TypeError):
-        return ""
+        return "", ""
     for relative in (x for fixtures in listed for x in fixtures if isinstance(x, str)):
-        problem = export_fixture_refusal(eval_dir, relative)
-        if problem:
-            return problem
-    return ""
+        found = export_fixture_check(eval_dir, relative)
+        if found[1]:
+            return found
+    return "", ""
+
+
+def export_eval_refusal(eval_dir: Path) -> str:
+    """The message of export_eval_check, or "" when no fixture is refused."""
+    return export_eval_check(eval_dir)[1]
 
 
 def export_fixture_source(eval_dir: Path, relative: str) -> tuple[Path | None, list[str], str]:
     """Resolve a fixture path from cases.json to (source, export-name parts, problem). Only plain relative paths inside eval_dir, no links,
     no secret/credential names, nothing in a secret or cloud-synced zone (export_fixture_refusal)."""
-    problem = export_fixture_refusal(eval_dir, relative)
+    problem = export_fixture_check(eval_dir, relative)[1]
     if problem:
         return None, [], problem
     parts = relative.replace("\\", "/").split("/")
@@ -693,7 +839,7 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     """Write <out_root>/<skill_name>/evals/evals.json (agentskills schema, SPEC 9.6) plus evals/files/ from evals/<skill>/cases.json.
 
     Returns (exit code, findings, {"exported", "excluded_negative", "path"}). 2 = destination under skills/ or an evals root (EX1);
-    1 = refused before any write (EV*, EX2-EX7; EX4 also covers a fixture with a secret/credential name, in a secret or cloud-synced zone, behind a link or a hard link, decided from names and lstat before any fixture is opened or stat-ed) or a write error (EX8). On EX8 the files this run created are removed again (empty folders may remain);
+    1 = refused before any write (EV*, EX2-EX7, EX9-EX12; EX4 also covers a fixture with a secret/credential name, in a secret or cloud-synced zone, behind a link or a hard link, decided from names and lstat before any fixture is opened or stat-ed) or a write error (EX8; EX13 = a source changed between check and copy; EX6 also covers a parent swapped for a link after mkdir). On EX8 the files this run created are removed again (empty folders may remain);
     a file replaced under --force is not restored. Only the positive cases (should_trigger true) are exported; nothing else is deleted,
     and --force only overwrites the files this function generates."""
     eval_dir, out_root = Path(eval_dir), Path(out_root)
@@ -709,9 +855,9 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
         return refuse(2, "EX1", "export destination must not be under evals/ (frozen test data; the export would change the eval it came from): %s" % out_root, out_root)
     if not EXPORT_NAME_RE.match(skill_name or ""):
         return refuse(1, "EX2", "skill name '%s' is not a plain lowercase-hyphen name" % skill_name)
-    problem = export_eval_refusal(eval_dir)  # names, zones and links first: check_evals below stats every fixture
+    ident, problem = export_eval_check(eval_dir)  # names, zones and links first: check_evals below stats every fixture
     if problem:
-        return refuse(1, "EX4", problem, eval_dir / "cases.json")
+        return refuse(1, ident, problem, eval_dir / "cases.json")
     problems = [x for x in check_evals(eval_dir) if x["level"] == "ERROR"]
     if problems:
         return 1, problems, stats
@@ -723,7 +869,8 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     if data.get("status") == "draft" or any("STUDIO-DRAFT" in "%s %s" % (c.get("prompt", ""), " ".join(map(str, c.get("expected_behaviors", [])))) for c in cases):
         return refuse(1, "EX3", "eval is still a draft (status 'draft' or STUDIO-DRAFT text); write real cases before exporting", eval_dir / "cases.json")
     positive = [c for c in cases if c["should_trigger"]]
-    sources: dict[str, tuple[str, Path]] = {}  # NFC-casefolded name -> (name as exported, source file)
+    sources: dict[str, tuple[str, Path]] = {}  # NFC-casefolded name -> (name as exported: NFC, case kept; source file)
+    checked: dict[Path, os.stat_result] = {}  # source -> lstat taken when it was checked; the copy re-proves this identity on the open handle
     evals = []
     for number, case in enumerate(positive, 1):
         names = []
@@ -731,14 +878,22 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
             source, parts, problem = export_fixture_source(eval_dir, relative)
             if source is None:
                 return refuse(1, "EX4", problem, eval_dir / "cases.json")
-            name = "/".join(parts)
-            key = unicodedata.normalize("NFC", name).casefold()  # a.csv and A.csv are one file on Windows/macOS disks
+            try:
+                checked.setdefault(source, os.lstat(source))
+            except OSError as exc:
+                return refuse(1, "EX4", "cannot inspect fixture '%s': %s" % (relative, exc), eval_dir / "cases.json")
+            name = unicodedata.normalize("NFC", "/".join(parts))  # written to disk and to evals.json as NFC, case kept (Data.csv stays Data.csv)
+            key = name.casefold()  # a.csv and A.csv are one file on Windows/macOS disks; the key is only for the collision check
             seen = sources.get(key)
             if seen and (seen[0] != name or seen[1] != source):
                 return refuse(1, "EX7", "fixture names collide after export (compared ignoring case and Unicode form): '%s' is %s but '%s' is %s" % (seen[0], seen[1], name, source), eval_dir / "cases.json")
             sources[key] = (name, source)
             names.append("evals/files/" + name)
         evals.append({"id": number, "prompt": case["prompt"], "expected_output": "; ".join(case["expected_behaviors"]), "files": names, "assertions": list(case["expected_behaviors"])})
+    for key in sources:
+        for other in sources:
+            if other.startswith(key + "/"):
+                return refuse(1, "EX12", "fixture '%s' is a file but '%s' needs it as a folder; rename one of them" % (sources[key][0], sources[other][0]), eval_dir / "cases.json")
     evals_dir = dest / "evals"
     target = evals_dir / "evals.json"
     copies = {evals_dir / "files" / Path(*name.split("/")): source for name, source in sources.values()}
@@ -748,23 +903,38 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     for t, source in copies.items():
         if t.exists() and source.exists() and os.path.samefile(t, source):
             return refuse(1, "EX6", "export destination is the source fixture itself: %s" % t, t)
-    clash = [x for x in [target] + list(copies) if x.exists()]
+    clash = [x for x in [target] + list(copies) if os.path.lexists(x)]  # a dangling link is a name already taken
     if clash and not force:
         return refuse(1, "EX5", "export file exists: %s; choose another --out or explicitly --force" % clash[0], clash[0])
-    fresh = [x for x in [target] + list(copies) if not x.exists()]
+    fresh = [x for x in [target] + list(copies) if not os.path.lexists(x)]  # only names this run creates are cleaned up again
+    temp_name = ""
     try:
         for t, source in copies.items():
             t.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, t)
+            linked = link_in_chain(t.parent, dest)  # a parent swapped for a junction after the check above would redirect the write
+            if linked:
+                raise UnsafeOpen("export destination goes through a symlink or junction: %s" % linked, "EX6")
+            if t.exists():  # only reachable with --force: replace the file, never write through it
+                t.unlink()
+            with open_nofollow_read(source, checked[source]) as reader, create_exclusive(t) as writer:
+                shutil.copyfileobj(reader, writer)
         evals_dir.mkdir(parents=True, exist_ok=True)
-        with open(target, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n")
+        linked = link_in_chain(evals_dir, dest)
+        if linked:
+            raise UnsafeOpen("export destination goes through a symlink or junction: %s" % linked, "EX6")
+        handle, temp_name = tempfile.mkstemp(prefix=".evals-", suffix=".tmp", dir=str(evals_dir))  # same folder, so os.replace is atomic
+        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as out:
+            out.write(json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n")
+        os.replace(temp_name, target)
+        temp_name = ""
     except OSError as exc:
-        for leftover in fresh:  # a half-written export must not look like a finished one
+        for leftover in fresh + ([Path(temp_name)] if temp_name else []):  # a half-written export must not look like a finished one
             try:
                 leftover.unlink(missing_ok=True)
             except OSError:
                 pass
+        if isinstance(exc, UnsafeOpen):
+            return refuse(1, exc.code, "%s (files created by this run were removed)" % exc, out_root)
         return refuse(1, "EX8", "cannot write export: %s (files created by this run were removed)" % exc, out_root)
     stats.update({"exported": len(evals), "excluded_negative": len(cases) - len(positive), "path": str(target)})
     return 0, [], stats
@@ -804,7 +974,7 @@ def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
             if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), stripped):
                 fence = None
             continue
-        opened = FENCE_OPEN_RE.match(text)
+        opened = (FENCE_OPEN_LIST_RE if list_context else FENCE_OPEN_RE).match(text)
         if opened:
             fence = opened.group(1)
             prev_blank = False
@@ -844,6 +1014,34 @@ def lint_forcing_words(body: str, body_start: int, manifest: Path) -> list:
     return findings
 
 
+def lint_unclosed_comment(body: str, body_start: int, manifest: Path) -> list:
+    """CT11: a `<!--` outside code that no `-->` ever closes hides the rest of the body from the language and forcing-word lints."""
+    fence, list_context, opened_at = None, False, 0
+    for offset, line in enumerate(body.splitlines()):
+        text = unicodedata.normalize("NFC", line)
+        if fence:
+            if re.fullmatch(re.escape(fence[0]) + "{%d,}" % len(fence), text.strip()):
+                fence = None
+            continue
+        if opened_at:
+            closed = text.find("-->")
+            if closed < 0:
+                continue
+            text, opened_at = text[closed + 3:], 0
+        opened = (FENCE_OPEN_LIST_RE if list_context else FENCE_OPEN_RE).match(text)
+        if opened:
+            fence = opened.group(1)
+            continue
+        if text.strip() and not text.startswith(("    ", "\t")):
+            list_context = bool(LIST_ITEM_RE.match(text))
+        rest = strip_html_comments(strip_code_spans(text))
+        if "<!--" in rest:
+            opened_at = body_start + offset + 1
+    if opened_at:
+        return [emit("WARN", "CT11", manifest, opened_at, "HTML comment opened here is never closed with '-->'; the rest of the body is read as comment text (language and SK-14 lints skip it)")]
+    return []
+
+
 def prose_lines(body: str) -> list[tuple[int, str]]:
     """Prose lines of a Markdown body as (1-based line number inside `body`, text); file line = body_start + number.
     Left out: blank lines, fenced and indented code, table rows, lines marked <!-- studio:vi-ok -->, and the lines of a
@@ -863,7 +1061,7 @@ def prose_lines(body: str) -> list[tuple[int, str]]:
                 continue
             text, in_comment = text[closed + 3:], False
             stripped = text.strip()
-        opened = FENCE_OPEN_RE.match(text)
+        opened = (FENCE_OPEN_LIST_RE if list_context else FENCE_OPEN_RE).match(text)
         if opened:
             fence, prev_blank = opened.group(1), False
             continue
@@ -979,15 +1177,26 @@ def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path, fron
             front = manifest.read_text(encoding="utf-8").splitlines()[:body_start]
         except (OSError, UnicodeError):
             front = []
-    first_line: dict = {}  # key -> first frontmatter line that starts with "key:", built once (a scan per key was quadratic)
+    first_line: dict = {}  # top-level key -> its frontmatter line; nested[parent][key] -> the line under that parent (built once, a scan per key was quadratic)
+    nested: dict = {}
+    parent = None
     for number, raw in enumerate(front, 1):
         stripped = raw.lstrip()
         colon = stripped.find(":")
-        if colon > 0:
-            first_line.setdefault(stripped[:colon], number)
+        if colon <= 0:
+            continue
+        key = stripped[:colon]
+        if raw[:1] not in (" ", "\t"):
+            first_line.setdefault(key, number)
+            parent = key
+        elif parent is not None:
+            nested.setdefault(parent, {}).setdefault(key, number)
 
     def front_line(label: str, default: int) -> int:
-        return first_line.get(label.rsplit(".", 1)[-1], default)
+        parts = label.split("[")[0].split(".")
+        if len(parts) > 1:  # metadata.k: look under metadata:, not at a root key of the same name
+            return nested.get(parts[0], {}).get(parts[-1], first_line.get(parts[0], default))
+        return first_line.get(parts[0], default)
 
     def accented(value) -> bool:
         return isinstance(value, str) and _vi_counts(strip_html_comments(value))[1] > 0
@@ -1080,7 +1289,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     except UnicodeError:
         return [emit("ERROR", "FM1", manifest, 0, "SKILL.md must be UTF-8 text")]
     if too_big:
-        return [emit("WARN", "SZ1", manifest, 0, "SKILL.md is larger than %d bytes; not read or linted" % max_file_bytes)]
+        return [emit("ERROR", "SZ1", manifest, 0, "SKILL.md is larger than %d bytes; not read or linted, so it cannot pass" % max_file_bytes)]
     claude = target == "claude-code"
     meta, findings, body_start = parse_frontmatter(text, manifest, CLAUDE_CODE_KEYS if claude else frozenset())
     all_lines = text.splitlines()
@@ -1113,13 +1322,13 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     for key in meta:
         if key in PORTABLE_KEYS:
             continue
+        at = next((i + 1 for i, x in enumerate(all_lines[:body_start]) if x.startswith(key + ":")), 2)
         if claude and key in CLAUDE_CODE_KEYS:
-            at = next((i + 1 for i, x in enumerate(all_lines[:body_start]) if x.startswith(key + ":")), 2)
             findings.append(emit("WARN", "FM6", manifest, at, "frontmatter key '%s' is Claude Code only; claude.ai and the API reject it with a hard error" % key))
         elif profile == "opcos" and key in OPCOS_PROVENANCE_KEYS:
-            findings.append(emit("WARN", "FM4", manifest, 2, "provenance key '%s' is an OpcOS convention, not portable; move it under metadata before publishing" % key))
+            findings.append(emit("WARN", "FM4", manifest, at, "provenance key '%s' is an OpcOS convention, not portable; move it under metadata before publishing" % key))
         else:
-            findings.append(emit("ERROR", "FM4", manifest, 2, "unknown frontmatter key '%s' for target %s; allowed keys: %s; use metadata or a target adapter" % (key, target, ", ".join(allowed))))
+            findings.append(emit("ERROR", "FM4", manifest, at, "unknown frontmatter key '%s' for target %s; allowed keys: %s; use metadata or a target adapter" % (key, target, ", ".join(allowed))))
     if profile == "opcos" and not (isinstance(meta.get("metadata"), dict) and any(k.startswith("opcos_") for k in meta["metadata"])):
         findings.append(emit("NOTE", "MD1", manifest, 2, "no metadata.opcos_* key; OpcOS registry fields are optional"))
     extra = frontmatter_extra_len(all_lines, body_start)
@@ -1139,6 +1348,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     if tokens > BODY_TOKEN_MAX:
         findings.append(emit("WARN", "ST2", manifest, body_start + 1, "Skill body is about %d tokens (estimate, not a tokenizer); keep it under %d and move detail to references" % (tokens, BODY_TOKEN_MAX)))
     findings.extend(lint_forcing_words(body, body_start, manifest))
+    findings.extend(lint_unclosed_comment(body, body_start, manifest))
     findings.extend(lint_contents(manifest, body.splitlines(), "skill_body", body_start))
     findings.extend(lint_vietnamese(meta, body, body_start, manifest, all_lines[:body_start]))
     if re.search(r"<!--\s*STUDIO-DRAFT|\[FILL:|\bTODO\b|\bFIXME\b", body, re.IGNORECASE):
@@ -1225,7 +1435,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
             findings.append(emit("WARN", "SZ2", p, 0, "cloud placeholder (OneDrive/SharePoint attributes) inside the skill; not opened or listed"))
         elif p in tree_links:
             findings.append(emit("ERROR", "SEC", p, 0, "symlinks are not portable/safe in distributed skill packages"))
-        elif (p.parent == folder and p.name not in ST8_ALLOWED_DIRS and p.name not in SKIP_DIRS and not is_sensitive_name(p.name)
+        elif (p.parent == folder and p.name.lower() not in ST8_ALLOWED_DIRS and p.name.lower() not in SKIP_DIRS and not is_sensitive_name(p.name)
               and p in tree_dirs):
             findings.append(emit("WARN", "ST8", p, 0, "folder '%s' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill" % p.name))
     if eval_root is None:
@@ -1283,6 +1493,10 @@ def cmd_new(args) -> int:
     name = args.name
     if not NAME_RE.fullmatch(name) or len(name) > 64:
         print("ERROR: name must be lowercase kebab-case <=64 chars", file=sys.stderr)
+        return 2
+    word = next((w for w in RESERVED_NAME_WORDS if w in name), None)
+    if word:
+        print("ERROR: name must not contain the reserved word '%s' (FM5)" % word, file=sys.stderr)
         return 2
     if not args.description or len(args.description) > 1024 or "\n" in args.description:
         print("ERROR: --description is required, single line and <=1024 characters", file=sys.stderr)
@@ -1424,30 +1638,48 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
     if manifest.is_file() and re.search(r"<!--\s*STUDIO-DRAFT", manifest.read_text(encoding="utf-8")):
         findings.append(emit("ERROR", "PACK", manifest, 0, "cannot package an unfinished template: remove draft marker after authoring"))
     files = []
-    for p in folder.rglob("*"):
-        rel = p.relative_to(folder)
-        if any(part in SKIP_DIRS for part in rel.parts):
+    paths, links, dirs, cloud, cut = walk_files(folder, skip_names=SKIP_DIRS)  # no rglob: links and cloud placeholders are listed, never entered or opened
+    if cut:
+        findings.append(emit("ERROR", "PACK", folder, 0, "skill tree is over the scan limit (%d entries or %d folder levels); nothing is packaged short, trim the tree"
+                             % (DOCTOR_MAX_FILES_PER_SKILL, DOCTOR_MAX_SKILL_DEPTH)))
+    for p in paths:
+        if p in cloud:
+            findings.append(emit("ERROR", "PACK", p, 0, "cloud placeholder; not read, not packaged"))
+        elif p in links:
+            findings.append(emit("ERROR", "PACK", p, 0, "symlink or junction; not followed, not packaged"))
+        elif p in dirs:
+            if zone_named(p.name):
+                findings.append(emit("ERROR", "PACK", p, 0, "folder named like a cloud/secret zone; not entered, not packaged"))
+        else:
+            files.append(p)
+    kept = []
+    for p in files:
+        if secret_file_name(p.name) or p.suffix.lower() in REJECT_SUFFIXES:  # the same name rule as --export, any letter case
+            findings.append(emit("ERROR", "SEC", p, 0, "secret/credential-like file must not be shipped; remove it from the Skill (nothing is packaged or installed)"))
             continue
-        if p.is_symlink():
-            findings.append(emit("ERROR", "SEC", p, 0, "cannot package symlink"))
+        try:
+            info = os.lstat(p)
+        except OSError as exc:
+            findings.append(emit("ERROR", "PACK", p, 0, "cannot stat: %s" % (exc.strerror or type(exc).__name__)))
             continue
-        if not p.is_file():
+        if not stat.S_ISREG(info.st_mode):
             continue
-        if p.name in REJECT_NAMES or p.name.startswith(".env.") or p.suffix.lower() in REJECT_SUFFIXES:
-            findings.append(emit("ERROR", "SEC", p, 0, "secret/credential-like file must not be shipped"))
-            continue
-        if p.stat().st_size > 25 * 1024 * 1024:
+        if info.st_size > 25 * 1024 * 1024:
             findings.append(emit("ERROR", "PACK", p, 0, "file exceeds 25 MB; review before shipping"))
             continue
         if p.suffix.lower() in {".md", ".py", ".txt", ".json", ".yaml", ".yml", ".sh"}:
             try:
-                raw = p.read_text(encoding="utf-8")
+                with open_nofollow_read(p, info) as handle:
+                    raw = handle.read().decode("utf-8")
+            except UnsafeOpen as exc:
+                findings.append(emit("ERROR", "PACK", p, 0, "not packaged: %s" % exc))
+                continue
             except (OSError, UnicodeError):
                 raw = ""
             if ("-----BEGIN " + "PRIVATE KEY-----") in raw or re.search(r"\b(?:sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16})\b", raw):
                 findings.append(emit("ERROR", "SEC", p, 0, "possible hardcoded secret in package"))
-        files.append(p)
-    return files, findings
+        kept.append(p)
+    return kept, findings
 
 
 def cmd_package(args) -> int:
@@ -1466,12 +1698,55 @@ def cmd_package(args) -> int:
     if target.exists() and not args.force:
         print("ERROR: package exists: %s; choose another --out or explicitly --force" % target, file=sys.stderr)
         return 1
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in files:
-            zf.write(p, arcname=str(Path(folder.name) / p.relative_to(folder)))
+    try:
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in files:
+                arcname = str(Path(folder.name) / p.relative_to(folder))
+                with open_nofollow_read(p, os.lstat(p)) as handle:  # the file that was checked, never a link put there since
+                    data = handle.read()
+                zf.writestr(zipfile.ZipInfo.from_file(p, arcname), data, compress_type=zipfile.ZIP_DEFLATED)
+    except UnsafeOpen as exc:
+        _remove_quietly(target)
+        print("ERROR: PACK: %s; nothing was packaged" % exc, file=sys.stderr)
+        return 1
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
-    print("Packaged %d runtime files -> %s\nSHA256: %s\nExcluded: evals/, tests/, secrets, caches. Model evaluation status is unchanged." % (len(files), target, digest))
+    print("Packaged %d runtime files -> %s\nSHA256: %s\nExcluded: evals/, tests/ and cache folders (any letter case); a secret-named file stops the package instead. Model evaluation status is unchanged." % (len(files), target, digest))
     return 0
+
+
+def root_link_in_chain(skill_root: Path, stop: Path):
+    """First link/junction among `skill_root` and its parents strictly below `stop` (HOME or the workspace itself is not checked), else None."""
+    current, stop_norm = Path(skill_root), os.path.normcase(os.path.abspath(stop))
+    while os.path.normcase(os.path.abspath(current)) != stop_norm and current.parent != current:
+        if is_link(current):
+            return current
+        current = current.parent
+    return None
+
+
+class MoveAsideError(OSError):
+    """The copy at `dst` is complete but the old folder could not be fully removed: it may be partly gone. The message names the copy."""
+
+
+def move_aside(src: Path, dst: Path) -> None:
+    """Move the folder `src` to `dst` (same device: rename). Only when the rename fails because `dst` is on another device (EXDEV, Windows error 17) is the
+    folder copied first and `src` deleted after; any other rename failure (a locked file, a permission) is raised at once with `src` untouched. A failed copy
+    removes the half-made `dst` and re-raises, so `src` stays whole; a failed delete after a good copy raises MoveAsideError."""
+    try:
+        os.rename(src, dst)
+        return
+    except OSError as exc:
+        if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != 17:
+            raise
+    try:
+        shutil.copytree(src, dst, symlinks=True)
+    except BaseException:
+        shutil.rmtree(dst, ignore_errors=True)
+        raise
+    try:
+        shutil.rmtree(src)
+    except OSError as exc:
+        raise MoveAsideError(exc.errno, "the backup is complete at %s but the old Skill could not be fully removed (%s); it may be partly deleted" % (dst, exc.strerror or type(exc).__name__)) from exc
 
 
 def cmd_install(args) -> int:
@@ -1488,6 +1763,7 @@ def cmd_install(args) -> int:
         if not skill_root.parent.is_dir():
             print("ERROR: parent directory not found: %s; nothing was created" % skill_root.parent, file=sys.stderr)
             return 2
+        boundary = Path.home()
     files, findings = ensure_distributable(folder)
     if any(f["level"] == "ERROR" for f in findings):
         print_findings(folder, findings)
@@ -1499,31 +1775,69 @@ def cmd_install(args) -> int:
             print("ERROR: workspace directory not found: %s" % workspace, file=sys.stderr)
             return 2
         skill_root = workspace / rel
+        boundary = workspace
+    linked = root_link_in_chain(skill_root, boundary)
+    if linked is not None:
+        real = os.path.realpath(skill_root)
+        if not args.allow_root_link:
+            print("ERROR: skill folder %s is behind a link (%s); its real location is %s. Nothing was installed. Re-run with --allow-root-link if that is intended."
+                  % (skill_root, linked, real), file=sys.stderr)
+            return 2
+        print("Note: skill folder %s is behind a link (%s); installing into its real location %s" % (skill_root, linked, real))
     dest = skill_root / folder.name
     if dest.resolve() == folder or valid_resolved_under(dest, folder):
         print("ERROR: destination is the source Skill or nested under it; refusing self-overwrite", file=sys.stderr)
         return 1
+    if os.path.lexists(dest) and is_link(dest):  # before exists(): a dangling link is not "there" for exists() and would crash mkdir
+        print("ERROR: symlink destination refused", file=sys.stderr)
+        return 1
     if dest.exists() and not args.force:
         print("ERROR: %s exists; no changes made. Use --force only if you intend replacement." % dest, file=sys.stderr)
         return 1
+    backup = None
     if dest.exists() and args.force:
-        # Refuse symlink/junction targets and back up rather than silently erasing.
-        if is_link(dest):
-            print("ERROR: symlink destination refused", file=sys.stderr)
-            return 1
+        # Back up rather than silently erase; the backup lives next to the skill root, not in it, so the agent never loads it.
         from datetime import datetime, timezone
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        backup = dest.with_name(dest.name + ".backup-" + stamp)
-        if backup.exists():
+        backups_dir = skill_root.parent / ".skill-studio-backups"
+        if os.path.lexists(backups_dir) and is_link(backups_dir):
+            print("ERROR: backup folder %s is a link; nothing was changed" % backups_dir, file=sys.stderr)
+            return 1
+        backup = backups_dir / (dest.name + "-" + stamp)
+        if os.path.lexists(backup):
             print("ERROR: backup collision", file=sys.stderr)
             return 1
-        dest.rename(backup)
+        try:
+            backups_dir.mkdir(exist_ok=True)
+            move_aside(dest, backup)
+        except MoveAsideError as exc:
+            print("ERROR: %s. Nothing new was installed; restore from the backup if the Skill folder is incomplete." % exc.strerror, file=sys.stderr)
+            return 1
+        except OSError as exc:
+            print("ERROR: could not back up the existing installation (%s); the old Skill was left in place" % (exc.strerror or type(exc).__name__), file=sys.stderr)
+            return 1
         print("Existing installation backed up to %s" % backup)
     dest.mkdir(parents=True, exist_ok=False)  # creates skill_root itself, never the agent's config parent
-    for source in files:
-        destination = dest / source.relative_to(folder)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+    try:
+        for source in files:
+            destination = dest / source.relative_to(folder)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            inner = link_in_chain(destination.parent, dest)
+            if inner is not None:
+                raise UnsafeOpen("link inside the destination: %s" % inner)
+            info = os.lstat(source)
+            with open_nofollow_read(source, info) as src_handle, create_exclusive(destination) as dst_handle:
+                shutil.copyfileobj(src_handle, dst_handle)
+            os.chmod(destination, stat.S_IMODE(info.st_mode))
+    except (UnsafeOpen, OSError) as exc:
+        shutil.rmtree(dest, ignore_errors=True)
+        if backup is not None:
+            try:
+                os.rename(backup, dest)
+            except OSError:
+                print("ERROR: the old Skill is kept at %s" % backup, file=sys.stderr)
+        print("ERROR: install stopped: %s; no partial Skill was left" % exc, file=sys.stderr)
+        return 1
     print("Installed %s for %s at %s. This copies files; it does not run the agent or its scripts." % (folder.name, args.agent, dest))
     return 0
 
@@ -1565,8 +1879,16 @@ def _is_excluded(parts: tuple, include_cache: bool) -> bool:
     return not include_cache and "cache" in low[-1]
 
 
+def _is_dir_quiet(path: Path) -> bool:
+    """Path.is_dir() that also treats an OSError the stdlib does not swallow (ENAMETOOLONG on POSIX) as 'not a directory'."""
+    try:
+        return path.is_dir()
+    except OSError:
+        return False
+
+
 def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, skip_markers: tuple = ()) -> list[Path]:
-    """Absolute root paths from --roots (`;` separated) and --roots-file (one per line, `#` comments).
+    """Absolute root paths from --roots (`;` separated) and --roots-file (one per line; `#` starts a comment, also after a path).
     Without either, the repo's skills/ is the root; outside the repo that is an error. A path in a cloud or secret zone is
     returned without being looked at (doctor reports it as skipped); any other root must be an existing directory and not too
     broad (a drive root, the home folder or a folder above it). A --roots-file with a secret-looking name is refused unread, and
@@ -1584,7 +1906,13 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
             raise ValueError("cannot read --roots-file %s: not UTF-8 text" % roots_file)
         except OSError as exc:
             raise ValueError("cannot read --roots-file %s: %s" % (roots_file, exc.strerror or type(exc).__name__))
-        items += [(x.strip(), "--roots-file line %d" % number) for number, x in enumerate(lines, 1) if x.strip() and not x.lstrip().startswith("#")]
+        for number, raw in enumerate(lines, 1):
+            line = raw.strip()
+            comment = re.search(r"(?<=\s)#", line)  # a comment starts at '#' at the line start or after whitespace; 'a#b' stays a path (one linear scan)
+            if comment:
+                line = line[:comment.start()].rstrip()
+            if line and not line.startswith("#"):
+                items.append((line, "--roots-file line %d" % number))
     if not items:
         if repo is None:
             raise ValueError("outside the Studio repository doctor needs --roots or --roots-file")
@@ -1594,7 +1922,7 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
         path = Path(os.path.abspath(os.path.expanduser(item)))
         if root_too_broad(path, markers):
             raise ValueError("root too broad; pass narrower roots (not a drive root, the home folder or a folder above it): %s" % label)
-        if not zone_reason(path, markers) and not path.is_dir():
+        if not zone_reason(path, markers) and not _is_dir_quiet(path):
             raise ValueError("root not found or not a directory: %s" % label)
         found.append(path)
     return found
@@ -1696,21 +2024,39 @@ def _skill_identity(skill: Path, target: str, max_bytes: int | None = None) -> t
     return name, detect_lang("\n".join(text.splitlines()[body_start:]))
 
 
+def _under_roots(path, roots) -> str:
+    """`path` relative to the first of the report's `roots` that holds it (posix, case-folded on Windows), else `path` as written:
+    a baseline taken in another checkout of the same tree still matches."""
+    text = path if isinstance(path, str) else ""
+    for root in roots if isinstance(roots, list) else []:
+        spellings = [str(root).rstrip("/")]
+        try:
+            spellings.append(Path(str(root)).resolve().as_posix().rstrip("/"))  # a root given by an 8.3 or linked name; skills are listed by real path
+        except (OSError, RuntimeError):
+            pass
+        for base in spellings:
+            head, same = text[:len(base) + 1], base + "/"
+            if base and (head.lower() == same.lower() if os.name == "nt" else head == same):
+                return text[len(base) + 1:]
+    return text
+
+
 def _code_counts(report: dict) -> dict:
-    """{(skill path, code): times} over ERROR and WARN findings (a NOTE is information, never "new")."""
+    """{(skill path under its root, code): times} over ERROR and WARN findings (a NOTE is information, never "new")."""
     counts: dict = {}
     for skill in report.get("skills", []):
         for item in skill.get("codes", []):
             if item.get("level") in ("ERROR", "WARN"):
-                key = (skill.get("path"), item.get("code"))
+                key = (_under_roots(skill.get("path"), report.get("roots")), item.get("code"))
                 counts[key] = counts.get(key, 0) + 1
     return counts
 
 
 def diff_baseline(current: dict, baseline: dict) -> list[dict]:
-    """The (skill, code) pairs that occur more often in `current` than in `baseline`."""
+    """The (skill, code) pairs that occur more often in `current` than in `baseline`; skills are matched by their path under the report roots."""
     before = _code_counts(baseline)
-    return [{"path": path, "code": code, "before": before.get((path, code), 0), "after": after}
+    shown = {_under_roots(skill.get("path"), current.get("roots")): skill.get("path") for skill in current.get("skills", [])}
+    return [{"path": shown.get(path, path), "code": code, "before": before.get((path, code), 0), "after": after}
             for (path, code), after in sorted(_code_counts(current).items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1])))
             if after > before.get((path, code), 0)]
 
@@ -1863,10 +2209,15 @@ def cmd_doctor(args) -> int:
         if problem:
             print("ERROR: baseline %s %s" % (args.baseline, problem), file=sys.stderr)
             return 2
-    scanned = iter_skill_dirs(roots, args.include_cache, skip_markers)
     out = None
-    if args.out:
+    if args.out:  # decided by name and by what the file holds before any root is walked; the scanned skills are added after the scan
         out = Path(os.path.abspath(os.path.expanduser(args.out)))
+        problem = _out_problem(out, roots, repo, [], args.include_cache, skip_markers)
+        if problem:
+            print("ERROR: %s" % problem, file=sys.stderr)
+            return 2
+    scanned = iter_skill_dirs(roots, args.include_cache, skip_markers)
+    if out is not None:
         problem = _out_problem(out, roots, repo, scanned[0], args.include_cache, skip_markers)
         if problem:
             print("ERROR: %s" % problem, file=sys.stderr)
@@ -2199,7 +2550,11 @@ def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None
                             skip(child, "cloud")
                             continue
                     if entry.is_symlink() or (is_dir and is_link(child)):
-                        if is_dir or entry.name.lower().endswith(".md"):
+                        try:
+                            to_dir = is_dir or entry.is_dir()  # a POSIX symlink to a folder is not is_dir(follow_symlinks=False): ask what it points at
+                        except OSError:
+                            to_dir = False
+                        if to_dir or entry.name.lower().endswith(".md"):
                             skip(child, "link")
                     elif is_dir:
                         if entry.name in FMT_PRUNE_DIRS or (entry.name == "runs" and "evals" in (x.casefold() for x in child.parts)):
@@ -2246,16 +2601,26 @@ def _write_fixed(path: Path, data: bytes, backup: bool) -> str | None:
     the backup, or None when none was asked for."""
     if not os.access(path, os.W_OK):
         raise PermissionError(13, "file is read-only", os.fspath(path))
+    checked = os.lstat(path)  # the identity every read of `path` below must match (Windows has no O_NOFOLLOW)
     made_backup, temp, handle, done = None, None, None, False
     try:
         if backup:
             stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
             target, count = path.with_name("%s.bak-%s" % (path.name, stamp)), 1
-            while os.path.lexists(target):
-                target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
-                count += 1
-            made_backup = target  # named before the copy, so that a copy that stops half way is removed too
-            shutil.copy2(path, target)
+            while True:
+                try:
+                    sink = create_exclusive(target)  # O_EXCL: a name already there (a link included) is never written through
+                    break
+                except FileExistsError:
+                    target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
+                    count += 1
+            made_backup = target  # set only once the exclusive create has succeeded, so a failure never removes a file we did not make
+            with sink, open_nofollow_read(path, checked, single_link=False) as source:
+                shutil.copyfileobj(source, sink)
+            try:
+                shutil.copystat(path, target)
+            except OSError:
+                pass
         handle, name = tempfile.mkstemp(dir=os.fspath(path.parent), prefix=".%s." % path.name, suffix=".fmt-tmp")
         temp = Path(name)
         out, handle = os.fdopen(handle, "wb"), None
@@ -2316,7 +2681,8 @@ def cmd_fmt(args) -> int:
     results, errors, warnings, changed, backups = [], 0, 0, 0, 0
     for path in files:
         try:
-            raw = path.read_bytes()
+            with open_nofollow_read(path, os.lstat(path), single_link=False) as handle:  # lstat now, so Windows compares the opened handle with the listed file
+                raw = handle.read()
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
             skipped.append({"path": str(path), "reason": "not-utf8"})
@@ -2411,14 +2777,15 @@ def main(argv: list[str] | None = None) -> int:
     where = p.add_mutually_exclusive_group()
     where.add_argument("--workspace", help="project directory (default .)")
     where.add_argument("--user", action="store_true", help="install into the per-user skill folder (antigravity, codex; not claude); the agent's config folder must already exist")
-    p.add_argument("--force", action="store_true", help="back up and replace existing install")
+    p.add_argument("--force", action="store_true", help="back up (to <skill root parent>/.skill-studio-backups/) and replace existing install")
+    p.add_argument("--allow-root-link", action="store_true", help="install even when the skill folder (or a parent below HOME/the workspace) is a symlink or junction; the real target is printed")
     p.set_defaults(func=cmd_install)
     p = sub.add_parser("sync-template", help="sync source template to packaged Skill asset")
     p.add_argument("--check", action="store_true", help="verify byte-identical mirror without modifications")
     p.set_defaults(func=cmd_sync)
     p = sub.add_parser("doctor", help="report-only scan of many skill roots (not Claude Code's /skill-doctor); exit 0 clean, 1 findings, 2 cannot scan")
     p.add_argument("--roots", help="skill roots separated by ';' (default: the repo's skills/; outside the repo --roots or --roots-file is required)")
-    p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment")
+    p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment (at the line start or after whitespace)")
     p.add_argument("--profile", choices=PROFILES, default="portable", help="opcos: a link inside the scanned root is a WARN, provenance keys are WARN, missing metadata.opcos_* is a NOTE")
     p.add_argument("--target", choices=TARGETS, default="portable")
     p.add_argument("--include-cache", action="store_true", help="also scan folders whose name contains 'cache'")

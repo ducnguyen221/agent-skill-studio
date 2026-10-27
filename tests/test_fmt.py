@@ -257,9 +257,8 @@ class FmtMoreTests(unittest.TestCase):
         if os.name == "nt":
             self.assertIn("skipped (link)", out)
         else:
-            # POSIX: a directory symlink whose name does not end in .md is passed over without a report (CO of SPR-33, studio.py ~2201); it is still never followed
-            self.assertIn("0 files", out)
-            self.assertNotIn("linked", out)
+            # POSIX: a directory symlink is reported as `skipped (link)` like a junction (SPR-01 TK3, FR3.2) and still never followed
+            self.assertIn("skipped (link)", out)
         self.assertEqual((real / "SKILL.md").read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"), "nothing written through a link")
         code, out, _ = run("--fix", str(link / "SKILL.md"), root=self.tmp)  # a file reached through a link below the repo root
         self.assertEqual(code, 1, "named directly and not checked: exit 1 ('exit 0' means every file was checked)")
@@ -471,11 +470,12 @@ class FmtRound3Tests(unittest.TestCase):
     def test_fmt_failed_copy_removes_the_half_made_backup(self):
         path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
 
-        def half_copy(source, target, **kwargs):
-            Path(target).write_bytes(b"half")
+        def half_copy(source, target, *args, **kwargs):
+            target.write(b"half")  # the backup is now created exclusively and copied with copyfileobj (SPR-01 TK3)
+            target.flush()
             raise OSError(28, "no space")
 
-        with mock.patch.object(studio.shutil, "copy2", half_copy):
+        with mock.patch.object(studio.shutil, "copyfileobj", half_copy):
             code, _, err = run("--fix", str(path))
         self.assertEqual(code, 2, err)
         self.assertEqual([p.name for p in self.tmp.iterdir()], ["SKILL.md"])
@@ -780,8 +780,8 @@ class FmtExitCodeTests(unittest.TestCase):
         make_dir_link(self, self.tmp / "lnk", real.parent)
         code, out, _ = run("--check", str(self.tmp))
         self.assertEqual(code, 0, out)
-        # POSIX: a directory symlink whose name does not end in .md is passed over without a report (CO of SPR-33, studio.py ~2201); Windows lists it as "link"
-        reasons = ("secret-name", "cloud-or-secret-zone", "link") if os.name == "nt" else ("secret-name", "cloud-or-secret-zone")
+        # FR3.2 (SPR-01): a directory symlink is reported as skipped (link) on every OS, never passed over silently
+        reasons = ("secret-name", "cloud-or-secret-zone", "link")
         for reason in reasons:
             self.assertIn("skipped (%s)" % reason, out)
         report = __import__("json").loads(run("--check", "--json", str(self.tmp))[1])
@@ -790,8 +790,8 @@ class FmtExitCodeTests(unittest.TestCase):
         if os.name != "nt":
             # the real thing it is safe for: the link is not followed, so r.md is read once, by its own path, never as lnk/r.md
             self.assertEqual(report["totals"]["files"], 2, out)
-            self.assertNotIn("lnk", out)
-            self.assertFalse(any("lnk" in str(item) for item in report["files"]), report["files"])
+            self.assertNotIn("lnk/", out)  # reported as a skipped link, never entered
+            self.assertFalse(any("lnk/" in str(item) for item in report["files"]), report["files"])
 
     def test_fmt_json_counts_the_files_that_block_the_exit(self):
         bad = self.tmp / "bad.md"

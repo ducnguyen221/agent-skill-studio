@@ -159,7 +159,7 @@ python3 studio.py doctor --roots "<dir1>;<dir2>" --json
 
 `python studio.py doctor --roots "<dir1>;<dir2>" --json` — report-only scan of many skill roots; exit 0 clean, 1 findings, 2 cannot scan. Not Claude Code's `/skill-doctor`.
 
-`doctor` is built to read only what is safe. It never lists or opens `~/.secret`, a path that names a cloud folder (`OneDrive`, `SharePoint`), a file or folder that Windows marks as a cloud placeholder, or anything behind a symlink or junction; it refuses a root that is a drive root, your home folder or a folder above it, however it is spelled (through a link, an 8.3 name or a `\\?\` prefix; exit 2, `root too broad`). A synced SharePoint folder whose path has neither word is not recognised by name: add `--skip-marker TEXT` (repeatable, case-insensitive, matched anywhere in the path), for example `--skip-marker "KPIM Joint Stock Company"`. A `SKILL.md` or reference above 1,000,000 bytes is not read, and a skill with more than 5,000 files and folders or more than 12 levels is listed only that far (`SZ1`, listed in `skipped` with reason `limit`). `--roots-file` and `--baseline` are checked before they are opened: not a secret-looking name, not in a cloud or secret zone (also through a link or an 8.3 name), not an NTFS stream (`name:stream`); an error about a root line names its line number, never its text. `--out` may sit in a folder the scan skips (such as `.tmp`), never in a scanned skill or root, never under a name like `.env` or `auth.json`, and it overwrites an existing file only when it is empty or an earlier doctor report (a `.json` file that starts with `{"schema"`); `--out secrets.json` or `.claude.json` is refused (exit 2), as is an NTFS stream.
+`doctor` is built to read only what is safe. It never lists or opens `~/.secret`, a path that names a cloud folder (`OneDrive`, `SharePoint`), a file or folder that Windows marks as a cloud placeholder, or anything behind a symlink or junction; it refuses a root that is a drive root, your home folder or a folder above it, however it is spelled (through a link, an 8.3 name or a `\\?\` prefix; exit 2, `root too broad`). A synced SharePoint folder whose path has neither word is not recognised by name: add `--skip-marker TEXT` (repeatable, case-insensitive, matched anywhere in the path), for example `--skip-marker "KPIM Joint Stock Company"`. A reference above 1,000,000 bytes is not read and a skill with more than 5,000 files and folders or more than 12 levels is listed only that far (`SZ1` WARN, listed in `skipped` with reason `limit`); a `SKILL.md` above 1,000,000 bytes is not read either and is an `SZ1` ERROR, so `doctor --fail-on error` exits 1 (a file that was not linted cannot pass). `--roots-file` and `--baseline` are checked before they are opened: not a secret-looking name, not in a cloud or secret zone (also through a link or an 8.3 name), not an NTFS stream (`name:stream`); an error about a root line names its line number, never its text. `--out` may sit in a folder the scan skips (such as `.tmp`), never in a scanned skill or root, never under a name like `.env` or `auth.json`, and it overwrites an existing file only when it is empty or an earlier doctor report (a `.json` file that starts with `{"schema"`); `--out secrets.json` or `.claude.json` is refused (exit 2), as is an NTFS stream.
 
 ## Ba agent và cách cài
 
@@ -172,7 +172,7 @@ python3 studio.py doctor --roots "<dir1>;<dir2>" --json
 
 Plugin chỉ chứa thư mục `skills/`; `evals/` và `tests/` không nằm trong gói.
 
-**Lệnh install sao chép có kiểm tra, không sửa hoặc ghi đè mục tiêu sẵn có nếu không có `--force`** (`--force` sao lưu bản cũ sang `<tên>.backup-<UTC>` rồi thay).
+**Lệnh install sao chép có kiểm tra, không sửa hoặc ghi đè mục tiêu sẵn có nếu không có `--force`** (`--force` chuyển bản cũ sang `<cha của gốc skill>/.skill-studio-backups/<tên>-<UTC>/`, **ngoài** gốc skill để agent không nạp nhầm, rồi in đường đó; khác ổ đĩa thì chép rồi xoá, lỗi thì skill cũ còn nguyên). Gốc skill (hoặc thư mục cha của nó dưới HOME với `--user`, dưới workspace với `--workspace`) là symlink/junction → thoát 2 và nêu đích thật; cờ `--allow-root-link` cho phép có chủ ý và in đích. Đích `<tên>` là link (kể cả dangling) → thoát 1 `symlink destination refused`, có hay không `--force`: tự gỡ link trước khi cài lại.
 
 ```bash
 # Thư mục --workspace phải có sẵn (thiếu thì thoát 2)
@@ -218,8 +218,44 @@ Hướng dẫn agent sử dụng Skill factory: [skills/skill-creator-studio/SKI
 4. `evals/<name>/cases.json` hợp lệ, có ít nhất 3 ca và có positive/negative. `studio.py evals` chỉ test **schema**, không chấm được model.
 5. Chạy unit tests / CI, test thật với agent mục tiêu theo [evals/RUNBOOK.md](evals/RUNBOOK.md). Định nghĩa: [Không pass giả](standards/EVALUATION_STANDARD.md#không-pass-giả-not_run).
 6. Với Skill nguy hiểm, policy gate/permissions độc lập phải chạy thành công; chỉ nhắc trong Markdown **không đủ**.
-7. `validate` kiểm cả chuẩn viết (SK-14, SK-15 và các mã như `FM5`, `FM6`, `CT10`, `DS4`, `DS5`, `ST2`, `ST3`, `ST5`, `ST7`, `ST8`, `SZ1`, `SZ2`); thân tiếng Việt còn qua lint `VI1`–`VI5` ([VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md)). Đa số là WARN, chỉ lỗi cấu trúc mới chặn.
+7. `validate` kiểm cả chuẩn viết (SK-14, SK-15 và các mã như `FM5`, `FM6`, `CT10`, `CT11`, `DS4`, `DS5`, `ST2`, `ST3`, `ST5`, `ST7`, `ST8`, `SZ1`, `SZ2`); thân tiếng Việt còn qua lint `VI1`–`VI5` ([VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md)). Đa số là WARN, chỉ lỗi cấu trúc mới chặn.
 8. `python3 studio.py fmt --check` và `python3 studio.py doctor` là hai lệnh chỉ báo cáo, chạy được bất cứ lúc nào.
+
+## Xuất fixture (`evals <skill> --export agentskills`): mã `EX*` và rủi ro còn lại
+
+Mọi từ chối in mã `EX*` trên stderr (hoặc trong `--json`). Thoát 2 chỉ với `EX1`; còn lại thoát 1. Lệnh không ghi gì trước khi qua hết các kiểm tra tên; lỗi ghi (`EX8`, `EX13`, `EX6` sau `mkdir`) xoá lại các file lượt này đã tạo (thư mục rỗng có thể còn).
+
+| Mã | Nghĩa | Cách sửa |
+|---|---|---|
+| `EX1` | Đích xuất nằm dưới `skills/` hoặc dưới `evals/` | Chọn `--out` ngoài hai cây đó |
+| `EX2` | Tên skill không phải chữ thường-gạch nối | Dùng tên `a-z0-9-` |
+| `EX3` | Eval còn nháp (`status: draft` hoặc chữ `STUDIO-DRAFT`) | Viết ca thật, đặt `status` khác `draft` |
+| `EX4` | Fixture bị từ chối: đường không an toàn (`..`, tuyệt đối, có `:`), tên bí mật (`.env*`, `auth.json`, `*.pem`...), nằm trong vùng bí mật/cloud, đi qua symlink/junction, hard link, placeholder cloud, hoặc không đọc được metadata | Bỏ fixture khỏi `cases.json` hoặc thay bằng bản giả không chứa bí mật, nằm trực tiếp trong thư mục eval |
+| `EX5` | File đích đã có | Chọn `--out` khác, hoặc thêm `--force` |
+| `EX6` | Đích xuất đi qua symlink/junction (kể cả cha bị đổi thành link sau `mkdir`), hoặc đích chính là fixture nguồn | Dùng thư mục `--out` thật, không phải link |
+| `EX7` | Hai fixture trùng tên sau xuất (so không phân biệt hoa thường và dạng Unicode) | Đổi tên một trong hai |
+| `EX8` | Lỗi ghi (đĩa đầy, quyền...) | Xử lý lỗi hệ thống; chạy lại |
+| `EX9` | Tên (bất kỳ thành phần đường) kết thúc bằng dấu chấm hoặc khoảng trắng; Windows bỏ ký tự đó nên `auth.json.` chính là `auth.json` | Bỏ dấu chấm/khoảng trắng cuối |
+| `EX10` | Tên thiết bị Windows (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`, `COM¹`-`COM³`, `LPT¹`-`LPT³`, `CONIN$`, `CONOUT$`, `CLOCK$`; có đuôi hay không, hoa thường đều tính) | Đổi tên file hoặc thư mục |
+| `EX11` | Tên ngắn 8.3 (có `~` kèm chữ số, như `AUTH~1.JSO`), có thể che một file bí mật | Dùng tên đầy đủ, không `~` + số |
+| `EX12` | Một fixture là file nhưng fixture khác cần nó làm thư mục (`x` và `x/y.csv`) | Đổi tên một trong hai |
+| `EX13` | Nguồn bị đổi giữa lúc kiểm và lúc chép (thành link, có thêm tên hard link, hoặc đổi file) | Dừng tiến trình khác đang sửa cây eval, chạy lại |
+
+Tên ghi ra đĩa và trong `evals.json` là dạng Unicode NFC, giữ nguyên hoa thường (`Data.csv` vẫn là `Data.csv`); chỉ phép kiểm trùng `EX7` so không phân biệt hoa thường.
+
+**Rủi ro còn lại.** Trên POSIX nguồn mở bằng `O_NOFOLLOW`. Windows không có cờ đó: nguồn được mở trước, rồi mới so `(st_dev, st_ino)` của handle với `lstat` lúc kiểm và ép `st_nlink == 1`. Hệ quả: (1) việc mở đã đi theo reparse point trước khi so, nên nguồn bị đổi thành link tới placeholder cloud vẫn có thể kích tải trước khi bị từ chối; (2) Ghi độc quyền (`create_exclusive`): POSIX dùng `O_EXCL|O_NOFOLLOW`, bảo vệ thành phần cuối. Windows không có `O_NOFOLLOW` và `CREATE_NEW` đi theo symlink dangling, nên hàm kiểm `os.path.lexists` ngay trước khi mở (tên đã có, kể cả là link, thì từ chối) rồi so `fstat` của handle với `lstat` của đường (lệch, hoặc đường là link, thì đóng handle và báo lỗi, không ghi nội dung); nếu một symlink dangling xuất hiện đúng giữa `lexists` và `open`, một file rỗng vẫn có thể được tạo ở đích của link trước khi bị từ chối (không xoá lại: không có cách an toàn để biết đó là file của mình qua một đường đã bị đổi, và `realpath` lấy trước khi mở không đáng tin). Thư mục cha của đích chỉ được kiểm lại sau `mkdir`, nên kẻ đua cục bộ chạy cùng tài khoản vẫn có một khoảng hở rất hẹp; (3) thư mục cha của **nguồn** (cả POSIX): `export_fixture_check` kiểm link từng thành phần, nhưng `lstat` và `open` sau đó vẫn đi qua các thư mục cha; cha bị đổi thành link giữa kiểm và `lstat` thì so định danh không bắt được (`O_NOFOLLOW` chỉ bảo vệ thành phần cuối), và vòng dọn khi lỗi có thể xoá file cùng tên ở đích mà cha đó trỏ tới; (4) `package` quét secret rồi đọc lại khi nén, nội dung bị ghi giữa hai lần có thể khác bản đã quét. Công cụ bảo vệ khỏi tệp sai và nhầm lẫn, không phải khỏi một tiến trình thù địch cùng quyền; đừng xuất từ cây eval mà tiến trình khác đang ghi.
+
+## Đóng gói (`package`, `install`): mã `PACK`
+
+`package` và `install` duyệt cây skill bằng bộ duyệt có kiểm link và cloud (không dùng `rglob`), vẫn bỏ `evals/`, `tests/`, `.git`, cache. Mọi lỗi dưới đây là ERROR mã `PACK`, thoát 1, không ghi gói:
+
+| Mã | Nghĩa | Cách sửa |
+|---|---|---|
+| `PACK` | Gặp symlink/junction, placeholder cloud (cờ cloud hoặc tag `IO_REPARSE_TAG_CLOUD*`), thư mục tên vùng (thư mục bí mật, `OneDrive`, `SharePoint`), cây vượt trần duyệt (5 000 mục / 12 tầng), file có hơn một tên (hard link) hoặc bị đổi giữa lúc kiểm và lúc đọc, file trên 25 MB, bản nháp `STUDIO-DRAFT` | Bỏ link/thư mục đó khỏi skill, tải file cloud thủ công, thu gọn cây, rồi chạy lại |
+
+Tên file giống secret (cùng luật với `--export`, không phân biệt hoa thường: `.env*`, `auth.json`, `*.credentials.json`, `credentials.json`, `secrets.json`, `id_rsa`, `id_ed25519`, `*.pem`, `*.key`, `*.p12`, `*.pfx`) là ERROR mã `SEC` ở `package` và `install`: thoát 1, không gói, không cài; dòng «Excluded» chỉ liệt kê `evals/`, `tests/` và thư mục cache (cũng không phân biệt hoa thường: `Evals/`, `TESTS/`). `install --force` chỉ chép-rồi-xoá bản cũ khi sao lưu sang ổ khác; mọi lỗi đổi tên khác dừng ngay với skill cũ còn nguyên, và nếu bản sao lưu đã đủ nhưng bản cũ không xoá hết thì lời báo nêu đường sao lưu. `fmt` so định danh (`lstat` lúc đọc) trên cả Windows.
+
+Không bao giờ đọc nội dung placeholder cloud. `PINNED` một mình (file đã tải sẵn) không còn bị coi là placeholder; `PINNED` kèm `RECALL_ON_DATA_ACCESS`, `RECALL_ON_OPEN`, `OFFLINE` hay `UNPINNED` vẫn là cloud. `validate`/`doctor` giữ `SZ2` ở mức WARN.
 
 ## Phát hành
 
