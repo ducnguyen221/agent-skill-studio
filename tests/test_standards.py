@@ -5,6 +5,8 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
 
 STANDARDS_DIR = Path(__file__).resolve().parent.parent / "standards"
 ROOT_DIR = STANDARDS_DIR.parent
@@ -147,7 +149,7 @@ class StandardsTest(unittest.TestCase):
 
     def test_authoring_standard_check_codes_exist_in_validator(self):
         text = read_std("SKILL_AUTHORING_STANDARD.md")
-        emitted = emitted_codes((ROOT_DIR / "studio.py").read_text(encoding="utf-8"))
+        emitted = emitted_codes(_engine.engine_source())
         for head in re.findall(r"^### SK-\d\d .*kiểm: (.*)$", text, re.M):
             codes = set(re.findall(r"`([A-Z]{2}\d+|SEC)`", head))
             for pre, a, b in re.findall(r"`([A-Z]{2})(\d+)`–`[A-Z]{2}(\d+)`", head):

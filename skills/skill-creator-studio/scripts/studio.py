@@ -28,6 +28,11 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Sibling modules (SPR-02 TK4) resolve from this folder only, whatever the cwd or how the engine was started.
+_HERE = str(Path(__file__).resolve().parent)
+if not sys.path or sys.path[0] != _HERE:
+    sys.path.insert(0, _HERE)
+
 VERSION = "0.1.0"
 PORTABLE_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 TARGETS = ("portable", "claude-code")

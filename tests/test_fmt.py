@@ -14,9 +14,11 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("studio_fmt_impl", ROOT / "studio.py")
-studio = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(studio)
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
+
+studio = _engine.engine
 
 SKILL = "---\nname: demo-skill\ndescription: Checks a toy example. Use when testing fmt.\n---\n\n# Demo\n\nBody text here.\n"
 
@@ -563,8 +565,8 @@ class FmtBackupTests(unittest.TestCase):
 
     def test_studio_runs_no_subprocess(self):
         import ast
-        paths = [ROOT / "studio.py", ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py", *sorted((ROOT / "evals" / "tools").glob("*.py"))]
-        self.assertGreaterEqual(len(paths), 5, "studio.py twice and the eval tools")
+        paths = [*_engine.ENGINE_FILES, *sorted((ROOT / "evals" / "tools").glob("*.py"))]
+        self.assertGreaterEqual(len(paths), 4, "the engine and the eval tools")
         banned_os = ("system", "popen", "startfile")
         for path in paths:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

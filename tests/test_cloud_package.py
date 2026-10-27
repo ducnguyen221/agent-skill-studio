@@ -18,9 +18,11 @@ from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("studio_tk3_impl", ROOT / "studio.py")
-studio = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(studio)
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
+
+studio = _engine.engine
 
 REPARSE = 0x400
 TAG_SYMLINK, TAG_MOUNT, TAG_CLOUD, TAG_CLOUD_CHILD, TAG_ODD = 0xA000000C, 0xA0000003, 0x9000001A, 0x9000101A, 0x99
@@ -219,7 +221,7 @@ class PackageTreeTests(unittest.TestCase):
 
     def test_tuong_duong_sz2_stays_warn(self):
         """tương-đương: every SZ2 finding in studio.py is WARN (validate/doctor unchanged)."""
-        src = (ROOT / "studio.py").read_text(encoding="utf-8")
+        src = _engine.engine_source()
         levels = [m.group(1) for m in re.finditer(r'emit\("(\w+)", "SZ2"', src)]
         self.assertTrue(levels)
         self.assertEqual(set(levels), {"WARN"})

@@ -17,10 +17,11 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CODE = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
-SPEC = importlib.util.spec_from_file_location("studio_impl", CODE)
-studio = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(studio)
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
+
+studio = _engine.engine
 
 
 _ACT_SPEC = importlib.util.spec_from_file_location("activation_impl", ROOT / "evals" / "tools" / "activation.py")
@@ -290,8 +291,50 @@ class StudioTests(unittest.TestCase):
             self.assertEqual(1, p.returncode, "a folder with eval files but no cases.json is still an error")
             self.assertIn("EV1", p.stdout)
 
-    def test_packaged_factory_matches_root_studio(self):
-        self.assertEqual((ROOT / "studio.py").read_bytes(), (ROOT / "skills/skill-creator-studio/scripts/studio.py").read_bytes())
+    # SPR-02 TK2 (FR1.3): the byte-equality test of the root studio.py and the skill copy is replaced on purpose, because
+    # there is one engine now and the root file is a shim; the four tests below pin the shim instead.
+    def test_root_studio_is_a_shim(self):
+        """bắt-lỗi: the root studio.py is a shim of at most 20 lines with no `def`, standard library only."""
+        text = (ROOT / "studio.py").read_text(encoding="utf-8")
+        self.assertLessEqual(len(text.splitlines()), 20)
+        self.assertNotIn("def ", text)
+        self.assertIn("run_path", text)
+
+    def test_shim_hands_argv_and_exit_code_to_the_engine_beside_it(self):
+        """bắt-lỗi: a shim copied next to a stand-in engine runs that engine as __main__ with the same argv and exit code."""
+        with tempfile.TemporaryDirectory() as t:
+            repo = Path(t) / "repo"
+            engine = repo / "skills" / "skill-creator-studio" / "scripts"
+            engine.mkdir(parents=True)
+            shutil.copyfile(ROOT / "studio.py", repo / "studio.py")
+            (engine / "studio.py").write_text("import sys\nprint('STAND-IN', sys.argv[1:], __name__)\nsys.exit(7)\n", encoding="utf-8")
+            other = Path(t) / "elsewhere"
+            other.mkdir()
+            run = subprocess.run([sys.executable, "-X", "utf8", str(repo / "studio.py"), "alpha", "--beta"], cwd=other, text=True, encoding="utf-8",
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(7, run.returncode, run.stdout + run.stderr)
+            self.assertEqual("STAND-IN ['alpha', '--beta'] __main__", run.stdout.strip())
+
+    def test_shim_gives_the_same_output_as_the_engine_from_another_folder(self):
+        """tương-đương: the root shim and the engine run directly print the same stdout and exit with the same code, whatever the cwd."""
+        engine_path = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
+        cases = (["--version"], ["validate", str(ROOT / "skills" / "data-quality-audit"), "--json"], ["fmt", "--bogus-flag"], ["sync-nope"])
+        with tempfile.TemporaryDirectory() as t:
+            for argv in cases:
+                with self.subTest(argv=argv):
+                    runs = [subprocess.run([sys.executable, "-X", "utf8", str(path), *argv], cwd=t, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            for path in (ROOT / "studio.py", engine_path)]
+                    self.assertEqual(runs[1].returncode, runs[0].returncode)
+                    self.assertEqual(runs[1].stdout, runs[0].stdout)
+
+    def test_engine_puts_its_own_folder_first_on_sys_path(self):
+        """bắt-lỗi: running the engine file puts only its own folder at the head of sys.path (so its sibling modules resolve)."""
+        engine_path = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
+        code = "import runpy, sys; runpy.run_path(sys.argv[1], run_name='probe'); print(sys.path[0])"
+        with tempfile.TemporaryDirectory() as t:
+            run = subprocess.run([sys.executable, "-X", "utf8", "-c", code, str(engine_path)], cwd=t, text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, run.returncode, run.stderr)
+        self.assertEqual(engine_path.parent.resolve(), Path(run.stdout.strip()).resolve())
 
     def test_package_is_runtime_only(self):
         with tempfile.TemporaryDirectory() as t:
@@ -1615,7 +1658,7 @@ class ExportFixtureHardeningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             home = Path(t) / "home"
             (home / ".secret").mkdir(parents=True)
-            studio._secret_dirs.cache_clear()
+            _engine.clear_caches()
             try:
                 with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
                     self.assertEqual("secret-zone", studio.zone_reason(home / ".secret" / "e"))
@@ -1626,7 +1669,7 @@ class ExportFixtureHardeningTests(unittest.TestCase):
                     (folder / "cases.json").write_text(json.dumps(data), encoding="utf-8")
                     self.assert_refused_untouched(folder, t, {"canary.csv", "cases.json"}, "fake HOME/.secret")
             finally:
-                studio._secret_dirs.cache_clear()
+                _engine.clear_caches()
 
     def test_x_cloud_placeholder_or_resolved_zone_refused(self):
         from unittest import mock

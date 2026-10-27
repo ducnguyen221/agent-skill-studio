@@ -170,11 +170,10 @@ class InstallSafeTests(unittest.TestCase):
 
     def test_don_vi_ham_moi_move_aside_copies_across_devices(self):
         """đơn-vị-hàm-mới: move_aside falls back to copy-then-delete when rename fails (EXDEV), and keeps the old skill when the copy fails."""
-        import importlib.util
         from unittest import mock
-        spec = importlib.util.spec_from_file_location("studio_tk4_impl", ROOT / "studio.py")
-        studio = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(studio)
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import _engine
+        studio = _engine.engine
         with tempfile.TemporaryDirectory() as t:
             src, dst = Path(t) / "src", Path(t) / "dst"
             src.mkdir()

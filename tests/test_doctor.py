@@ -17,9 +17,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests" / "fixtures" / "doctor"
 CLEAN_ROOTS = ";".join(str(ROOT / x) for x in ("skills", "content/exemplar", "content/exemplar-vi"))
-SPEC = importlib.util.spec_from_file_location("studio_doctor_impl", ROOT / "studio.py")
-studio = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(studio)
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
+
+studio = _engine.engine
 
 SKILL = "---\nname: %s\ndescription: Checks a toy example. Use when testing the doctor command.\n%s---\n\n# Title\n\nShort body.\n"
 
@@ -771,7 +773,7 @@ class DoctorHardeningTests(unittest.TestCase):
     def test_validate_skill_is_fast_on_hostile_bodies(self):
         for case in ("brackets", "comments", "emptylinks", "meta", "vi_lines", "many_links", "one_line_links", "backticks"):
             try:
-                done = subprocess.run([sys.executable, "-X", "utf8", "-c", CHILD, str(ROOT / "studio.py"), case], capture_output=True, text=True, timeout=30)
+                done = subprocess.run([sys.executable, "-X", "utf8", "-c", CHILD, str(_engine.ENGINE_PATH), case], capture_output=True, text=True, timeout=30)
             except subprocess.TimeoutExpired:
                 self.fail("%s: validate_skill still running after 30 s" % case)
             self.assertEqual(done.returncode, 0, (case, done.stderr[-300:]))
@@ -793,7 +795,7 @@ class DoctorHardeningTests(unittest.TestCase):
             (tmp / "real" / "home").mkdir(parents=True)
             alias = tmp / "alias"
             make_dir_link(self, alias, tmp / "real" / "home")
-            studio._secret_dirs.cache_clear()
+            _engine.clear_caches()
             with mock.patch.dict(os.environ, {"HOME": str(alias), "USERPROFILE": str(alias)}):
                 try:
                     self.assertEqual(studio.zone_reason(tmp / "elsewhere" / ".secret" / "k.json"), "secret-zone", "a .secret folder outside HOME")
@@ -802,7 +804,7 @@ class DoctorHardeningTests(unittest.TestCase):
                     self.assertEqual(studio.zone_reason(tmp / "real" / "home" / ".secret"), "secret-zone", "HOME spelled by its real path")
                     self.assertIsNone(studio.zone_reason(tmp / "real" / "home" / "work"))
                 finally:
-                    studio._secret_dirs.cache_clear()
+                    _engine.clear_caches()
 
     def test_doctor_st3_counts_bytes_not_characters(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -866,7 +868,7 @@ class DoctorRound3Tests(unittest.TestCase):
     def test_hostile_backtick_bodies_finish_fast(self):
         for case in ("run", "alt", "pairs", "triples", "run30"):
             try:
-                done = subprocess.run([sys.executable, "-X", "utf8", "-c", CHILD3, str(ROOT / "studio.py"), case], capture_output=True, text=True, timeout=60)
+                done = subprocess.run([sys.executable, "-X", "utf8", "-c", CHILD3, str(_engine.ENGINE_PATH), case], capture_output=True, text=True, timeout=60)
             except subprocess.TimeoutExpired:
                 self.fail("%s: still running after 60 s (lint_forcing_words, prose_lines, validate_skill and doctor each get a backtick run)" % case)
             self.assertEqual(done.returncode, 0, (case, done.stderr[-300:]))
@@ -878,7 +880,7 @@ class DoctorRound3Tests(unittest.TestCase):
         import ast
         import re
         import time
-        tree = ast.parse((ROOT / "studio.py").read_text(encoding="utf-8"))
+        tree = ast.parse(_engine.engine_source())
         patterns = {}
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
