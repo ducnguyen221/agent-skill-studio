@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -226,6 +228,219 @@ class HashAndSummarizeTests(unittest.TestCase):
             for i, log in enumerate(logs):
                 (d / ("%d.json" % i)).write_text(json.dumps(log), encoding="utf-8")
             self.assertEqual({"codex": {"pos": 2, "pos_trig": 1, "neg": 1, "neg_trig": 0}}, activation.summarize(d))
+
+
+# Output of the ORIGINAL df875ce functions (generated once; the regexes were then rewritten to run in linear time).
+SEGMENTS_OLD = [('a ; b', [('a', False), ('b', False)]),
+ ('a;;b', [('a', False), ('b', False)]),
+ ('a && b', [('a', False), ('b', False)]),
+ ('a&&b', [('a', False), ('b', False)]),
+ ('a||b', [('a', False), ('b', False)]),
+ ('a || b', [('a', False), ('b', False)]),
+ ('a | b', [('a', False), ('b', True)]),
+ ('a |\n b', [('a', False), ('b', True)]),
+ ('a\n\nb', [('a', False), ('b', False)]),
+ ('   ', []),
+ ('', []),
+ ('a ;\n b', [('a', False), ('b', False)]),
+ ('a|\n|b', [('a', False), ('b', True)]),
+ ('cat x | grep y && echo z', [('cat x', False), ('grep y', True), ('echo z', False)]),
+ ('a\n| b', [('a', False), ('b', True)]),
+ ('  lead and trail  ', [('lead and trail', False)]),
+ ('a ; | b', [('a', False), ('b', True)]),
+ ('x ||| y', [('x', False), ('y', True)]),
+ ('a & b', [('a & b', False)]),
+ ('a\r\nb', [('a', False), ('b', False)]),
+ ('a |\n\n  b', [('a', False), ('b', True)]),
+ ('|a', [('a', True)]),
+ ('a|', [('a', False)]),
+ (';', []),
+ ('a ;; ; b', [('a', False), ('b', False)]),
+ ('a | b | c', [('a', False), ('b', True), ('c', True)]),
+ ('a |\t\n c ; d', [('a', False), ('c', True), ('d', False)]),
+ ('one\ntwo | three\nfour', [('one', False), ('two', False), ('three', True), ('four', False)]),
+ ('a &&\n| b', [('a', False), ('b', True)]),
+ ('a ||\n b', [('a', False), ('b', False)])]
+
+SCRIPT_RE_OLD = [('data-quality-audit', 'python data-quality-audit/scripts/validate_csv.py', True),
+ ('data-quality-audit', 'py -3 C:/s/data-quality-audit\\scripts\\validate_csv.py', True),
+ ('data-quality-audit', 'python3.exe x && data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'cat python.txt data-quality-audit/scripts/validate_csv.py', True),
+ ('data-quality-audit', 'pythonx data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'xpython data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'py data-quality-audit/scripts/other.py', False),
+ ('data-quality-audit', 'python a | data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'python\ndata-quality-audit/scripts/validate_csv.py', True),
+ ('data-quality-audit', 'PYTHON data-quality-audit/scripts/validate_csv.py', True),
+ ('data-quality-audit', 'my-data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'py', False),
+ ('data-quality-audit', 'python data-quality-audit/scripts/validate_csv.pyc', False),
+ ('data-quality-audit', 'echo py; python x/data-quality-audit/scripts/validate_csv.py', True),
+ ('data-quality-audit', 'python-3 data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'python3 python data-quality-audit/scripts/validate_csv.py', True),
+ ('data-quality-audit', 'python3.exedata-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'py data-quality-audit/scripts/validate_csv.py', True),
+ ('data-quality-audit', 'python . & data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'run.py data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'python -m x ; data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'python "data-quality-audit/scripts/validate_csv.py"', True),
+ ('data-quality-audit', 'python3  --version py data-quality-audit\\scripts\\validate_csv.py', True),
+ ('data-quality-audit', 'x.python data-quality-audit/scripts/validate_csv.py', False),
+ ('data-quality-audit', 'python;py data-quality-audit/scripts/validate_csv.py', True),
+ ('data-quality-audit', 'py &py data-quality-audit/scripts/validate_csv.py', True),
+ ('skill-creator-studio', 'python skill-creator-studio/scripts/studio.py', True),
+ ('skill-creator-studio', 'py -3 C:/s/skill-creator-studio\\scripts\\studio.py', True),
+ ('skill-creator-studio', 'python3.exe x && skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'cat python.txt skill-creator-studio/scripts/studio.py', True),
+ ('skill-creator-studio', 'pythonx skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'xpython skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'py skill-creator-studio/scripts/other.py', False),
+ ('skill-creator-studio', 'python a | skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'python\nskill-creator-studio/scripts/studio.py', True),
+ ('skill-creator-studio', 'PYTHON skill-creator-studio/scripts/studio.py', True),
+ ('skill-creator-studio', 'my-skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'py', False),
+ ('skill-creator-studio', 'python skill-creator-studio/scripts/studio.pyc', False),
+ ('skill-creator-studio', 'echo py; python x/skill-creator-studio/scripts/studio.py', True),
+ ('skill-creator-studio', 'python-3 skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'python3 python skill-creator-studio/scripts/studio.py', True),
+ ('skill-creator-studio', 'python3.exeskill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'py skill-creator-studio/scripts/studio.py', True),
+ ('skill-creator-studio', 'python . & skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'run.py skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'python -m x ; skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'python "skill-creator-studio/scripts/studio.py"', True),
+ ('skill-creator-studio', 'python3  --version py skill-creator-studio\\scripts\\studio.py', True),
+ ('skill-creator-studio', 'x.python skill-creator-studio/scripts/studio.py', False),
+ ('skill-creator-studio', 'python;py skill-creator-studio/scripts/studio.py', True),
+ ('skill-creator-studio', 'py &py skill-creator-studio/scripts/studio.py', True)]
+
+JS_OLD = [('cmd: "cat a/SKILL.md"', ['cat a/SKILL.md'], []),
+ ('{ cmd: "x", "y": 1 }', ['x'], []),
+ ('const cmds = ["a", "b"]; cmds.map(c => run(c))', ['a', 'b'], [(14, 23)]),
+ ('const x = ["a"]; for (const c of x) run(c)', ['a'], [(11, 15)]),
+ ('const x = ["a"]; unused', [], []),
+ ('const x = [ "a]", "b" ]; x.forEach(f)', ['a]', 'b'], [(11, 23)]),
+ ('x = ["a"', [], []),
+ ('unclosed "abc', [], []),
+ ('cmd:\n  "z"', ['z'], []),
+ ('cmd": "q"', [], []),
+ ('a = [ [ "n" ], "m" ]; a.map(f)', ['n', 'm'], [(5, 20)]),
+ ('"a\\"b"', [], []),
+ ('"a\\\n"b"', [], []),
+ ('x.map(f); x = ["a"]', [], []),
+ ('b = ["1"]; a = [ "2" ]; a.map(f); b.map(f)', ['1', '2'], [(5, 9), (16, 22)]),
+ ('$v = ["s"]; $v.map(f)', ['s'], [(6, 10)]),
+ ('a = ["p", "q" ; a.map(f)', ['p', 'q'], [(5, 24)]),
+ ('a = ["x"]; a . forEach(g); of a', ['x'], [(5, 9)]),
+ ('const k = ["a\\"]", "b"]; for (c of k) r(c)', ['a"]', 'b'], [(11, 23)]),
+ ('cmd: "one", cmd: "two" "three"', ['one', 'two'], []),
+ ('q = ["a"]; r = ["b"]; for (const c of r) f(c)', ['b'], [(16, 20)]),
+ ('cmd:"a"cmd:"b"', ['a', 'b'], []),
+ ('', [], []),
+ ('"', [], []),
+ ('""', [], []),
+ ('cmd: ""', [''], []),
+ ('xcmd: "no"', [], []),
+ ('m = ["a", m = ["b"]]; m.map(f)', ['a', 'b'], [(5, 20), (15, 19)]),
+ ('u = ["a"]; u2.map(f)', [], []),
+ ('w = ["a"]; of wx', [], [])]
+
+
+CHILD = r'''
+import importlib.util, json, sys, tempfile, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("mod", sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+
+
+def count_cmd(mod, command):
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "t.jsonl"
+        row = {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "1", "name": "Bash", "input": {"command": command}}]}}
+        p.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        return mod.count(p, "data-quality-audit", "claude-code")
+
+
+def best(gen, call, n):
+    t = eval(gen, {"n": n})
+    times = []
+    for _ in range(2):
+        t0 = time.perf_counter()
+        eval(call, {"m": m, "t": t, "count_cmd": count_cmd})
+        times.append(time.perf_counter() - t0)
+    return min(times)
+
+
+print(best(sys.argv[2], sys.argv[3], 10000), best(sys.argv[2], sys.argv[3], 100000))
+'''
+
+LINEAR_RATIO = 20   # t(100k) / t(10k) of a linear function is ~10
+HARD_CEILING = 5.0  # seconds at 100 000 characters
+CHILD_TIMEOUT = 25  # a quadratic function never finishes 100 000 characters: killed here and reported as a failure
+
+
+def assert_linear(test, module_file, label, gen, call):
+    try:
+        out = subprocess.run([sys.executable, "-X", "utf8", "-c", CHILD, str(module_file), gen, call], capture_output=True, text=True, timeout=CHILD_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        test.fail("%s: not finished within %d s (100 000 chars) - super-linear" % (label, CHILD_TIMEOUT))
+    test.assertEqual(0, out.returncode, "%s: %s" % (label, out.stderr[-400:]))
+    t10, t100 = (float(x) for x in out.stdout.split())
+    test.assertLess(t100, HARD_CEILING, "%s: %.2f s at 100k" % (label, t100))
+    test.assertLess(t100 / max(t10, 0.005), LINEAR_RATIO, "%s: t(100k)/t(10k) = %.1f (10k %.3f s, 100k %.3f s)" % (label, t100 / max(t10, 0.005), t10, t100))
+
+
+class ActivationLinearTimeTests(unittest.TestCase):
+    SKILL_PATH = '" data-quality-audit/scripts/validate_csv.py"'
+    CASES = [
+        ("segments: blanks", '" " * n', "m._segments(t)"),
+        ("segments: word then blanks", '"a" + " " * n', "m._segments(t)"),
+        ("segments: blanks then word", '" " * n + "a"', "m._segments(t)"),
+        ("segments: ' ; '", '" ; " * (n // 3)', "m._segments(t)"),
+        ("segments: &&", '"&&" * (n // 2)', "m._segments(t)"),
+        ("segments: ||", '"||" * (n // 2)', "m._segments(t)"),
+        ("segments: '| '", '"| " * (n // 2)', "m._segments(t)"),
+        ("segments: newlines", '"\\n" * n', "m._segments(t)"),
+        ("script_re: many py", '"py " * (n // 3)', "m._script_re('data-quality-audit').search(t)"),
+        ("script_re: many python.exe", '"python.exe " * (n // 11)', "m._script_re('skill-creator-studio').search(t)"),
+        ("script_re: many py then path", '"py " * (n // 3) + " data-quality-audit/scripts/validate_csv.py"', "m._script_re('data-quality-audit').search(t)"),
+        ("script_re: operators", '"&" * n', "m._script_re('data-quality-audit').search(t)"),
+        ("js: unclosed quote", '"\\"" + "a" * n', "m._codex_commands(t)"),
+        ("js: quotes", '"\\"" * n', "m._codex_commands(t)"),
+        ("js: escaped quotes", '"\\"\\\\" * (n // 2)', "m._codex_commands(t)"),
+        ("js: cmd: keys", '"cmd:\\"" * (n // 5)', "m._codex_commands(t)"),
+        ("js: unclosed array assignments", '"a=[" * (n // 3) + "a.map(x)"', "m._codex_commands(t)"),
+        ("js: array assignments with open quotes", '"a=[\\"" * (n // 4) + "a.map(x)"', "m._js_command_spans(t)"),
+        ("count: blanks in a Bash command", '"cat " + " " * n', "count_cmd(m, t)"),
+        ("count: py repeated", '"py " * (n // 3)', "count_cmd(m, t)"),
+    ]
+
+    def test_bat_loi_activation_is_linear_on_adversarial_input(self):
+        """bắt-lỗi (RQ-185): segment split, script regex and the Codex JS scan must take linear time on 100 000 hostile characters."""
+        for label, gen, call in self.CASES:
+            with self.subTest(label):
+                assert_linear(self, ROOT / "evals" / "tools" / "activation.py", label, gen, call)
+
+    def test_tuong_duong_segments_match_the_pre_fix_output(self):
+        """tương-đương: _segments of the original df875ce on 30 edge cases (&& adjacent, ||, ;;, newline, blanks both sides, empty)."""
+        for text, expected in SEGMENTS_OLD:
+            with self.subTest(text=text):
+                self.assertEqual(expected, [(p.strip(), piped) for p, piped in activation._segments(text) if p.strip()])
+
+    def test_tuong_duong_script_re_matches_the_pre_fix_output(self):
+        """tương-đương: _script_re(...).search of the original on 52 command lines for both skills."""
+        for skill, text, expected in SCRIPT_RE_OLD:
+            with self.subTest(skill=skill, text=text):
+                self.assertEqual(expected, bool(activation._script_re(skill).search(text)))
+
+    def test_tuong_duong_codex_js_matches_the_pre_fix_output(self):
+        """tương-đương: command strings and array spans the original finds in 30 JS snippets (nested arrays, escapes, unclosed, $ names)."""
+        for text, commands, spans in JS_OLD:
+            with self.subTest(text=text):
+                self.assertEqual(commands, activation._codex_commands(text))
+                self.assertEqual(spans, activation._js_command_spans(text))
 
 
 if __name__ == "__main__":

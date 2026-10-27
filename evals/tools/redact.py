@@ -18,7 +18,11 @@ from pathlib import Path
 
 # any Windows user folder, also when the text was cut inside the name ("C:\Users\Xxxx...[cut]"); JSON-escaped backslashes included
 PATH_RE = re.compile(r"""C:[\\/]+Users[\\/]+[^\\/"\s]+""", re.I)
-EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# EMAIL_AT matches an address starting exactly where it is tried; EMAIL_RE only starts at a token start. Searching with the plain pattern
+# retries every position of a long run of word chars (quadratic), so _redact_emails tries EMAIL_AT once at the scan position and
+# EMAIL_RE for the rest - the same leftmost matches, one pass.
+EMAIL_AT = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 CATALOG_NAME_RE = re.compile(r"(?m)^- ([\w.-]+(?::[\w.-]+)?): ")
 
 
@@ -28,9 +32,22 @@ def _runtime_user_names():
     return sorted((n for n in names if n and len(n) >= 3), key=len, reverse=True)
 
 
+def _redact_emails(text):
+    out, pos = [], 0
+    while True:
+        m = EMAIL_AT.match(text, pos) or EMAIL_RE.search(text, pos)
+        if not m:
+            break
+        out.append(text[pos:m.start()])
+        out.append("<email>")
+        pos = m.end()
+    out.append(text[pos:])
+    return "".join(out)
+
+
 def sanitize(text):
     text = PATH_RE.sub("~", text)
-    text = EMAIL_RE.sub("<email>", text)
+    text = _redact_emails(text)
     for name in _runtime_user_names():
         text = re.sub(re.escape(name), "<user>", text, flags=re.I)
     return text

@@ -12,6 +12,7 @@ Only agent tool calls count. System / user / developer messages (where the skill
 appears in every session) are never scanned, so a catalogue entry is not an activation.
 """
 import argparse
+import bisect
 import hashlib
 import json
 import re
@@ -24,13 +25,18 @@ READ_VERBS = ("cat", "type", "Get-Content", "gc", "sed", "head", "tail", "less",
               "Select-String", "sls", "awk", "ReadAllText", "ReadAllLines", "ReadAllBytes", "read_file")
 # a verb counts only as a whole word: not part of a path/flag such as "-type" or "cat.txt"
 READ_RE = re.compile(r"(?<![\w.-])(?:%s)(?![\w-])" % "|".join(re.escape(v) for v in READ_VERBS), re.I)
-SEGMENT_SPLIT = re.compile(r"\s*(;|&&|\|\||\||\n)\s*")
+# operators only: blanks around them are stripped per part (a `\s*` on both sides is quadratic on a long run of blanks)
+SEGMENT_SPLIT = re.compile(r"(;|&&|\|\||\||\n)")
 DENIED_RE = re.compile(r"requires? approval|permission to use|haven't granted|was denied|not allowed", re.I)
 # Codex JS: a double-quoted literal is a command only as `cmd: "..."` or as an element of `NAME = [...]` that is then run with
 # NAME.map / NAME.forEach / `of NAME`; patch bodies and prose strings are not commands.
 JS_STRING = re.compile(r'"(?:[^"\\]|\\.)*"')
 CMD_KEY_BEFORE = re.compile(r'\bcmd["\']?\s*:\s*$')
+CMD_KEY_AT = re.compile(r'\bcmd["\']?\s*:\s*')  # a literal is a command value when a match of this ends exactly at its opening quote
 ARRAY_ASSIGN = re.compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*\[')
+# lookaheads: a match consumes only the name, so `x . map` does not hide a following `map . map`
+USE_MAP = re.compile(r"\b([A-Za-z_$][\w$]*)(?=\s*\.\s*(?:map|forEach)\b)")
+USE_OF = re.compile(r"\bof\s+(?=([A-Za-z_$][\w$]*))")
 SCRIPTS = {"data-quality-audit": ("validate_csv.py",), "skill-creator-studio": ("studio.py",)}
 
 
@@ -41,19 +47,26 @@ def _skill_md_re(skill):
 
 def _script_re(skill):
     names = "|".join(re.escape(s) for s in SCRIPTS.get(skill, ())) or r"[\w.-]+\.py"
-    return re.compile(r"(?<![\w.-])(?:python3?|py)(?:\.exe)?(?![\w-])[^|;&]*?(?<![\w.-])%s[\\/]scripts[\\/](?:%s)(?![\w.-])" % (re.escape(skill), names), re.I)
+    # Linear: the interpreter is the FIRST one of its [^|;&] chunk (a later one only has a shorter tail to search), so a chunk is
+    # scanned once instead of once per `py`.
+    interp = r"(?<![\w.-])(?:python3?|py)(?:\.exe)?(?![\w-])"
+    return re.compile(r"(?:^|(?<=[|;&]))(?:(?!%s)[^|;&])*%s[^|;&]*?(?<![\w.-])%s[\\/]scripts[\\/](?:%s)(?![\w.-])" % (interp, interp, re.escape(skill), names), re.I)
 
 
 def _segments(command):
     """[(segment, piped)]; piped = the segment follows a single '|', so it filters its predecessor's output (a path there is a pattern, not a file read)."""
-    parts = SEGMENT_SPLIT.split(command)
-    out, piped = [], False
-    for i, part in enumerate(parts):
+    out, piped, after_op = [], False, False
+    for i, part in enumerate(SEGMENT_SPLIT.split(command)):
         if i % 2:
+            if part == "\n" and after_op:  # blanks after an operator belong to it: "a |<newline> b" is still piped
+                continue
             piped = part == "|"
-        elif part:
-            out.append((part, piped))
-            piped = False
+            after_op = part != "\n"
+        else:
+            part = part.strip()
+            if part:
+                out.append((part, piped))
+                piped = after_op = False
     return out
 
 
@@ -80,22 +93,73 @@ def _claude_results(obj):
             yield block.get("tool_use_id"), str(c or "")
 
 
+def _string_body_ends(js):
+    """ends[i] = where the body of a double-quoted literal ends when scanned from i (grammar of JS_STRING: a backslash escapes any char
+    but newline). One right-to-left pass, so a literal is never re-scanned from every quote (unclosed or escaped quotes made the regex
+    quadratic)."""
+    n = len(js)
+    ends = [n] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        c = js[i]
+        if c == '"':
+            ends[i] = i
+        elif c == "\\":
+            ends[i] = ends[i + 2] if i + 1 < n and js[i + 1] != "\n" else i
+        else:
+            ends[i] = ends[i + 1]
+    return ends
+
+
+def _js_strings(js, ends=None):
+    """[(start, end)] of the double-quoted literals JS_STRING.finditer finds, in linear time."""
+    ends = _string_body_ends(js) if ends is None else ends
+    found, q = [], js.find('"')
+    while q != -1:
+        e = ends[q + 1]
+        if e < len(js) and js[e] == '"':
+            found.append((q, e + 1))
+            q = js.find('"', e + 1)
+        else:
+            q = js.find('"', q + 1)
+    return found
+
+
+def _bracket_ends(js, ends):
+    """close[i] = index after the `]` closing a `[` opened just before i, literals skipped; len(js) when unclosed."""
+    n = len(js)
+    close = [n] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        c = js[i]
+        if c == "]":
+            close[i] = i + 1
+        elif c == "[":
+            close[i] = close[close[i + 1]]
+        elif c == '"' and ends[i + 1] < n and js[ends[i + 1]] == '"':
+            close[i] = close[ends[i + 1] + 1]
+        else:
+            close[i] = close[i + 1]
+    return close
+
+
 def _js_command_spans(js):
     """(start, end) spans of array bodies `NAME = [ ... ]` where NAME is later mapped/iterated (a command batch)."""
+    assigns = list(ARRAY_ASSIGN.finditer(js))
+    if not assigns:
+        return []
+    # last start of each name's use: one scan of the text instead of one search of the tail per assignment
+    last_use = {}
+    for m in USE_MAP.finditer(js):
+        last_use[m.group(1)] = m.start()
+    for m in USE_OF.finditer(js):
+        last_use[m.group(1)] = max(last_use.get(m.group(1), -1), m.start())
+    close = None
     spans = []
-    for m in ARRAY_ASSIGN.finditer(js):
-        name = re.escape(m.group(1))
-        if not re.search(r"\b%s\s*\.\s*(?:map|forEach)\b|\bof\s+%s\b" % (name, name), js[m.end():]):
+    for m in assigns:
+        if last_use.get(m.group(1), -1) < m.end():
             continue
-        i, depth = m.end(), 1
-        while i < len(js) and depth:
-            s = JS_STRING.match(js, i)
-            if s:
-                i = s.end()
-                continue
-            depth += {"[": 1, "]": -1}.get(js[i], 0)
-            i += 1
-        spans.append((m.end(), i))
+        if close is None:
+            close = _bracket_ends(js, _string_body_ends(js))
+        spans.append((m.end(), close[m.end()]))
     return spans
 
 
@@ -106,12 +170,18 @@ def _codex_commands(args):
         return [" ".join(map(str, cmd)) if isinstance(cmd, list) else str(cmd)]
     if isinstance(args, str):
         found = []
-        spans = _js_command_spans(args)
-        for m in JS_STRING.finditer(args):
-            if not (CMD_KEY_BEFORE.search(args[:m.start()]) or any(a <= m.start() < b for a, b in spans)):
+        spans = sorted(_js_command_spans(args))
+        starts = [a for a, _ in spans]
+        reach = []  # reach[i] = furthest end among spans[:i + 1]
+        for _, b in spans:
+            reach.append(max(b, reach[-1]) if reach else b)
+        after_cmd_key = {m.end() for m in CMD_KEY_AT.finditer(args)}
+        for a, b in _js_strings(args):
+            k = bisect.bisect_right(starts, a) - 1
+            if not (a in after_cmd_key or (k >= 0 and a < reach[k])):
                 continue
             try:
-                found.append(json.loads(m.group(0)))
+                found.append(json.loads(args[a:b]))
             except ValueError:
                 pass
         return found
