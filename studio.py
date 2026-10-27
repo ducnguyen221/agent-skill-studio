@@ -84,8 +84,9 @@ PROFILES = ("portable", "opcos")
 DOCTOR_EXCLUDE_PARTS = (".claude/skills", ".agents/skills", ".worktrees", ".claude/worktrees", "node_modules", ".tmp", "__pycache__")
 DOCTOR_PRUNE_SILENT = frozenset({".git", ".venv", ".pytest_cache", ".mypy_cache"})  # never skills, never worth a skipped[] line
 CLOUD_MARKERS = ("OneDrive", "SharePoint")  # --skip-marker adds more: a synced folder need not carry either word
-# FILE_ATTRIBUTE_RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS | OFFLINE | PINNED | UNPINNED: a cloud placeholder, or a file the sync client manages; opening it can start a download
-CLOUD_ATTR_MASK = 0x40000 | 0x400000 | 0x1000 | 0x80000 | 0x100000
+# FILE_ATTRIBUTE_RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS | OFFLINE | UNPINNED: a cloud placeholder; opening it can start a download. PINNED (0x80000) is left out on purpose: a pinned file is already local
+CLOUD_ATTR_MASK = 0x40000 | 0x400000 | 0x1000 | 0x100000
+CLOUD_TAG_MASK, CLOUD_TAG = 0xFFFF0FFF, 0x9000001A  # IO_REPARSE_TAG_CLOUD and its CLOUD_1..CLOUD_F family (the tag's bits 12-15 vary)
 CLOUD_ATTRS_AVAILABLE = os.name == "nt"  # st_file_attributes exists on Windows only
 ST8_ALLOWED_DIRS = frozenset({"references", "scripts", "assets", "agents", "tests"})
 OPCOS_PROVENANCE_KEYS = frozenset({"source", "source_sha", "base_sha", "rewrite_before_public"})
@@ -270,12 +271,19 @@ def zone_reason(path, markers=CLOUD_MARKERS) -> str | None:
     return "secret-zone" if any(text == s or text.startswith(s + os.sep) for s in secrets) else None
 
 
+def _stat_is_cloud(info) -> bool:
+    """Cloud attribute bits, or a cloud reparse tag (st_reparse_tag, Python 3.8+ on Windows). Reads the stat result only, never the file."""
+    if getattr(info, "st_file_attributes", 0) & CLOUD_ATTR_MASK:
+        return True
+    return (getattr(info, "st_reparse_tag", 0) & CLOUD_TAG_MASK) == CLOUD_TAG
+
+
 def entry_is_cloud(entry) -> bool:
-    """True when a directory entry carries Windows cloud attributes. DirEntry.stat(follow_symlinks=False) reads the listing, not the file."""
+    """True when a directory entry carries Windows cloud attributes or a cloud reparse tag. DirEntry.stat(follow_symlinks=False) reads the listing, not the file."""
     if not CLOUD_ATTRS_AVAILABLE:
         return False
     try:
-        return bool(getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0) & CLOUD_ATTR_MASK)
+        return _stat_is_cloud(entry.stat(follow_symlinks=False))
     except OSError:
         return False
 
@@ -285,7 +293,7 @@ def path_is_cloud(path) -> bool:
     if not CLOUD_ATTRS_AVAILABLE:
         return False
     try:
-        return bool(getattr(os.lstat(path), "st_file_attributes", 0) & CLOUD_ATTR_MASK)
+        return _stat_is_cloud(os.lstat(path))
     except OSError:
         return False
 
@@ -593,12 +601,12 @@ def zone_named(name: str, markers=CLOUD_MARKERS) -> bool:
     return low == ".secret" or any(marker.casefold() in low for marker in markers)
 
 
-def walk_files(base: Path, markers=CLOUD_MARKERS, max_files: int | None = None, max_depth: int | None = None) -> tuple[list[Path], set, set, set, bool]:
+def walk_files(base: Path, markers=CLOUD_MARKERS, max_files: int | None = None, max_depth: int | None = None, skip_names=()) -> tuple[list[Path], set, set, set, bool]:
     """(every file and folder under `base`, sorted; the links, the real folders and the cloud placeholders the listing itself reports; cut short).
     A symlink or junction (any reparse point) is listed as a link and never entered, a folder named like a cloud/secret zone and
     anything carrying cloud attributes are listed but never entered or opened, and nothing else is stat-ed per entry except folders about to be entered.
     The walk stops after `max_files` entries (default DOCTOR_MAX_FILES_PER_SKILL) and does not enter folders `max_depth` levels down
-    (default DOCTOR_MAX_SKILL_DEPTH); either sets the last value, True."""
+    (default DOCTOR_MAX_SKILL_DEPTH); either sets the last value, True. An entry whose name is in `skip_names` is left out unlisted and unentered."""
     max_files = DOCTOR_MAX_FILES_PER_SKILL if max_files is None else max_files
     max_depth = DOCTOR_MAX_SKILL_DEPTH if max_depth is None else max_depth
     found, links, dirs, cloud, stack, cut = [], set(), set(), set(), [(base, 0)], False
@@ -610,6 +618,8 @@ def walk_files(base: Path, markers=CLOUD_MARKERS, max_files: int | None = None, 
         except OSError:
             continue
         for entry in entries:
+            if entry.name in skip_names:
+                continue
             if len(found) >= max_files:
                 cut = True
                 break
@@ -1541,30 +1551,48 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
     if manifest.is_file() and re.search(r"<!--\s*STUDIO-DRAFT", manifest.read_text(encoding="utf-8")):
         findings.append(emit("ERROR", "PACK", manifest, 0, "cannot package an unfinished template: remove draft marker after authoring"))
     files = []
-    for p in folder.rglob("*"):
-        rel = p.relative_to(folder)
-        if any(part in SKIP_DIRS for part in rel.parts):
-            continue
-        if p.is_symlink():
-            findings.append(emit("ERROR", "SEC", p, 0, "cannot package symlink"))
-            continue
-        if not p.is_file():
-            continue
+    paths, links, dirs, cloud, cut = walk_files(folder, skip_names=SKIP_DIRS)  # no rglob: links and cloud placeholders are listed, never entered or opened
+    if cut:
+        findings.append(emit("ERROR", "PACK", folder, 0, "skill tree is over the scan limit (%d entries or %d folder levels); nothing is packaged short, trim the tree"
+                             % (DOCTOR_MAX_FILES_PER_SKILL, DOCTOR_MAX_SKILL_DEPTH)))
+    for p in paths:
+        if p in cloud:
+            findings.append(emit("ERROR", "PACK", p, 0, "cloud placeholder; not read, not packaged"))
+        elif p in links:
+            findings.append(emit("ERROR", "PACK", p, 0, "symlink or junction; not followed, not packaged"))
+        elif p in dirs:
+            if zone_named(p.name):
+                findings.append(emit("ERROR", "PACK", p, 0, "folder named like a cloud/secret zone; not entered, not packaged"))
+        else:
+            files.append(p)
+    kept = []
+    for p in files:
         if p.name in REJECT_NAMES or p.name.startswith(".env.") or p.suffix.lower() in REJECT_SUFFIXES:
             findings.append(emit("ERROR", "SEC", p, 0, "secret/credential-like file must not be shipped"))
             continue
-        if p.stat().st_size > 25 * 1024 * 1024:
+        try:
+            info = os.lstat(p)
+        except OSError as exc:
+            findings.append(emit("ERROR", "PACK", p, 0, "cannot stat: %s" % (exc.strerror or type(exc).__name__)))
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            continue
+        if info.st_size > 25 * 1024 * 1024:
             findings.append(emit("ERROR", "PACK", p, 0, "file exceeds 25 MB; review before shipping"))
             continue
         if p.suffix.lower() in {".md", ".py", ".txt", ".json", ".yaml", ".yml", ".sh"}:
             try:
-                raw = p.read_text(encoding="utf-8")
+                with open_nofollow_read(p, info) as handle:
+                    raw = handle.read().decode("utf-8")
+            except UnsafeOpen as exc:
+                findings.append(emit("ERROR", "PACK", p, 0, "not packaged: %s" % exc))
+                continue
             except (OSError, UnicodeError):
                 raw = ""
             if ("-----BEGIN " + "PRIVATE KEY-----") in raw or re.search(r"\b(?:sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16})\b", raw):
                 findings.append(emit("ERROR", "SEC", p, 0, "possible hardcoded secret in package"))
-        files.append(p)
-    return files, findings
+        kept.append(p)
+    return kept, findings
 
 
 def cmd_package(args) -> int:
@@ -1583,9 +1611,17 @@ def cmd_package(args) -> int:
     if target.exists() and not args.force:
         print("ERROR: package exists: %s; choose another --out or explicitly --force" % target, file=sys.stderr)
         return 1
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in files:
-            zf.write(p, arcname=str(Path(folder.name) / p.relative_to(folder)))
+    try:
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in files:
+                arcname = str(Path(folder.name) / p.relative_to(folder))
+                with open_nofollow_read(p, os.lstat(p)) as handle:  # the file that was checked, never a link put there since
+                    data = handle.read()
+                zf.writestr(zipfile.ZipInfo.from_file(p, arcname), data, compress_type=zipfile.ZIP_DEFLATED)
+    except UnsafeOpen as exc:
+        _remove_quietly(target)
+        print("ERROR: PACK: %s; nothing was packaged" % exc, file=sys.stderr)
+        return 1
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
     print("Packaged %d runtime files -> %s\nSHA256: %s\nExcluded: evals/, tests/, secrets, caches. Model evaluation status is unchanged." % (len(files), target, digest))
     return 0
@@ -2316,7 +2352,11 @@ def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None
                             skip(child, "cloud")
                             continue
                     if entry.is_symlink() or (is_dir and is_link(child)):
-                        if is_dir or entry.name.lower().endswith(".md"):
+                        try:
+                            to_dir = is_dir or entry.is_dir()  # a POSIX symlink to a folder is not is_dir(follow_symlinks=False): ask what it points at
+                        except OSError:
+                            to_dir = False
+                        if to_dir or entry.name.lower().endswith(".md"):
                             skip(child, "link")
                     elif is_dir:
                         if entry.name in FMT_PRUNE_DIRS or (entry.name == "runs" and "evals" in (x.casefold() for x in child.parts)):
@@ -2368,11 +2408,20 @@ def _write_fixed(path: Path, data: bytes, backup: bool) -> str | None:
         if backup:
             stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
             target, count = path.with_name("%s.bak-%s" % (path.name, stamp)), 1
-            while os.path.lexists(target):
-                target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
-                count += 1
-            made_backup = target  # named before the copy, so that a copy that stops half way is removed too
-            shutil.copy2(path, target)
+            while True:
+                try:
+                    sink = create_exclusive(target)  # O_EXCL: a name already there (a link included) is never written through
+                    break
+                except FileExistsError:
+                    target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
+                    count += 1
+            made_backup = target  # set only once the exclusive create has succeeded, so a failure never removes a file we did not make
+            with sink, open_nofollow_read(path, single_link=False) as source:
+                shutil.copyfileobj(source, sink)
+            try:
+                shutil.copystat(path, target)
+            except OSError:
+                pass
         handle, name = tempfile.mkstemp(dir=os.fspath(path.parent), prefix=".%s." % path.name, suffix=".fmt-tmp")
         temp = Path(name)
         out, handle = os.fdopen(handle, "wb"), None
@@ -2433,7 +2482,8 @@ def cmd_fmt(args) -> int:
     results, errors, warnings, changed, backups = [], 0, 0, 0, 0
     for path in files:
         try:
-            raw = path.read_bytes()
+            with open_nofollow_read(path, single_link=False) as handle:
+                raw = handle.read()
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
             skipped.append({"path": str(path), "reason": "not-utf8"})

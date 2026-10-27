@@ -245,6 +245,16 @@ Tên ghi ra đĩa và trong `evals.json` là dạng Unicode NFC, giữ nguyên h
 
 **Rủi ro còn lại.** Trên POSIX nguồn mở bằng `O_NOFOLLOW`. Windows không có cờ đó: nguồn được mở trước, rồi mới so `(st_dev, st_ino)` của handle với `lstat` lúc kiểm và ép `st_nlink == 1`. Hệ quả: (1) việc mở đã đi theo reparse point trước khi so, nên nguồn bị đổi thành link tới placeholder cloud vẫn có thể kích tải trước khi bị từ chối; (2) `O_EXCL`/`O_NOFOLLOW` chỉ bảo vệ thành phần cuối, thư mục cha của đích chỉ được kiểm lại sau `mkdir`, nên kẻ đua cục bộ chạy cùng tài khoản vẫn có một khoảng hở rất hẹp. Công cụ bảo vệ khỏi tệp sai và nhầm lẫn, không phải khỏi một tiến trình thù địch cùng quyền; đừng xuất từ cây eval mà tiến trình khác đang ghi.
 
+## Đóng gói (`package`, `install`): mã `PACK`
+
+`package` và `install` duyệt cây skill bằng bộ duyệt có kiểm link và cloud (không dùng `rglob`), vẫn bỏ `evals/`, `tests/`, `.git`, cache. Mọi lỗi dưới đây là ERROR mã `PACK`, thoát 1, không ghi gói:
+
+| Mã | Nghĩa | Cách sửa |
+|---|---|---|
+| `PACK` | Gặp symlink/junction, placeholder cloud (cờ cloud hoặc tag `IO_REPARSE_TAG_CLOUD*`), thư mục tên vùng (thư mục bí mật, `OneDrive`, `SharePoint`), cây vượt trần duyệt (5 000 mục / 12 tầng), file có hơn một tên (hard link) hoặc bị đổi giữa lúc kiểm và lúc đọc, file trên 25 MB, bản nháp `STUDIO-DRAFT` | Bỏ link/thư mục đó khỏi skill, tải file cloud thủ công, thu gọn cây, rồi chạy lại |
+
+Không bao giờ đọc nội dung placeholder cloud. `PINNED` một mình (file đã tải sẵn) không còn bị coi là placeholder; `PINNED` kèm `RECALL_ON_DATA_ACCESS`, `RECALL_ON_OPEN`, `OFFLINE` hay `UNPINNED` vẫn là cloud. `validate`/`doctor` giữ `SZ2` ở mức WARN.
+
 ## Phát hành
 
 Trước khi phát hành: `python3 studio.py doctor`, rồi `fmt --check` trên danh sách file của đợt (13 đường của SPR-33, phải thoát 0 và báo `0 skipped`):

@@ -257,9 +257,8 @@ class FmtMoreTests(unittest.TestCase):
         if os.name == "nt":
             self.assertIn("skipped (link)", out)
         else:
-            # POSIX: a directory symlink whose name does not end in .md is passed over without a report (CO of SPR-33, studio.py ~2201); it is still never followed
-            self.assertIn("0 files", out)
-            self.assertNotIn("linked", out)
+            # POSIX: a directory symlink is reported as `skipped (link)` like a junction (SPR-01 TK3, FR3.2) and still never followed
+            self.assertIn("skipped (link)", out)
         self.assertEqual((real / "SKILL.md").read_bytes(), SKILL.replace("\n", "\r\n").encode("utf-8"), "nothing written through a link")
         code, out, _ = run("--fix", str(link / "SKILL.md"), root=self.tmp)  # a file reached through a link below the repo root
         self.assertEqual(code, 1, "named directly and not checked: exit 1 ('exit 0' means every file was checked)")
@@ -471,11 +470,12 @@ class FmtRound3Tests(unittest.TestCase):
     def test_fmt_failed_copy_removes_the_half_made_backup(self):
         path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
 
-        def half_copy(source, target, **kwargs):
-            Path(target).write_bytes(b"half")
+        def half_copy(source, target, *args, **kwargs):
+            target.write(b"half")  # the backup is now created exclusively and copied with copyfileobj (SPR-01 TK3)
+            target.flush()
             raise OSError(28, "no space")
 
-        with mock.patch.object(studio.shutil, "copy2", half_copy):
+        with mock.patch.object(studio.shutil, "copyfileobj", half_copy):
             code, _, err = run("--fix", str(path))
         self.assertEqual(code, 2, err)
         self.assertEqual([p.name for p in self.tmp.iterdir()], ["SKILL.md"])

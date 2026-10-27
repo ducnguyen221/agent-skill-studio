@@ -511,7 +511,7 @@ class DoctorHardeningTests(unittest.TestCase):
     """SPR-33 TK9 round 2: the review of the first doctor found it could read what it must not (RK15) and be made to spin."""
 
     def test_doctor_skips_cloud_attribute_entries(self):
-        for bit in (0x40000, 0x400000, 0x1000, 0x80000, 0x100000):  # RECALL_ON_OPEN, RECALL_ON_DATA_ACCESS, OFFLINE, PINNED, UNPINNED
+        for bit in (0x40000, 0x400000, 0x1000, 0x80000 | 0x400000, 0x100000):  # RECALL_ON_OPEN, RECALL_ON_DATA_ACCESS, OFFLINE, PINNED|RECALL_ON_DATA_ACCESS, UNPINNED (PINNED alone is local: SPR-01 TK3)
             with tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp).resolve() / "root"
                 ok = make_skill(root, "ok-skill")
