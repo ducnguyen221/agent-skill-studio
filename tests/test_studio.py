@@ -418,23 +418,23 @@ class StudioTests(unittest.TestCase):
             return model_evaluated_problems(catalog, root)
 
     def test_gate_false_below_threshold_with_matching_counts_is_green(self):
-        """SC8-1 (accepting): flag false + result below-threshold, counts recounted from logs (3/5) really below threshold -> green."""
+        """tương-đương: SC8-1 (accepting): flag false + result below-threshold, counts recounted from logs (3/5) really below threshold -> green."""
         self.assertEqual([], self._gate(model_evaluated=False, trig=3, result="below-threshold"))
 
     def test_gate_false_below_threshold_but_counts_meet_thresholds_is_red(self):
-        """SC8-2 (bắt-lỗi): flag false + below-threshold while the recounted numbers meet every threshold -> red (result != recomputed)."""
+        """tương-đương (green at df875ce: the gate function lives in this file): SC8-2 flag false + below-threshold while the recounted numbers meet every threshold -> red (result != recomputed)."""
         problems = self._gate(model_evaluated=False, trig=4, result="below-threshold")
         self.assertTrue(any("result" in p and "recomputed" in p for p in problems), problems)
 
     def test_gate_false_with_passed_is_red(self):
-        """SC8-3 (bắt-lỗi): flag false + result passed is never allowed."""
+        """tương-đương (green at df875ce): SC8-3 flag false + result passed is never allowed."""
         problems = self._gate(model_evaluated=False, trig=4, result="passed")
         self.assertTrue(any("passed" in p and "false" in p for p in problems), problems)
         problems = self._gate(model_evaluated=False, trig=3, result="passed")
         self.assertTrue(any("passed" in p and "false" in p for p in problems), problems)
 
     def test_gate_true_with_below_threshold_is_red(self):
-        """SC8-4 (bắt-lỗi): flag true is not relaxed: below-threshold counts stay red, and result must be passed."""
+        """tương-đương (green at df875ce): SC8-4 flag true is not relaxed: below-threshold counts stay red, and result must be passed."""
         problems = self._gate(model_evaluated=True, trig=3, result="below-threshold")
         self.assertTrue(any("positive_triggered" in p and ">= 4" in p for p in problems), problems)
         self.assertTrue(any("result" in p and "passed" in p for p in problems), problems)
@@ -442,13 +442,13 @@ class StudioTests(unittest.TestCase):
         self.assertTrue(any("result" in p and "passed" in p for p in problems), problems)
 
     def test_gate_overlap_not_run_harness_and_below_threshold_is_below_threshold(self):
-        """SC8-5 (chồng nghĩa): antigravity not_run AND a ran harness below threshold -> must be below-threshold, not partial."""
+        """tương-đương: SC8-5 antigravity not_run AND a ran harness below threshold -> must be below-threshold, not partial."""
         self.assertEqual([], self._gate(model_evaluated=False, trig=3, result="below-threshold"))
         problems = self._gate(model_evaluated=False, trig=3, result="partial")
         self.assertTrue(any("result" in p and "recomputed" in p and "below-threshold" in p for p in problems), problems)
 
     def test_gate_false_partial_and_integrity_checks_still_apply(self):
-        """FR9.2: flag false only skips AB_THRESHOLDS; log-vs-ab recount, ab_report location and missing ab file stay red."""
+        """tương-đương: FR9.2: flag false only skips AB_THRESHOLDS; log-vs-ab recount, ab_report location and missing ab file stay red."""
         self.assertEqual([], self._gate(model_evaluated=False, trig=4, result="partial"))
         problems = self._gate(model_evaluated=False, trig=3, result="below-threshold", claim_positive=5)
         self.assertTrue(any("recount" in p for p in problems), problems)
@@ -460,7 +460,7 @@ class StudioTests(unittest.TestCase):
         self._gate_red(bad_report, "ab_report", model_evaluated=False, result="partial")
 
     def test_gate_result_enum_and_batch_sha_format(self):
-        """FR9.1: result must be a known value and batch_sha 40 lowercase hex."""
+        """tương-đương: FR9.1: result must be a known value and batch_sha 40 lowercase hex."""
         problems = self._gate(model_evaluated=False, result="great")
         self.assertTrue(any("result" in p and "great" in p for p in problems), problems)
         for bad in ("abc1234", "G" * 40, "A" * 40):
@@ -468,14 +468,14 @@ class StudioTests(unittest.TestCase):
             self.assertTrue(any("batch_sha" in p for p in problems), (bad, problems))
 
     def test_gate_batch_sha_kind_required_and_valid(self):
-        """batch_sha_kind is required with batch_sha and must be commit or tree."""
+        """tương-đương: batch_sha_kind is required with batch_sha and must be commit or tree."""
         self.assertEqual([], self._gate(model_evaluated=False, result="partial", kind="tree"))
         for bad in ("blob", None, ""):
             problems = self._gate(model_evaluated=False, result="partial", kind=bad)
             self.assertTrue(any("batch_sha_kind" in p for p in problems), (bad, problems))
 
     def test_gate_not_run_when_no_harness_ran(self):
-        """FR9.1: no harness ran at all -> result not_run; claiming below-threshold is red."""
+        """tương-đương: FR9.1: no harness ran at all -> result not_run; claiming below-threshold is red."""
         def m(runs, ab, h, ev):
             for k in ("claude-code", "codex"):
                 h[k] = "not_run:no-quota"
@@ -487,7 +487,7 @@ class StudioTests(unittest.TestCase):
             self.assertEqual([], model_evaluated_problems(catalog, root))
 
     def test_runbook_has_batch_rules_section(self):
-        """FR8.1: RUNBOOK «Luật lô» exists and names the four mandatory phrases, with PowerShell and bash examples."""
+        """bắt-lỗi (red at df875ce: no «Luật lô» section): FR8.1: RUNBOOK «Luật lô» exists and names the four mandatory phrases, with PowerShell and bash examples."""
         text = (ROOT / "evals" / "RUNBOOK.md").read_text(encoding="utf-8")
         self.assertIn("## Luật lô", text)
         section = text[text.index("## Luật lô"):]

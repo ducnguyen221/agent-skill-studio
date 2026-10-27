@@ -24,11 +24,13 @@ def _eol_listing():
 
 class RepoHygieneTests(unittest.TestCase):
     def test_gitattributes_pins_lf(self):
+        """bắt-lỗi: .gitattributes exists and pins eol=lf (red at df875ce: the file was missing)."""
         path = ROOT / ".gitattributes"
         self.assertTrue(path.is_file(), ".gitattributes is missing")
         self.assertIn("eol=lf", path.read_text(encoding="utf-8"))
 
     def test_index_text_files_are_lf(self):
+        """tương-đương (skipped at df875ce, not shown red): every tracked text file is LF in the index."""
         bad = []
         for line in _eol_listing():
             meta, _, name = line.partition("\t")

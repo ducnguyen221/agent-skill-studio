@@ -87,8 +87,8 @@ class CloudTagTests(unittest.TestCase):
                 with self.subTest(tag=hex(tag), via=via):
                     self.assertEqual(self.cloud(fake_stat(attrs, tag), via), want)
 
-    def test_bat_loi_no_attributes_means_not_cloud(self):
-        """bắt-lỗi: FR5.5, a platform without st_file_attributes/st_reparse_tag keeps the old answer."""
+    def test_tuong_duong_no_attributes_means_not_cloud(self):
+        """tương-đương (green at df875ce, a guard against regression): FR5.5, a platform without st_file_attributes/st_reparse_tag keeps the old answer."""
         for via in ("path", "entry"):
             self.assertFalse(self.cloud(fake_stat(), via))
             self.assertFalse(self.cloud(fake_stat(REPARSE), via), "reparse point without a tag")
@@ -163,8 +163,20 @@ class PackageTreeTests(unittest.TestCase):
         self.assertIn("PACK", out + err)
         self.assertFalse((self.out / "data-quality-audit.zip").exists())
 
-    def test_bat_loi_cloud_placeholder_is_pack_error_and_never_read(self):
-        """bắt-lỗi: a cloud placeholder gives PACK and no open/read of it."""
+    def test_bat_loi_cloud_placeholder_is_pack_error_and_never_packaged(self):
+        """bắt-lỗi: a cloud placeholder (path_is_cloud / entry_is_cloud say so, both exist at df875ce) gives PACK, exit 1 and no zip."""
+        (self.skill / "references").mkdir(exist_ok=True)
+        (self.skill / "references" / "ghost.md").write_text("x")
+        real_entry, real_path = studio.entry_is_cloud, studio.path_is_cloud
+        with mock.patch.object(studio, "entry_is_cloud", lambda e: e.name == "ghost.md" or real_entry(e)), \
+                mock.patch.object(studio, "path_is_cloud", lambda p: Path(p).name == "ghost.md" or real_path(p)):
+            code, out, err = package(self.skill, self.out)
+        self.assertEqual(code, 1, out + err)
+        self.assertIn("PACK", out + err)
+        self.assertFalse((self.out / "data-quality-audit.zip").exists())
+
+    def test_don_vi_ham_moi_cloud_placeholder_is_never_opened(self):
+        """đơn-vị-hàm-mới: a cloud placeholder gives PACK and no open_nofollow_read of it."""
         (self.skill / "references").mkdir(exist_ok=True)
         (self.skill / "references" / "ghost.md").write_text("x")
         real = studio.entry_is_cloud
@@ -248,8 +260,8 @@ class FmtBackupExclusiveTests(unittest.TestCase):
         return sorted(p.name for p in self.tmp.iterdir() if ".bak-" in p.name)
 
     @unittest.skipUnless(can_link("hard"), "cannot create hard links here")
-    def test_bat_loi_planted_hard_link_backup_is_not_written_through(self):
-        """bắt-lỗi: a hard link at the first .bak name must survive; the backup takes the next suffix."""
+    def test_tuong_duong_planted_hard_link_backup_is_not_written_through(self):
+        """tương-đương (green at df875ce, which already avoided the existing name): a hard link at the first .bak name must survive; the backup takes the next suffix."""
         outside = self.tmp / "outside.txt"
         outside.write_bytes(b"CANARY")
         with mock.patch.object(studio, "datetime") as dt:
@@ -285,8 +297,8 @@ class FmtBackupExclusiveTests(unittest.TestCase):
         self.assertEqual(self.fixed_names(), ["SKILL.md.bak-STAMP"])
         self.assertEqual(self.path.read_bytes(), DIRTY.encode("utf-8"))
 
-    def test_bat_loi_source_is_read_with_open_nofollow_read(self):
-        """bắt-lỗi: fmt reads the .md through the no-follow helper."""
+    def test_don_vi_ham_moi_source_is_read_with_open_nofollow_read(self):
+        """đơn-vị-hàm-mới: fmt reads the .md through the no-follow helper."""
         seen = []
         real = studio.open_nofollow_read
 
