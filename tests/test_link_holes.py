@@ -305,6 +305,55 @@ class IsDirQuietLinkTests(unittest.TestCase):
                 drop_dir_link(link)
 
 
+class ProbeErrorTests(unittest.TestCase):
+    """An OSError while probing a path the user gave (POSIX ENAMETOOLONG; pathlib re-raises it) is never a crash: the path is simply not a link / not a folder (1a RF-T6)."""
+
+    def too_long(self):
+        import errno
+        return mock.patch.object(Path, "is_symlink", side_effect=OSError(errno.ENAMETOOLONG, "File name too long"))
+
+    def test_bat_loi_is_link_treats_oserror_as_not_a_link(self):
+        """bắt-lỗi: fs.is_link returns False when pathlib raises ENAMETOOLONG for the path (CI ubuntu on 138cbfa: it raised)."""
+        with tempfile.TemporaryDirectory() as t, self.too_long():
+            self.assertFalse(E.fs.is_link(Path(t) / "x"))
+
+    def test_bat_loi_parse_roots_oserror_while_probing_is_root_not_found(self):
+        """bắt-lỗi: doctor `--roots` with a path that cannot be probed (ENAMETOOLONG) ends in the old ValueError «root not found», not an OSError traceback."""
+        with tempfile.TemporaryDirectory() as t, self.too_long():
+            with self.assertRaises(ValueError) as caught:
+                E.doctor.parse_roots(str(Path(t) / "x"), None, None)
+            self.assertIn("root not found or not a directory", str(caught.exception))
+
+    def test_bat_loi_parse_roots_oserror_from_os_stat_is_root_not_found(self):
+        """bắt-lỗi: the same with os.stat/os.lstat failing for the root (as the CI test does)."""
+        import errno
+        real_stat, real_lstat = os.stat, os.lstat
+        with tempfile.TemporaryDirectory() as t:
+            bad = os.path.normcase(os.path.abspath(str(Path(t) / "x")))
+
+            def guard(real):
+                def wrapper(path, *a, **k):
+                    if not isinstance(path, int) and os.path.normcase(os.path.abspath(os.fspath(path))) == bad:
+                        raise OSError(errno.ENAMETOOLONG, "File name too long")
+                    return real(path, *a, **k)
+                return wrapper
+
+            with mock.patch.object(os, "stat", guard(real_stat)), mock.patch.object(os, "lstat", guard(real_lstat)):
+                with self.assertRaises(ValueError):
+                    E.doctor.parse_roots(bad, None, None)
+
+    def test_bat_loi_probes_added_by_tk7_survive_oserror(self):
+        """bắt-lỗi: skill_dirs, ensure_distributable and iter_md (the other places TK7 asks is_link about a user path) raise nothing when the probe fails."""
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t) / "repo"
+            write_md(root / "skills" / "good" / "SKILL.md", SKILL_TEXT % "good")
+            write_md(root / "docs" / "a.md")
+            with self.too_long():
+                E.fs.skill_dirs(root)
+                files, findings = E.dist.ensure_distributable(root / "skills" / "good")
+                E.fmt.iter_md([root / "docs"], False, None, [])
+
+
 class PackagePrecheckTests(unittest.TestCase):
     def make_skill(self, base: Path) -> Path:
         folder = base / "toy"

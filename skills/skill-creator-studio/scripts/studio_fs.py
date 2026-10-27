@@ -146,9 +146,9 @@ def skill_dirs(root: Path) -> list[Path]:
 
 def is_link(path: Path) -> bool:
     """True for a symlink or, on Windows, any reparse point such as a directory junction (os.path.isjunction needs Python 3.12)."""
-    if path.is_symlink():
-        return True
-    try:
+    try:  # pathlib re-raises ENAMETOOLONG and the like from is_symlink(): a path that cannot be probed is not a link (1a RF-T6)
+        if path.is_symlink():
+            return True
         return bool(getattr(os.lstat(path), "st_file_attributes", 0) & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
     except OSError:
         return False
