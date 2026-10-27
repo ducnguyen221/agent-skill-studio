@@ -33,4 +33,4 @@ python3 studio.py evals --all
 python3 -m unittest discover -s tests -v
 ```
 
-When changing template resources, run `python3 studio.py sync-template` and rerun tests. If a check fails, fix its cause and rerun; report any remaining limitations explicitly.
+Templates live only in `skills/skill-creator-studio/assets/`; edit them there and rerun tests. If a check fails, fix its cause and rerun; report any remaining limitations explicitly.

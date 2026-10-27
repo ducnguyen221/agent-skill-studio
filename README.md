@@ -49,7 +49,7 @@ Agent Skill Studio/
 ├── AGENTS.md                    # Chỉ dẫn repo chung cho Codex/Antigravity
 ├── CLAUDE.md                    # Claude Code: import AGENTS.md và thêm adapter
 ├── GEMINI.md                    # Antigravity-specific notes, không sao chép rule chung
-├── studio.py                    # CLI: new / check / validate / audit / evals / package / install / doctor / fmt
+├── studio.py                    # Shim: chạy engine trong skill (lệnh new / check / validate / audit / evals / package / install / doctor / fmt)
 ├── .claude-plugin/              # Manifest plugin Claude Code (plugin.json, marketplace.json)
 ├── .codex-plugin/               # Manifest plugin Codex (plugin.json)
 ├── standards/
@@ -83,7 +83,7 @@ Agent Skill Studio/
 │   ├── skill-creator-studio/    # Skill meta-factory: NEW / AUDIT / REFINE
 │   │   ├── SKILL.md
 │   │   ├── references/
-│   │   ├── scripts/studio.py    # CLI có thể chạy cả khi Skill được copy sang repo khác
+│   │   ├── scripts/             # Engine: studio.py (CLI) + 9 mô-đun studio_*.py; chạy cả khi Skill được copy sang repo khác
 │   │   └── assets/              # skill-template/ (SKILL.md en, SKILL.vi.md vi), skill-template-full/ (--full): bản duy nhất của hai khuôn
 │   └── data-quality-audit/     # Skill ví dụ có script xử lý CSV thật
 ├── evals/                      # KHÔNG được mang vào package Skill
@@ -108,6 +108,8 @@ Agent Skill Studio/
 ```
 
 > **Ghi chú cây đích:** cây trên là hiện trạng của repo. Sprint áp dụng kế tiếp (SPEC 9.15 của SPR-33) mới dời: `adapters/*` thành `docs/adapters.md`; xoá `registry/SKILL_CATALOG.md` (giữ `catalog.json`); `QA_REPORT.md`, `ECOSYSTEM.md`, `standards/ROBONUGGETS_46_RULE_MAP.md` vào `docs/`; `templates/project/` thành `templates/starter-project/`; `CLAUDE.md` gốc còn một dòng. Các đường API cứng (`studio.py`, `skills/*`, `standards/SKILL_AUTHORING_STANDARD.md`, tên repo) đứng yên. Tới lúc đó, đường dẫn trong tài liệu này vẫn đúng như đã ghi.
+
+**Bố cục engine.** Một nguồn duy nhất: engine nằm trong skill ở `skills/skill-creator-studio/scripts/` gồm `studio.py` (CLI, chọn lệnh) và chín mô-đun `studio_const`, `studio_fs`, `studio_lint`, `studio_validate`, `studio_evals`, `studio_scaffold`, `studio_dist`, `studio_doctor`, `studio_fmt`. `studio.py` ở gốc repo chỉ là shim chạy engine đó, nên mọi lệnh bên dưới cho cùng kết quả dù gọi từ gốc repo hay từ thư mục skill. Hai khuôn Skill mới chỉ có ở `skills/skill-creator-studio/assets/`. Các mô-đun gọi nhau qua đối tượng mô-đun và không nhập lại tên của nhau (test `tests/test_engine_modules.py` giữ luật này).
 
 ### `references/`, `scripts/`, `assets/`, `evals/` khác nhau ra sao?
 

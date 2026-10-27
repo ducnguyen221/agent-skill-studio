@@ -2,6 +2,17 @@
 
 ## Chưa phát hành
 
+- **agent-skill-studio:SPR-02 (chặng 1b, một nguồn; chưa phát hành).** Engine chỉ còn một bản, ở `skills/skill-creator-studio/scripts/` (`studio.py` là CLI, kèm chín mô-đun `studio_*.py`); `studio.py` ở gốc repo là shim. Bộ ca hợp đồng 96 ca (`tests/fixtures/contract/`, đáp án sinh từ `1211bfa`) khoá đầu ra của CLI. Các thay đổi hợp đồng:
+  - **Bỏ** lệnh `sync-template` (thoát 2 như mọi lệnh lạ) và thư mục `templates/skill-template*`: hai khuôn chỉ còn ở `skills/skill-creator-studio/assets/`, lệnh `new` luôn lấy từ đó, trong hay ngoài repo.
+  - **Thêm** lệnh `check` (kiểm một skill, thư mục hoặc `SKILL.md`); `validate` và `audit` là bí danh giữ nguyên cờ, mã thoát và JSON.
+  - `evals --all` kiểm thêm `registry/catalog.json` bằng cổng `model_evaluated` đã dời vào engine và báo mã mới `EV20`, thoát 1 khi hỏng; trong repo thiếu `registry/catalog.json` hoặc `evals/tools/activation.py` cũng là `EV20`. Engine chép rời ra ngoài repo (skill rời, ZIP) bỏ qua cổng.
+  - `new --full --lang vi` thoát 0 (trước: thoát 2) và tạo cây full với `SKILL.md` tiếng Việt từ `assets/skill-template-full/SKILL.vi.md`; `SKILL.vi.md` không bao giờ nằm trong skill sinh ra. `new --full` (en) và `new --lang vi` không đổi.
+  - Nhận diện gốc repo đổi từ `templates/skill-template/SKILL.md` sang `.claude-plugin/plugin.json` (cùng `standards/SKILL_AUTHORING_STANDARD.md`).
+  - Nạp mô-đun: hai engine ở hai chỗ khác nhau trong một tiến trình thì thoát 2 có lời báo thay vì dùng nhầm mô-đun đã nạp; nạp `studio.py` gốc như mô-đun Python không còn được hỗ trợ.
+  - `package`/`install`: `SKILL.md` là link, placeholder cloud hoặc nằm trong vùng cloud/secret thì ERROR `PACK` và không đọc (trước: đọc rồi mới chặn). `install --force` khác ổ đĩa mà cây cũ có junction, symlink hoặc placeholder cloud bên trong thì thoát 1 có lời báo, bản cũ giữ nguyên, không chép xuyên link.
+  - `fmt` và `skill_dirs` không còn stat đích của symlink/junction: `fmt` báo `skipped (link)` cho mọi symlink (trước: chỉ symlink thư mục hoặc `*.md`); `validate --all` không liệt kê thư mục con của `skills/` là link; `doctor --roots` nhận một gốc là link rồi xét theo đường thật như trước.
+  - `references/NEW_WORKFLOW.md` và `REFINE_WORKFLOW.md` viết lại đúng hình `PR1` (`fmt --check skills/skill-creator-studio` hết cảnh báo).
+- **agent-skill-studio:SPR-02, sửa file luật `AGENTS.md:36` (chưa phát hành).** Lý do: lệnh `sync-template` và bản sao khuôn đã bỏ nên câu hướng dẫn cũ sai; đúng một câu đổi thành «Templates live only in `skills/skill-creator-studio/assets/`; edit them there and rerun tests.», không dòng nào khác. Duyệt: Business Reviewer Fable duyệt hộ theo uỷ quyền của Đức ngày 2026-10-27 (CQ1, sửa file luật).
 - `registry/catalog.json`: khối `evaluated` nay được phép khi `model_evaluated: false`, thêm `result` (`passed`/`below-threshold`/`partial`/`not_run`, cổng tính lại từ log), `batch_sha` và `batch_sha_kind` (`commit`/`tree`); `data-quality-audit` ghi lô SPR-18 là `below-threshold`. Cờ `true` vẫn đòi đủ ngưỡng như cũ.
 - CI chạy ma trận `ubuntu-latest` + `windows-latest` × Python 3.9 + 3.12 (trước: một ô ubuntu, Python 3.11).
 - Thêm manifest plugin (`.claude-plugin/`, `.codex-plugin/`) và test đồng bộ version giữa các manifest.
