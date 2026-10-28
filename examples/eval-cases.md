@@ -34,7 +34,7 @@ Cách dùng: đặt các khối JSON dưới đây vào mảng `cases` của `ev
   "should_trigger": true,
   "fixtures": ["fixtures/staged-rename-flag.diff"],
   "expected_behaviors": [
-    "Marks the change as breaking with a BREAKING CHANGE footer or a ! after the type",
+    "Marks the change as breaking with a BREAKING CHANGE footer or a ! right before the colon, after the type or the scope",
     "Does not invent a ticket code",
     "Keeps the subject at most 72 characters"
   ]
@@ -77,10 +77,10 @@ Bản xuất qua `evals … --export agentskills` (TK8) ghi `<out>/<skill>/evals
     {
       "id": 2,
       "prompt": "Commit my staged changes. The diff renames the --out flag to --output and removes the old name.",
-      "expected_output": "Marks the change as breaking with a BREAKING CHANGE footer or a ! after the type; Does not invent a ticket code; Keeps the subject at most 72 characters",
+      "expected_output": "Marks the change as breaking with a BREAKING CHANGE footer or a ! right before the colon, after the type or the scope; Does not invent a ticket code; Keeps the subject at most 72 characters",
       "files": ["evals/files/staged-rename-flag.diff"],
       "assertions": [
-        "Marks the change as breaking with a BREAKING CHANGE footer or a ! after the type",
+        "Marks the change as breaking with a BREAKING CHANGE footer or a ! right before the colon, after the type or the scope",
         "Does not invent a ticket code",
         "Keeps the subject at most 72 characters"
       ]

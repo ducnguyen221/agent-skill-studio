@@ -3,7 +3,7 @@
 | Name | Purpose | Supported target paths (`install --workspace`; `--user`: Codex `~/.agents/skills`, AGY `~/.gemini/config/skills`, Claude không hỗ trợ) | Evaluation | Status |
 |---|---|---|---|---|
 | `skill-creator-studio` | NEW/AUDIT/REFINE portable Skills | Claude `.claude/skills` / Codex+AGY `.agents/skills` | 8 cases (5 nên kích hoạt, 3 không); mô hình đã chạy 18/10 trên Claude Code và Codex, Antigravity `not_run` | Prototype |
-| `data-quality-audit` | CSV schema/key/null/numeric check | Tương tự | 8 cases (5 nên kích hoạt, 3 không); mô hình đã chạy 18/10 trên Claude Code và Codex, Antigravity `not_run` | Prototype |
+| `data-quality-audit` (ví dụ ở `examples/`, không ship) | CSV schema/key/null/numeric check | Tương tự | 8 cases (5 nên kích hoạt, 3 không); mô hình đã chạy 18/10 trên Claude Code và Codex, Antigravity `not_run` | Prototype |
 
 `model_evaluated=false` cho cả hai Skill. SPR-18 đã chạy mô hình ngày 18/10 (số đo và giới hạn: `system/docs/plans/2026-10-17-skill-studio-eval/REPORT.md`); chưa đạt điều kiện bật: tiêu chí cần ≥ 3 cặp A/B bên có Skill hơn, đo được 0 cặp hơn ở cả hai harness; riêng data-quality-audit trên Codex có 2/3 ca không-nên-kích-hoạt vẫn kích hoạt. Đây là số đo trên mẫu nhỏ, không kết luận Skill tốt hay kém. Cổng bật là test `test_model_evaluated_requires_counted_evidence` (đếm lại từ log). `catalog.json` ghi kết quả đo đã có ở khối `evaluated`: `data-quality-audit` lô SPR-18 `below-threshold`; `skill-creator-studio` chưa có khối vì thiếu `ab-*.json`. `model-evaluated` ≠ Production (`standards/EVALUATION_STANDARD.md`, mục Release gate nội bộ).
 

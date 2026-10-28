@@ -1,11 +1,11 @@
 ---
-title: "Bộ content mẫu"
+title: "Bộ ví dụ mẫu"
 status: active
 updated: 2026-10-23
 ---
-# Bộ content mẫu
+# Bộ ví dụ mẫu
 
-> **Kết luận:** thư mục này chứa ví dụ để chép và sửa khi viết skill: bảy cặp `description` tốt và xấu, ba case eval, hai skill mẫu. Thư mục nằm ngoài `skills/` nên không bao giờ vào gói phát hành.
+> **Kết luận:** thư mục này chứa ví dụ để chép và sửa khi viết skill: bảy cặp `description` tốt và xấu, ba case eval, hai skill mẫu ngắn và skill CSV `data-quality-audit` (có script thật, kèm bộ eval ở `evals/data-quality-audit/`). Thư mục nằm ngoài `skills/` nên không bao giờ vào gói phát hành.
 
 Mỗi mục trích nguồn chính thức (URL) hoặc gắn `[nội bộ]` khi là quy ước của Studio. Chưa có mục nào được chạy trên model thật (`not_run`).
 
@@ -18,4 +18,4 @@ Mỗi mục trích nguồn chính thức (URL) hoặc gắn `[nội bộ]` khi l
 
 Quy tắc nền: [SKILL_AUTHORING_STANDARD.md](../standards/SKILL_AUTHORING_STANDARD.md) cho mọi skill, [VIETNAMESE_SKILL_WRITING.md](../standards/VIETNAMESE_SKILL_WRITING.md) cho thân tiếng Việt.
 
-Kiểm hai skill mẫu: `python studio.py validate content/exemplar/writing-commit-messages` và `python studio.py validate content/exemplar-vi/writing-release-notes`; mỗi lệnh phải báo 0 errors, 0 warnings. Test `tests/test_content.py` canh cả bộ.
+Kiểm hai skill mẫu: `python studio.py validate examples/exemplar/writing-commit-messages` và `python studio.py validate examples/exemplar-vi/writing-release-notes`; mỗi lệnh phải báo 0 errors, 0 warnings. Test `tests/test_content.py` canh cả bộ.

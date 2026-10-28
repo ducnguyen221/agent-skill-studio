@@ -241,9 +241,9 @@ class FmtMoreTests(unittest.TestCase):
                 self.assertIn(code_name, out)
                 self.assertEqual(run("--fix", str(path))[0], 0, "fixable: --fix clears it")
         base = self.tmp / "repo"
-        doc = write(base / "content" / "d.md", "# T\n")
+        doc = write(base / "examples" / "d.md", "# T\n")
         self.assertEqual(run("--check", str(doc), root=base)[0], 1)
-        late = write(base / "content" / "late.md", "# T\n\n---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\n---\n\nbody\n")
+        late = write(base / "examples" / "late.md", "# T\n\n---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\n---\n\nbody\n")
         code, out, _ = run("--fix", str(late), root=base)
         self.assertEqual(code, 1, "frontmatter that starts late is reported, not moved")
         self.assertIn("FT5", out)
@@ -377,8 +377,9 @@ class FmtMoreTests(unittest.TestCase):
         base = self.tmp
         self.assertEqual(studio_fmt.classify_md(base / "x" / "SKILL.vi.md", base), "skill")
         self.assertEqual(studio_fmt.classify_md(base / "standards" / "A.md", base), "studio-doc")
-        self.assertEqual(studio_fmt.classify_md(base / "content" / "A.md", base), "studio-doc")
-        self.assertEqual(studio_fmt.classify_md(base / "content" / "exemplar" / "A.md", base), "other")
+        self.assertEqual(studio_fmt.classify_md(base / "examples" / "A.md", base), "studio-doc")
+        self.assertEqual(studio_fmt.classify_md(base / "examples" / "exemplar" / "A.md", base), "other")
+        self.assertEqual(studio_fmt.classify_md(base / "content" / "A.md", base), "other", "content/ moved to examples/ (SPR-03 TK2)")
         self.assertEqual(studio_fmt.classify_md(base / "templates" / "README.md", base), "studio-doc")
         self.assertEqual(studio_fmt.classify_md(base / "templates" / "project" / "README.md", base), "other")
         self.assertEqual(studio_fmt.classify_md(base / "references" / "PROCESS_TEMPLATE.md", base), "process")

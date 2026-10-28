@@ -64,12 +64,13 @@ Agent Skill Studio/
 │   ├── SKILL_LIFECYCLE.md       # Design -> audit -> ship -> maintain
 │   ├── SOURCE_TRACEABILITY.md   # PDF, video, official docs; confidence, caveat
 │   └── ROBONUGGETS_46_RULE_MAP.md # Mapping 46 checks community vào chuẩn chung
-├── content/                     # Ví dụ để chép và sửa, ngoài skills/ nên không vào gói phát hành
+├── examples/                    # Ví dụ để chép và sửa, ngoài skills/ nên không vào gói phát hành
 │   ├── README.md
 │   ├── descriptions.md          # Bảy cặp description tốt/xấu
 │   ├── eval-cases.md            # Ba case eval mẫu
 │   ├── exemplar/                # Skill mẫu tiếng Anh
-│   └── exemplar-vi/             # Skill mẫu thân tiếng Việt
+│   ├── exemplar-vi/             # Skill mẫu thân tiếng Việt
+│   └── data-quality-audit/      # Skill ví dụ có script xử lý CSV thật (không ship)
 ├── adapters/
 │   ├── README.md
 │   ├── CLAUDE_CODE_ADAPTER.md
@@ -80,12 +81,11 @@ Agent Skill Studio/
 │   ├── README.md                # Hai template (ở skills/skill-creator-studio/assets/) và khi nào dùng
 │   └── project/                 # Mẫu AGENTS.md, CLAUDE.md, GEMINI.md
 ├── skills/
-│   ├── skill-creator-studio/    # Skill meta-factory: NEW / AUDIT / REFINE
-│   │   ├── SKILL.md
-│   │   ├── references/
-│   │   ├── scripts/             # Engine: studio.py (CLI) + 9 mô-đun studio_*.py; chạy cả khi Skill được copy sang repo khác
-│   │   └── assets/              # skill-template/ (SKILL.md en, SKILL.vi.md vi), skill-template-full/ (--full): bản duy nhất của hai khuôn
-│   └── data-quality-audit/     # Skill ví dụ có script xử lý CSV thật
+│   └── skill-creator-studio/    # Skill meta-factory: NEW / AUDIT / REFINE
+│       ├── SKILL.md
+│       ├── references/
+│       ├── scripts/             # Engine: studio.py (CLI) + 9 mô-đun studio_*.py; chạy cả khi Skill được copy sang repo khác
+│       └── assets/              # skill-template/ (SKILL.md en, SKILL.vi.md vi), skill-template-full/ (--full): bản duy nhất của hai khuôn
 ├── evals/                      # KHÔNG được mang vào package Skill
 │   ├── RUNBOOK.md
 │   ├── tools/                  # activation.py, oracle.py, redact.py
@@ -141,7 +141,7 @@ python3 studio.py new powerbi-reporting --output skills --description "Builds an
 # kiểm kiểu trình bày Markdown của vài tài liệu (mặc định chỉ báo cáo, không ghi file)
 python3 studio.py fmt --check standards/README.md templates/README.md
 # tạo bản package chỉ gồm các file runtime, không kèm evals
-python3 studio.py package skills/data-quality-audit --out dist
+python3 studio.py package skills/skill-creator-studio --out dist
 ```
 
 `new` tạo thêm `evals/<name>/cases.json` nếu --output là `skills` ở root repo. Mẫu evals vẫn phải được người viết điền đủ ca kiểm thử thực tế trước production; CLI không tự bịa kết quả model.
@@ -284,8 +284,8 @@ python3 studio.py fmt --check standards/MEMO-SKILL-V0.md standards/SKILL_AUTHORI
 | Biết vì sao phải làm một rule | [SOURCE_TRACEABILITY.md](standards/SOURCE_TRACEABILITY.md) |
 | Kiểm tra 46 rule community | [ROBONUGGETS_46_RULE_MAP.md](standards/ROBONUGGETS_46_RULE_MAP.md) |
 | Triển khai cùng Claude/Codex/AGY | [adapters/](adapters/CAPABILITY_MATRIX.md) |
-| Viết thân Skill bằng tiếng Việt | [VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md), skill mẫu trong [content/](content/README.md) |
-| Chép mẫu `description`, case eval, skill mẫu | [content/README.md](content/README.md) |
+| Viết thân Skill bằng tiếng Việt | [VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md), skill mẫu trong [examples/](examples/README.md) |
+| Chép mẫu `description`, case eval, skill mẫu | [examples/README.md](examples/README.md) |
 | Chọn template khi tạo Skill | [templates/README.md](templates/README.md) |
 | Viết test/baseline | [EVALUATION_STANDARD.md](standards/EVALUATION_STANDARD.md), [evals/RUNBOOK.md](evals/RUNBOOK.md) |
 | Kiểm soát permission hoặc hooks | [SECURITY_AND_PERMISSIONS.md](standards/SECURITY_AND_PERMISSIONS.md) |

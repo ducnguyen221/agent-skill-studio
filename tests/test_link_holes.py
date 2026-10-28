@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine as E  # noqa: E402
 
 ROOT = E.ROOT
-SKILL_SRC = ROOT / "skills" / "data-quality-audit"
+SKILL_SRC = ROOT / "examples" / "data-quality-audit"
 SKILL_TEXT = "---\nname: %s\ndescription: Checks a toy example. Use when testing the link holes.\n---\n\n# Title\n\nShort body.\n"
 
 

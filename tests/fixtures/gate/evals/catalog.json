@@ -16,7 +16,8 @@
     },
     {
       "name": "data-quality-audit",
-      "path": "skills/data-quality-audit",
+      "path": "examples/data-quality-audit",
+      "shipped": false,
       "version": "0.1.0",
       "status": "prototype-static-validated",
       "owner": "Agent Skill Studio maintainers",

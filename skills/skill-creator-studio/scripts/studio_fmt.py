@@ -208,7 +208,7 @@ def check_process_shape(text: str) -> list:
 
 
 def classify_md(path: Path, root: Path | None) -> str:
-    """skill (SKILL.md, SKILL.vi.md), process (*PROCESS*.md, *_WORKFLOW.md), studio-doc (standards/*.md, content/*.md, templates/README.md
+    """skill (SKILL.md, SKILL.vi.md), process (*PROCESS*.md, *_WORKFLOW.md), studio-doc (standards/*.md, examples/*.md, templates/README.md
     of the repo `root`) or other."""
     name = path.name
     if name in ("SKILL.md", "SKILL.vi.md"):
@@ -221,7 +221,7 @@ def classify_md(path: Path, root: Path | None) -> str:
             parts = tuple(x.casefold() for x in Path(os.path.abspath(path)).relative_to(os.path.abspath(root)).parts)
         except ValueError:
             return "other"
-        if len(parts) == 2 and parts[0] in ("standards", "content") and parts[1].endswith(".md"):
+        if len(parts) == 2 and parts[0] in ("standards", "examples") and parts[1].endswith(".md"):
             return "studio-doc"
         if parts == ("templates", "readme.md"):
             return "studio-doc"

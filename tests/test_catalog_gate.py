@@ -479,9 +479,12 @@ class GateMatchesOldGateTests(unittest.TestCase):
         self.assertEqual(18, sizes["dqa targets claude-code only"])
 
     def test_the_fixture_is_the_committed_evidence(self):
-        """tương-đương: the frozen fixture catalog and evidence files are the ones the repository ships today, so the golden answers describe the real data."""
-        for rel in ("catalog.json", "data-quality-audit/evidence/SPR-18.json", "skill-creator-studio/evidence/studio-SPR-02.json"):
-            self.assertEqual((ROOT / "evals" / rel).read_bytes(), (GATE_FIXTURE / "evals" / rel).read_bytes(), rel)
+        """tương-đương: every file of the frozen fixture (catalog, cases, all evidence) is byte-equal to the one the repository ships today, so the golden answers describe the real data."""
+        fixture = GATE_FIXTURE / "evals"
+        files = sorted(p.relative_to(fixture).as_posix() for p in fixture.rglob("*") if p.is_file())
+        self.assertGreaterEqual(len(files), 9, files)
+        for rel in files:
+            self.assertEqual((ROOT / "evals" / rel).read_bytes(), (fixture / rel).read_bytes(), rel)
 
 
 class BatchFixtureTests(unittest.TestCase):
