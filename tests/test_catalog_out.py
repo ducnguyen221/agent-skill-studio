@@ -102,9 +102,9 @@ class CatalogOutTests(TmpCase):
             path.write_text("", encoding="utf-8")
         code, so, se = run_catalog("--roots-from", "opcos", "--out", str(out), "--md", str(md), cwd=self.tree)
         self.assertEqual(code, 0, so + se)
-        md.write_bytes(b"\xef\xbb\xbf<!-- studio catalog -->\r\nold\r\n")
+        md.write_bytes(b"\xef\xbb\xbf<!-- studio catalog -->\r\nOLD-CATALOG-MARKER-7f3a\r\n")
         self.assertEqual(run_catalog("--roots-from", "opcos", "--md", str(md), cwd=self.tree)[0], 0)
-        self.assertNotIn("old", md.read_text(encoding="utf-8"))
+        self.assertNotIn("OLD-CATALOG-MARKER-7f3a", md.read_text(encoding="utf-8"))
 
     def test_roots_option_has_the_same_rules(self):
         """bắt-lỗi: review focus 4 with --roots the report may not land in a root either."""
