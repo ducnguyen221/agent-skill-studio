@@ -84,7 +84,7 @@ Mỗi skill có 8 case: 5 positive (`typical` 2, `edge` 2, `input-error` 1) và 
 Kiểm trước mỗi lô:
 
 ```text
-python -X utf8 evals/tools/activation.py verify --eval-dir evals/<skill> --main-skill-dir <OpcOS>/plugins/agent-skill-studio/skills/<skill> --cache-skill-dir <~/.claude>/plugins/cache/agent-skill-studio/agent-skill-studio/0.1.0/skills/<skill> --manifest evals/<skill>/runs/SPR-18/manifest.json
+python -X utf8 evals/tools/activation.py verify --eval-dir evals/<skill> --main-skill-dir <OpcOS>/plugins/agent-skill-studio/skills/<skill> --cache-skill-dir <~/.claude>/plugins/cache/agent-skill-studio/agent-skill-studio/<phiên bản>/skills/<skill> --manifest <OpcOS>/system/ledger/agent-skill-studio/evidence/<lô>/<skill>/manifest.json
 python -X utf8 evals/tools/activation.py hash <thư mục skill>          # băm cây skill, đã chuẩn hoá CRLF
 python -X utf8 evals/tools/activation.py count <transcript.jsonl> --skill <skill> --runtime claude-code|codex
 python -X utf8 evals/tools/activation.py summarize <thư mục thô của lô>
@@ -126,7 +126,7 @@ Dùng lại nguyên bộ câu `evals/<skill>/cases.json`, oracle `expected/`, th
 
 ## Lô SPR-33 — cùng cách đo, trên Claude Code
 
-Lô 16 lượt (8 case mỗi skill) chạy ngày 22/10/2026 với Claude Code 2.1.308, model `claude-sonnet-5-5`, nạp skill bằng `--plugin-dir` từ bản `git archive` tại SHA lô, đúng lệnh ở dòng Claude Code của bảng trên; log ở `runs/SPR-33/`, đếm bằng `activation.py count … --runtime claude-code` và `summarize`. Số đo và giới hạn: [QA_REPORT.md](../QA_REPORT.md). Codex và Antigravity thật không chạy ở lô này (`not_run:needs-directive`).
+Lô 16 lượt (8 case mỗi skill) chạy ngày 22/10/2026 với Claude Code 2.1.308, model `claude-sonnet-5-5`, nạp skill bằng `--plugin-dir` từ bản `git archive` tại SHA lô, đúng lệnh ở dòng Claude Code của bảng trên; log ở `runs/SPR-33/`, đếm bằng `activation.py count … --runtime claude-code` và `summarize`. Số đo và giới hạn: `QA_REPORT.md` (repo OpcOS, `system/ledger/agent-skill-studio/archive/QA_REPORT.md`). Codex và Antigravity thật không chạy ở lô này (`not_run:needs-directive`).
 
 ## Luật lô — chạy lô kích hoạt mới
 
@@ -138,7 +138,7 @@ Ba luật cứng, rút từ lô SPR-33 (nguồn: `REPORT` SPR-33 mục `RF12`, `
 2. **Che log bằng `evals/tools/redact.py` TRƯỚC khi commit.** Transcript đầy đủ có đường người dùng và email; lô SPR-33 phải che lại 21 chỗ sau khi đã commit.
    Che xong mới `git add`; log trong repo chỉ giữ `hits` và băm.
 3. **`SHA lô` = HEAD sau review cuối** (kể cả review bảo mật), không phải HEAD sau task thực thi: mỗi review tìm thấy sửa trong `skills/` là một lô 16 lượt mới
-   (SPR-33 chạy ba lần: `f113954` huỷ, `6d47a33`, `b85329d`). Đóng băng rồi ghi 40 ký tự thập lục phân đầy đủ vào `runs/<sprint>/manifest.json` (khoá `batch_sha`) và vào
+   (SPR-33 chạy ba lần: `f113954` huỷ, `6d47a33`, `b85329d`). Đóng băng rồi ghi 40 ký tự thập lục phân đầy đủ vào `manifest.json` của lô ở ledger (khoá `batch_sha`) và vào
    khối `evaluated.batch_sha` của `evals/catalog.json`; sửa `skills/` hay `studio.py` sau đó thì `SHA lô` vô hiệu.
 
 **Dao động giữa lô.** Thước kích hoạt không nhạy và n nhỏ: cùng cờ, cùng skill, hai lô khác nhau cho kết quả khác nhau — `data-quality-audit` positive 5/5 (lô `6d47a33`) so với 4/5 (lô
@@ -156,7 +156,7 @@ New-Item -ItemType Directory -Force "$arc\plugin" | Out-Null
 git -c core.autocrlf=false archive $sha | tar -x -C "$arc\plugin"
 python -X utf8 evals/tools/activation.py verify --eval-dir evals/<skill> `
   --main-skill-dir "$arc\plugin\skills\<skill>" --cache-skill-dir "$arc\plugin\skills\<skill>" `
-  --manifest evals/<skill>/runs/<sprint>/manifest.json
+  --manifest <OpcOS>/system/ledger/agent-skill-studio/evidence/<lô>/<skill>/manifest.json
 # mỗi run: cwd = một cha riêng, plugin nạp từ archive
 claude -p --plugin-dir "$arc\plugin" --model claude-sonnet-5-5 --output-format json   # prompt qua stdin
 python -X utf8 evals/tools/redact.py filter <transcript-vào> <log-ra> --runtime claude-code   # trước git add
@@ -171,7 +171,7 @@ mkdir -p "$arc/plugin"
 git -c core.autocrlf=false archive "$sha" | tar -x -C "$arc/plugin"
 python3 -X utf8 evals/tools/activation.py verify --eval-dir evals/<skill> \
   --main-skill-dir "$arc/plugin/skills/<skill>" --cache-skill-dir "$arc/plugin/skills/<skill>" \
-  --manifest evals/<skill>/runs/<sprint>/manifest.json
+  --manifest <OpcOS>/system/ledger/agent-skill-studio/evidence/<lô>/<skill>/manifest.json
 claude -p --plugin-dir "$arc/plugin" --model claude-sonnet-5-5 --output-format json   # prompt qua stdin
 python3 -X utf8 evals/tools/redact.py filter <transcript-vao> <log-ra> --runtime claude-code   # truoc git add
 ```
