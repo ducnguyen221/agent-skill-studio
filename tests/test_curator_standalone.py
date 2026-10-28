@@ -9,10 +9,16 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CURATOR = ROOT / "skills" / "skill-curator"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _engine  # noqa: E402
+
+dist = _engine.dist
+ENGINE_SRC = _engine.ENGINE_DIR
 FIXTURE = ROOT / "tests" / "fixtures" / "opcos-tree" / "plugins" / "p-default" / "skills"
 
 
@@ -92,6 +98,79 @@ class CuratorStandaloneTests(unittest.TestCase):
         done = run(["-c", code], self.tmp)
         self.assertEqual(done.returncode, 2, done.stdout + done.stderr)
         self.assertIn("studio_const", done.stderr)
+
+
+    def source_copy(self, name="src") -> Path:
+        copy = self.tmp / name / "skill-curator"
+        shutil.copytree(CURATOR, copy, ignore=shutil.ignore_patterns("__pycache__"))
+        return copy
+
+    def engine_copy(self, folder: str = "engine") -> Path:
+        engine = self.tmp / folder
+        engine.mkdir(parents=True)
+        for item in ENGINE_SRC.glob("studio*.py"):
+            shutil.copy(item, engine / item.name)
+        return engine
+
+    def extras_with(self, engine: Path):
+        with mock.patch.object(dist, "ENGINE_DIR", engine):
+            return dist.engine_extras(self.source_copy(engine.name + "-src"))
+
+    def test_rf_12_1_studio_line_in_engine_deps_is_not_copied_twice(self):
+        copy = self.source_copy()
+        deps = copy / "scripts" / "ENGINE_DEPS"
+        deps.write_text("studio.py\n" + deps.read_text(encoding="utf-8"), encoding="utf-8")
+        out = self.tmp / "out"
+        done = run([ROOT / "studio.py", "package", copy, "--out", out], ROOT)
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertNotIn("Duplicate", done.stderr)
+        with zipfile.ZipFile(out / "skill-curator.zip") as zf:
+            names = zf.namelist()
+        self.assertEqual(len(names), len(set(names)))
+        self.assertEqual(sum(n.endswith("_engine/studio.py") for n in names), 1)
+        workspace = self.tmp / "ws"
+        workspace.mkdir()
+        done = run([ROOT / "studio.py", "install", copy, "--agent", "claude", "--workspace", workspace], ROOT)
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+
+    def test_rf_12_2_engine_in_a_cloud_folder_is_refused_unread(self):
+        engine = self.engine_copy("OneDrive - Corp")
+        opened = []
+        real = dist.fs.open_nofollow_read
+
+        def spy(path, *args, **kwargs):
+            opened.append(str(path))
+            return real(path, *args, **kwargs)
+        with mock.patch.object(dist.fs, "open_nofollow_read", spy):
+            extras, findings = self.extras_with(engine)
+        self.assertTrue(findings and all(f["code"] == "PACK" and f["level"] == "ERROR" for f in findings), findings)
+        self.assertEqual([x for x in opened if str(engine) in x], [])
+
+    def test_rf_12_2_engine_file_over_25_mb_is_refused(self):
+        engine = self.engine_copy()
+        with open(engine / "studio_lint.py", "ab") as handle:
+            handle.truncate(25 * 1024 * 1024 + 1)
+        extras, findings = self.extras_with(engine)
+        self.assertTrue(any("25 MB" in f["message"] and f["code"] == "PACK" for f in findings), findings)
+
+    def test_rf_12_4_secret_in_an_engine_file_is_refused(self):
+        engine = self.engine_copy()
+        with open(engine / "studio_lint.py", "a", encoding="utf-8") as handle:
+            handle.write("\nTOKEN = 'AKIA" + "ABCDEFGHIJKLMNOP'\n")
+        extras, findings = self.extras_with(engine)
+        self.assertTrue(any(f["code"] == "SEC" for f in findings), findings)
+
+    def test_rf_12_4_engine_folder_already_in_the_source_is_refused(self):
+        copy = self.source_copy()
+        (copy / "scripts" / "_engine").mkdir()
+        (copy / "scripts" / "_engine" / "studio_const.py").write_text("X = 1\n", encoding="utf-8")
+        extras, findings = dist.engine_extras(copy)
+        self.assertEqual(extras, [])
+        self.assertTrue(any(f["code"] == "PACK" and "_engine" in f["message"] for f in findings), findings)
+        out = self.tmp / "out"
+        done = run([ROOT / "studio.py", "package", copy, "--out", out], ROOT)
+        self.assertEqual(done.returncode, 1)
+        self.assertFalse((out / "skill-curator.zip").exists())
 
 
 if __name__ == "__main__":

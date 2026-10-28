@@ -49,12 +49,16 @@ def engine_extras(folder: Path) -> tuple[list[tuple[Path, Path]], list[dict]]:
         if name and not name.startswith("#") and name not in names:
             names.append(name)
     findings, extras = [], []
-    for name in names + ["studio.py"]:
+    for name in names + ([] if "studio.py" in names else ["studio.py"]):  # a `studio.py` line of its own must not make a second copy
         source = ENGINE_DIR / name
         if name != "studio.py" and not ENGINE_DEP_NAME.match(name):
             findings.append(fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS name %r is not a studio_*.py file name" % name[:80]))
         elif fs.is_link(source) or not source.is_file():
             findings.append(fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS names %s, which the running engine does not have" % name))
+        elif fs.input_file_problem(source):  # the same rule as a skill file: a cloud placeholder or a cloud/secret zone is refused before it is opened
+            findings.append(fs.emit("ERROR", "PACK", source, 0, "engine file %s; nothing is packaged" % fs.input_file_problem(source)))
+        elif os.lstat(source).st_size > 25 * 1024 * 1024:
+            findings.append(fs.emit("ERROR", "PACK", source, 0, "file exceeds 25 MB; review before shipping"))
         else:
             try:
                 with fs.open_nofollow_read(source, os.lstat(source)) as handle:
