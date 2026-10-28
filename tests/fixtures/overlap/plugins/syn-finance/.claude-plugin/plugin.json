@@ -1,0 +1,5 @@
+{
+  "name": "syn-finance",
+  "version": "0.1.0",
+  "description": "Synthetic plugin for the SPR-04 overlap gold set; not a real skill library."
+}
