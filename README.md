@@ -104,7 +104,7 @@ Mỗi từ chối in một mã trên stderr (và trong `--json`). Các mã ngư�
 
 **`EV20`.** Khi engine nằm trong repo (tính từ chính file engine, không theo thư mục đang đứng), `evals --all` đối chiếu `model_evaluated`, `status` và khối `evaluated` của `evals/catalog.json` với số đếm lại từ `evals/<skill>/evidence/<lô>.json`. File gọn sinh bằng `evals/tools/activation.py compact`, kiểm lại bằng `compact --verify`. Engine chép rời ra ngoài repo bỏ qua cổng. Mỗi vấn đề là một ERROR, thoát 1.
 
-Giới hạn còn lại: trên Windows không có `O_NOFOLLOW`, nên việc mở file nguồn có thể đi theo link trước khi bị từ chối; công cụ chống nhầm lẫn, không chống một tiến trình thù địch cùng quyền. Đừng xuất từ cây eval mà tiến trình khác đang ghi.
+Giới hạn còn lại: trên Windows không có `O_NOFOLLOW`, nên việc mở file nguồn có thể đi theo link trước khi bị từ chối; công cụ chống nhầm lẫn, không chống một tiến trình thù địch cùng quyền. Đừng xuất từ cây eval mà tiến trình khác đang ghi. Trên macOS `/tmp` và `/var` là symlink nên `new --output` dưới đó bị từ chối (hỏng-đóng, kể cả khi có `--eval-root`); dùng thư mục không qua symlink, ví dụ dưới `$HOME`.
 
 ## Đọc gì khi nào
 
