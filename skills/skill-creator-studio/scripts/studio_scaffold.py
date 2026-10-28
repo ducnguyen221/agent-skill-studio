@@ -182,9 +182,14 @@ def cmd_new(args) -> int:
             output = root / "skills" if root else Path.cwd() / "skills"
         if args.eval_root:
             external_eval = Path(args.eval_root).expanduser()
-            zone = zone_problem(Path(os.path.abspath(external_eval)))
+            ev_raw = external_eval.absolute()  # not abspath: a `..` behind a link must stay visible  # the same steps as --output: spelling, placeholder bits per level, links on the raw and the normalised chain
+            ev_norm = Path(os.path.normpath(ev_raw))
+            zone = zone_problem(ev_raw) or zone_problem(ev_norm)
             if zone:
                 return _input_error("--eval-root %s %s" % (external_eval, zone))
+            ev_link = link_in_chain(ev_raw, ev_raw.anchor) or link_in_chain(ev_norm, ev_norm.anchor)
+            if ev_link:
+                return _input_error("--eval-root: %s is a symlink or junction (or cannot be probed)" % ev_link)
         elif args.output:
             external_eval = norm.parent / "evals" if norm.name == "skills" else norm / "evals"
             if is_drive_root(external_eval.parent):

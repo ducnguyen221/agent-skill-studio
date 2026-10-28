@@ -133,6 +133,35 @@ class RefusesCloudTests(Base):
         self.assertEqual(before, listing(self.tmp), "something was written")
 
 
+    def test_rf_3_1_eval_root_with_a_link_on_its_chain_is_refused_before_any_write(self):
+        """A link one level above `--eval-root` (faked through `fs.is_link`) -> ERROR INPUT, exit 1, nothing made; the same for a link on the raw chain behind a `..`."""
+        hop = self.tmp / "hop"
+        hop.mkdir()
+        before = listing(self.tmp)
+        with mock.patch.object(E.fs, "is_link", side_effect=lambda p: Path(p) == hop):
+            for eval_root in (hop / "ev", os.path.join(str(hop), "sub", "..", "ev")):
+                code, out, err = self.run_new("evlink", self.tmp / "o" / "skills", eval_root=eval_root)
+                self.assertEqual(1, code, (eval_root, out, err))
+                self.assertIn("ERROR INPUT", err)
+                self.assertIn("symlink or junction", err)
+                self.assertEqual("", out)
+        self.assertEqual(before, listing(self.tmp), "something was written")
+
+    @unittest.skipUnless(can_link(), "this machine can make neither a symlink nor a junction")
+    def test_rf_3_1_eval_root_through_a_real_link_writes_nothing_into_the_target(self):
+        target = self.tmp / "target"
+        target.mkdir()
+        link = self.tmp / "ln"
+        self.assertTrue(make_dir_link(link, target))
+        self.addCleanup(drop_dir_link, link)
+        for eval_root in (link, link / "ev", os.path.join(str(link), "..", "target", "ev")):
+            code, out, err = self.run_new("evreal", self.tmp / "o" / "skills", eval_root=eval_root)
+            self.assertEqual(1, code, (eval_root, out, err))
+            self.assertIn("ERROR INPUT", err)
+        self.assertEqual([], sorted(p.name for p in target.iterdir()))
+        self.assertFalse((self.tmp / "o").exists())
+
+
 class OddPathTests(Base):
     def test_fr12_2_a_path_of_another_system_gives_an_error_line_not_a_traceback(self):
         if os.name == "nt":
