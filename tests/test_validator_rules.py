@@ -515,21 +515,44 @@ class VietnameseLintTest(StudioCase):
     ENGLISH_SECTION = ("This section explains in plain English how the report is assembled from the raw data "
                        "and which checks run before the final numbers are published to the team.")
 
+    ENGLISH_CODE = "\n".join(["```text"] + ["print the whole report and check every single column of the table"] * 60 + ["```"])
+
+    def english_share(self, body):
+        """Share of the prose letters that sit in `## ` sections with under VI5_ACCENT_MIN diacritics (what the rule measures)."""
+        lines = studio_lint.prose_lines(body)
+        total = sum(studio_lint._vi_counts(t)[0] for _, t in lines)
+        english, current = 0, None
+        for _, text in lines + [(0, "# end")]:
+            if text.startswith("#"):
+                if current and current[0] and current[1] / current[0] < studio_const.VI5_ACCENT_MIN:
+                    english += current[0]
+                current = [0, 0] if text.startswith("## ") else None
+            elif current is not None:
+                letters, accents = studio_lint._vi_counts(text)
+                current[0], current[1] = current[0] + letters, current[1] + accents
+        return english / total
+
     def test_vi5_skips_english_body(self):
-        """SPR-03 TK11 / FR14.1 (RQ-012): a body that is mostly English (diacritics under VI5_ACCENT_MIN of ALL its letters,
-        code included) gets no VI5 per section, even when its prose alone passes the 3 % Vietnamese gate."""
-        code = "\n".join(["```text"] + ["print the whole report and check every single column of the table"] * 60 + ["```"])
-        body = vi_body("", "## Steps", self.ENGLISH_SECTION, "", code)
-        self.assertEqual(studio_lint.detect_lang(body), "vi", "precondition: the prose still counts as Vietnamese")
-        letters, accents = studio_lint._vi_counts(body)
-        self.assertLess(accents / letters, studio_const.VI5_ACCENT_MIN, "precondition: the whole body is under the VI5 share")
+        """SPR-03 TK11 / FR14.1 (RQ-012): a body whose English sections hold most of the prose letters (over VI5_ENGLISH_BODY_SHARE)
+        gets no VI5, even with no code and with enough diacritics (a Vietnamese label) to pass the 3 % Vietnamese gate."""
+        body = vi_body("", "## Steps", *([self.ENGLISH_SECTION] * 2), "")
+        self.assertEqual(studio_lint.detect_lang(body), "vi", "precondition: the body still counts as Vietnamese")
+        self.assertGreater(self.english_share(body), 0.8, "precondition: about 85 % of the prose is English")
         self.assertEqual(of(self.vi(body, "en-label"), "VI5"), [])
 
-    def test_vi5_still_flags_english_section_in_vietnamese_body(self):
-        """FR14.1 second half: a Vietnamese body keeps VI5 for a long English section (control for the test above)."""
-        body = vi_body("", "## Mục tiêu", "Việc kiểm dữ liệu giúp báo cáo đúng hơn.", "", "## Quy trình", self.ENGLISH_SECTION)
+    def test_vi5_keeps_vietnamese_body_with_english_code(self):
+        """FR14.1: code and tables are not prose, so a Vietnamese body with one long English section and a long English code block
+        still gets its VI5 (a count over code too would dilute the diacritics under 1 % and lose it)."""
+        body = vi_body("", "## Mục tiêu", "Việc kiểm dữ liệu giúp báo cáo đúng hơn.", "", "## Quy trình", self.ENGLISH_SECTION, "", self.ENGLISH_CODE)
         letters, accents = studio_lint._vi_counts(body)
-        self.assertGreaterEqual(accents / letters, studio_const.VI5_ACCENT_MIN)
+        self.assertLess(accents / letters, studio_const.VI5_ACCENT_MIN, "precondition: counted with the code the diacritics are under 1 %")
+        self.assertLess(self.english_share(body), 0.7, "precondition: the English section is a minority of the prose")
+        self.assertEqual([f["code"] for f in of(self.vi(body, "vi-code"), "VI5")], ["VI5"])
+
+    def test_vi5_still_flags_english_section_in_vietnamese_body(self):
+        """FR14.1 second half: a Vietnamese body keeps VI5 for a long English section (no code)."""
+        body = vi_body("", "## Mục tiêu", "Việc kiểm dữ liệu giúp báo cáo đúng hơn.", "", "## Quy trình", self.ENGLISH_SECTION)
+        self.assertLess(self.english_share(body), 0.7)
         self.assertEqual([f["code"] for f in of(self.vi(body, "vi-mixed"), "VI5")], ["VI5"])
 
     def test_vi_lint_english_body_no_vi_codes(self):

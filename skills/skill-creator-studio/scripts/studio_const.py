@@ -41,6 +41,7 @@ VI_ACCENT_RATIO = 0.03  # FR16: at least this share of prose letters with a Viet
 VI_SENTENCE_MAX = 40  # VI3 ceiling in words; 25 is advice only (VIETNAMESE_SKILL_WRITING.md V03)
 VI5_SECTION_MIN_LETTERS = 80
 VI5_ACCENT_MIN = 0.01
+VI5_ENGLISH_BODY_SHARE = 0.7  # FR14.1: sections under VI5_ACCENT_MIN holding more than this share of the prose letters -> mostly English body, no VI5 per section
 NON_ISO_DATE_RE = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b")
 VI_TRIGGER_RE = re.compile(r"(?i)\buse (this skill )?when\b")
 VI_OK_MARK = "<!-- studio:vi-ok -->"
