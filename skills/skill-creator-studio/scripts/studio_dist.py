@@ -75,7 +75,7 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
                 continue
             except (OSError, UnicodeError):
                 raw = ""
-            if ("-----BEGIN " + "PRIVATE KEY-----") in raw or re.search(r"\b(?:sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16})\b", raw):
+            if fs.secret_in_text(raw):
                 findings.append(fs.emit("ERROR", "SEC", p, 0, "possible hardcoded secret in package"))
         kept.append(p)
     return kept, findings

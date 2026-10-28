@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 import studio_const as C
+import studio_doctypes as doctypes
 import studio_evals as evals
 import studio_fs as fs
 import studio_lint as lint
@@ -224,29 +225,23 @@ def print_findings(folder: Path, findings: list[dict]) -> None:
         print("  %-5s %-4s %s — %s" % (item["level"], item["code"], location, item["message"]))
 
 
-RULES_FILE_NAMES = ("agents.md", "claude.md", "gemini.md")
-CHECK_FUTURE_TYPES = ("workflow", "rules")
-
-
-def resolve_check_path(arg: str) -> Path:
-    """The skill folder `check <arg>` runs `validate_skill` on (FR5.2, FR5.3). A folder, a missing path or `<folder>/SKILL.md` is a skill and
-    is left to `validate_skill` as it is. Any other file is read for its `type:`; a `workflow` or `rules` type, or an AGENTS.md, CLAUDE.md
-    or GEMINI.md name, is a type whose check does not exist yet. ValueError carries the message (the caller prints it and exits 2)."""
+def resolve_check_path(arg: str) -> tuple:
+    """(kind, path) for `check <arg>` (FR5.2, FR5.3, FR8.1): ("skill", folder) for a folder, a missing path or `<folder>/SKILL.md`, which `validate_skill` takes as it is;
+    ("workflow", file) or ("rules", file) for another file that `doctypes.doc_type` recognises by its `type:`, its name or its folder. ValueError carries the message
+    (the caller prints it and exits 2) when the file is refused or no type can be told."""
     path = Path(arg).expanduser()
     if path.name == "SKILL.md":
-        return path.parent
+        return "skill", path.parent
     named = fs.input_name_problem(path)  # by the spelling alone, before is_file stats anything: a path in a forbidden zone is never touched
     if named and (path.suffix or fs.secret_file_name(path.name)):  # a document or a secret-looking file is refused here
         raise ValueError("%s %s" % (path, named))
     if named:  # a folder-like name: validate_skill says INPUT for it without touching it
-        return path
+        return "skill", path
     if not path.is_file():
-        return path
+        return "skill", path
     problem = fs.input_file_problem(path)  # before anything opens the file: secret or cloud zone, secret-looking name, stream, placeholder
     if problem:
         raise ValueError("%s %s" % (path, problem))
-    if path.name.casefold() in RULES_FILE_NAMES:
-        raise ValueError("check for type rules is not available yet (%s)" % path)
     if fs.is_link(path):
         raise ValueError("%s is a symlink or junction; check does not read it" % path)
     if fs.path_is_cloud(path):
@@ -261,7 +256,7 @@ def resolve_check_path(arg: str) -> Path:
     if too_big:
         raise ValueError("%s is larger than %d bytes; check does not read it" % (path, C.DOCTOR_MAX_FILE_BYTES))
     meta, _findings, _end = fs.parse_frontmatter(text, path)
-    kind = meta.get("type")
-    if kind in CHECK_FUTURE_TYPES:
-        raise ValueError("check for type %s is not available yet (%s)" % (kind, path))
+    kind = doctypes.doc_type(path, meta)
+    if kind in ("workflow", "rules"):
+        return kind, path
     raise ValueError(unknown)

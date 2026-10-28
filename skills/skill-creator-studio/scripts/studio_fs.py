@@ -497,6 +497,15 @@ def secret_file_name(name: str) -> bool:
     return is_sensitive_name(name) or name.lower() in C.REJECT_NAMES
 
 
+# The text patterns of a hardcoded secret (a private key header, an sk-, ghp_ or AKIA key): the one detector of `package` (SEC) and of `check` on documents.
+SECRET_TEXT_RE = re.compile(r"-----BEGIN " + "PRIVATE KEY-----|" + r"\b(?:sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16})\b")
+
+
+def secret_in_text(text: str) -> bool:
+    """True when `text` holds a hardcoded secret by the patterns above."""
+    return SECRET_TEXT_RE.search(text) is not None
+
+
 def unsafe_windows_name(component: str) -> str | None:
     """Why one path component is dangerous on Windows (whatever OS runs this), or None. The reason starts with its kind (see WIN_NAME_CODES):
     'stream' (a ':'), 'trailing' (ends with a dot or a space: Windows drops it, so 'auth.json.' IS auth.json), 'device' (CON, NUL, COM1, CONIN$...

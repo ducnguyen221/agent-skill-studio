@@ -23,6 +23,7 @@ if not sys.path or sys.path[0] != _HERE:
 import studio_const as C  # noqa: E402
 import studio_dist as dist  # noqa: E402
 import studio_doctor as doctor  # noqa: E402
+import studio_doctypes as doctypes  # noqa: E402
 import studio_evals as evals  # noqa: E402
 import studio_fmt as fmt  # noqa: E402
 import studio_fs as fs  # noqa: E402
@@ -51,14 +52,32 @@ def find_skills(args):
     if not args.skill:
         raise ValueError("provide a skill path or --all")
     if getattr(args, "typed", False):
-        return [validate.resolve_check_path(args.skill)]
+        return [validate.resolve_check_path(args.skill)[1]]
     return [Path(args.skill).expanduser()]
 
 
+def cmd_check_document(args, kind: str, path: Path) -> int:
+    """`check` on a workflow or a rules file (FR8.1-FR8.3): the same report shape as a skill, with `type` set. Exit 1 when a finding is an ERROR, else 0; 2 when the file is not read."""
+    text, problem = doctypes.read_document(path)
+    if problem:
+        print("ERROR: %s %s" % (path, problem), file=sys.stderr)
+        return 2
+    findings = doctypes.lint_document(kind, path, text)
+    if args.json:
+        print(json.dumps({"audit": False, "reports": [{"skill": str(path), "type": kind, "findings": findings}]}, ensure_ascii=False, indent=2))
+    else:
+        validate.print_findings(path, findings)
+    return 1 if any(f["level"] == "ERROR" for f in findings) else 0
+
+
 def cmd_check(args, audit: bool = False, typed: bool = False) -> int:
-    """validate / audit / check. `typed` (check) adds "type": "skill" to each report; a non-skill document is refused by find_skills."""
+    """validate / audit / check. `typed` (check) adds "type": "skill" to each report; a workflow or rules file goes to cmd_check_document."""
     args.typed = typed
     try:
+        if typed and args.skill and not args.all:  # a workflow or rules file has its own check (FR8.1); a skill goes on below
+            kind, target = validate.resolve_check_path(args.skill)
+            if kind != "skill":
+                return cmd_check_document(args, kind, target)
         folders = find_skills(args)
     except ValueError as exc:
         print("ERROR: %s" % exc, file=sys.stderr)
@@ -200,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--include-cache", action="store_true", help="also scan folders whose name contains 'cache'")
     p.add_argument("--skip-marker", action="append", metavar="TEXT", help="skip any path containing TEXT (case-insensitive); repeatable. A synced SharePoint folder need not say 'SharePoint' (for example 'KPIM Joint Stock Company')")
     p.add_argument("--by-pack", action="store_true", help="also group the findings by pack (the plugin name in its manifest, else the first folder under the root): skills, errors, warnings by code, the ST5 and ST8 counts, and whether `check` would exit 1")
+    p.add_argument("--docs", action="store_true", help="also check the rules files (AGENTS.md, CLAUDE.md, GEMINI.md) at the root of each plugin and the files in its workflows/ folder, as `check` does; the result goes in `docs` and does not change the exit code")
     p.add_argument("--baseline", help="an earlier doctor JSON report; new_vs_baseline lists the (skill, code) pairs that grew")
     p.add_argument("--json", action="store_true", help="print the JSON report (with --out it goes to the file only)")
     p.add_argument("--out", help="write the JSON report here; the folder must exist; not under skills/, a scanned skill or a scanned root (a folder the scan skips, such as .tmp, is fine); not a secret-looking name")

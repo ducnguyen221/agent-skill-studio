@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import studio_const as C
+import studio_doctypes as doctypes
 import studio_fs as fs
 import studio_lint as lint
 import studio_roots as roots_mod
@@ -277,6 +278,32 @@ def _pack_name(skill: Path, roots: list, cache: dict, markers: tuple) -> str:
         return skill.name
 
 
+def _manifest_dir(skill: Path, roots: list, cache: dict) -> Path | None:
+    """The plugin folder of a skill: the nearest folder at or above it, up to the one above its root, that holds `.claude-plugin/plugin.json`; None outside the roots.
+    Same walk as `_pack_name`, but only the manifest's presence is asked (a stat), the manifest is not read."""
+    try:
+        skill = Path(skill).resolve()
+    except OSError:
+        return None
+    root = next((r for r in roots if _key(skill).startswith(_key(r) + os.sep)), None)
+    if root is None:
+        return None
+    folder, stop = skill.parent, _key(root.parent)
+    while _key(folder).startswith(stop):
+        if folder not in cache:
+            try:
+                os.lstat(folder / ".claude-plugin" / "plugin.json")
+                cache[folder] = True
+            except OSError:
+                cache[folder] = False
+        if cache[folder]:
+            return folder
+        if _key(folder) == stop:
+            break
+        folder = folder.parent
+    return None
+
+
 def _has_evals_dir(skill: Path) -> bool:
     """True when the skill holds an `evals/` folder (a link does not count): the ST8 that a tightened rule would add (FR6.2)."""
     try:
@@ -287,16 +314,18 @@ def _has_evals_dir(skill: Path) -> bool:
 
 
 def pack_line(pack: dict) -> str:
-    """One text line of the pack table (PLAN TK7). ST8 = real ST8 findings + skills with an evals/ folder."""
+    """One text line of the pack table (PLAN TK7). ST8 is the real ST8 count; when skills hold an evals/ folder, a tightened rule would add them, shown as `<real>+<n> evals` (RF-7.1)."""
     by_code = pack["by_code"]
-    return "%s: %d skills, %d errors (ST5 %d), %d warnings (ST8 %d); check exits %d" % (
-        pack["pack"], pack["skills"], pack["errors"], by_code.get("ST5", 0), pack["warnings"], by_code.get("ST8", 0) + pack["st8_evals"], pack["check_exit"])
+    st8 = "%d+%d evals" % (by_code.get("ST8", 0), pack["st8_evals"]) if pack["st8_evals"] > 0 else "%d" % by_code.get("ST8", 0)
+    return "%s: %d skills, %d errors (ST5 %d), %d warnings (ST8 %s); check exits %d" % (
+        pack["pack"], pack["skills"], pack["errors"], by_code.get("ST5", 0), pack["warnings"], st8, pack["check_exit"])
 
 
 def doctor_run(roots: list, profile: str, target: str, include_cache: bool, baseline: dict | None,
-               skip_markers: tuple = (), scanned: tuple | None = None, by_pack: bool = False, pack_of: dict | None = None) -> dict:
+               skip_markers: tuple = (), scanned: tuple | None = None, by_pack: bool = False, pack_of: dict | None = None, docs: bool = False) -> dict:
     """The doctor report (SPEC 9.11, schema 1). Reads skills, writes nothing. `scanned` = a finished iter_skill_dirs result to reuse.
     `by_pack` adds `packs`; `pack_of` = {skill path: pack name} when the caller knows it (--roots-from opcos).
+    `docs` adds `docs`: the rules files at the root of each plugin that holds a scanned skill, and its workflows/ files, checked as `check` does (FR8.4); the totals stay skills only.
     A file above DOCTOR_MAX_FILE_BYTES or a cloud placeholder inside a skill is not read; it is listed in skipped as well as flagged in the skill."""
     skills, skipped = scanned if scanned is not None else iter_skill_dirs(roots, include_cache, skip_markers)
     skipped = list(skipped)
@@ -313,6 +342,8 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
     desc_bytes = 0
     packs: dict = {}
     manifests: dict = {}
+    plugin_dirs: dict = {}
+    manifest_seen: dict = {}
     for skill in skills:
         under = next((r for r in real_roots if fs.valid_resolved_under(skill, r)), None)
         findings = validate.validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under,
@@ -339,6 +370,10 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
         totals["errors"] += errors
         totals["warnings"] += warnings
         totals["notes"] += sum(c["level"] == "NOTE" for c in codes)
+        if docs:
+            plugin = _manifest_dir(skill, real_roots, manifest_seen)
+            if plugin is not None:
+                plugin_dirs[_key(plugin)] = plugin
         if by_pack:
             pack_name = (pack_of or {}).get(_key(skill)) or _pack_name(skill, real_roots, manifests, C.CLOUD_MARKERS + tuple(skip_markers))
             pack = packs.setdefault(pack_name, {"pack": pack_name, "skills": 0, "errors": 0, "warnings": 0, "by_code": {}, "check_exit": 0, "st8_evals": 0})
@@ -358,6 +393,8 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
         for pack in packs.values():
             pack["check_exit"] = 1 if pack["errors"] else 0
         report["packs"] = sorted(packs.values(), key=lambda p: p["pack"].casefold())
+    if docs:
+        report["docs"] = doctypes.docs_report([plugin_dirs[k] for k in sorted(plugin_dirs)], C.CLOUD_MARKERS + tuple(skip_markers))
     if baseline is not None:
         report["new_vs_baseline"] = diff_baseline(report, baseline)
     return report
@@ -522,7 +559,7 @@ def cmd_doctor(args) -> int:
             return 2
     pack_of = {_key(s["path"]): s["plugin"] for s in found} if opcos is not None else None
     report = doctor_run(roots, args.profile, args.target, args.include_cache, baseline, skip_markers, scanned,
-                        by_pack=bool(getattr(args, "by_pack", False)), pack_of=pack_of)
+                        by_pack=bool(getattr(args, "by_pack", False)), pack_of=pack_of, docs=bool(getattr(args, "docs", False)))
     if opcos is not None:
         report["roots_status"] = opcos
     if out is not None:
@@ -546,6 +583,13 @@ def cmd_doctor(args) -> int:
                 print("  %s: %d errors, %d warnings" % (skill["path"], skill["errors"], skill["warnings"]))
         for pack in report.get("packs", []):
             print("  " + pack_line(pack))
+        for doc in report.get("docs", []):
+            found = [c for c in doc["codes"] if c["level"] in ("ERROR", "WARN")]
+            if found:
+                print("  doc %s (%s): %d errors, %d warnings (%s)" % (doc["path"], doc["type"], sum(c["level"] == "ERROR" for c in found),
+                                                                  sum(c["level"] == "WARN" for c in found), ", ".join(sorted({c["code"] for c in found}))))
+        if "docs" in report:
+            print("  docs: %d files checked" % len(report["docs"]))
         for item in report.get("roots_status", []):
             if item["status"] != "ok":
                 print("  root %s: %s (%s)" % (item["area"], item["status"], ", ".join(item["reasons"])))

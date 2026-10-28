@@ -133,28 +133,27 @@ class CheckOtherTypesTests(unittest.TestCase):
         path.write_bytes(text.encode("utf-8"))
         return path
 
-    def test_workflow_and_rules_types_exit_2_not_available_yet(self):
-        """bắt-lỗi (red at 395e621: argparse `invalid choice`, no `not available yet`): FR5.3 `type: workflow` / `type: rules` in the frontmatter -> exit 2 naming the type."""
+    def test_workflow_and_rules_types_are_checked_not_refused(self):
+        """bắt-lỗi (red at e92d4d2: exit 2 `not available yet`): FR8.1 `type: workflow` / `type: rules` in the frontmatter -> the file is checked and the report names the type (SPR-04 TK8; exit 2 in SPR-02)."""
         for kind in ("workflow", "rules"):
             with self.subTest(type=kind):
                 path = self._doc("doc-%s.md" % kind, "---\nname: doc\ntype: %s\n---\n\n# Body\n" % kind)
-                code, out, err = run_engine("check", str(path), cwd=self.tmp)
-                self.assertEqual(2, code)
-                self.assertIn("check for type %s is not available yet" % kind, err)
-                self.assertEqual("", out)
+                code, out, err = run_engine("check", "--json", str(path), cwd=self.tmp)
+                self.assertEqual(1 if kind == "workflow" else 0, code, err)  # a body with no Kết luận, Bước or Xong khi is a workflow with errors
+                self.assertEqual(kind, json.loads(out)["reports"][0]["type"])
+                self.assertNotIn("not available yet", err)
 
-    def test_agent_instruction_file_names_exit_2_not_available_yet(self):
-        """bắt-lỗi (red at 395e621: no `not available yet`): FR5.3 AGENTS.md, CLAUDE.md and GEMINI.md are rules files even without frontmatter."""
+    def test_agent_instruction_file_names_are_rules_files(self):
+        """bắt-lỗi (red at e92d4d2: exit 2 `not available yet`): FR8.1 AGENTS.md, CLAUDE.md and GEMINI.md are rules files even without frontmatter and are checked (SPR-04 TK8)."""
         for name in ("AGENTS.md", "CLAUDE.md", "GEMINI.md"):
             with self.subTest(name=name):
                 sub = self.tmp / name.split(".")[0].lower()
                 sub.mkdir()
                 path = sub / name
                 path.write_bytes(b"# Instructions\n\nNo frontmatter here.\n")
-                code, out, err = run_engine("check", str(path), cwd=self.tmp)
-                self.assertEqual(2, code)
-                self.assertIn("check for type rules is not available yet", err)
-                self.assertEqual("", out)
+                code, out, err = run_engine("check", "--json", str(path), cwd=self.tmp)
+                self.assertEqual(0, code, err)
+                self.assertEqual("rules", json.loads(out)["reports"][0]["type"])
 
     def test_markdown_of_unknown_type_exits_2_with_a_message(self):
         """bắt-lỗi (red at 395e621: the message is argparse's, not ours): FR5.3 a .md file with no recognisable type -> exit 2 and a message that names the file."""
@@ -202,11 +201,11 @@ class CheckOtherTypesTests(unittest.TestCase):
     def test_resolve_check_path_unit(self):
         """đơn-vị-hàm-mới: `resolve_check_path` maps a folder or SKILL.md to the skill folder and leaves a missing path to `validate`."""
         folder = ROOT / "examples" / "data-quality-audit"
-        self.assertEqual(folder, E.validate.resolve_check_path(str(folder)))
-        self.assertEqual(folder, E.validate.resolve_check_path(str(folder / "SKILL.md")))
+        self.assertEqual(("skill", folder), E.validate.resolve_check_path(str(folder)))
+        self.assertEqual(("skill", folder), E.validate.resolve_check_path(str(folder / "SKILL.md")))
         missing = self.tmp / "no-such-skill"
-        self.assertEqual(missing, E.validate.resolve_check_path(str(missing)))
-        self.assertEqual(self.tmp / "gone", E.validate.resolve_check_path(str(self.tmp / "gone" / "SKILL.md")))
+        self.assertEqual(("skill", missing), E.validate.resolve_check_path(str(missing)))
+        self.assertEqual(("skill", self.tmp / "gone"), E.validate.resolve_check_path(str(self.tmp / "gone" / "SKILL.md")))
 
 
 class Rq029CheckTests(unittest.TestCase):

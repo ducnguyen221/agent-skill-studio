@@ -82,7 +82,17 @@ class ByPackTests(unittest.TestCase):
             self.assertEqual(pack["st8_evals"], 1)
             self.assertEqual(pack["by_code"].get("ST5"), 1)
             self.assertIn("ST5 1", doctor.pack_line(pack))
-            self.assertIn("ST8 1)", doctor.pack_line(pack))
+            self.assertIn("ST8 0+1 evals)", doctor.pack_line(pack))
+
+    def test_pack_line_adds_evals_to_the_real_st8_count(self):
+        """bắt-lỗi (red at e92d4d2: one summed number `ST8 2`): RF-7.1 with evals/ folders the line says `<real ST8>+<n> evals`, never one sum."""
+        pack = {"pack": "p", "skills": 2, "errors": 0, "warnings": 1, "by_code": {"ST8": 1}, "check_exit": 0, "st8_evals": 1}
+        self.assertEqual("p: 2 skills, 0 errors (ST5 0), 1 warnings (ST8 1+1 evals); check exits 0", doctor.pack_line(pack))
+
+    def test_pack_line_without_evals_keeps_the_plan_pattern(self):
+        """tương-đương: RF-7.1 with no evals/ folder the line keeps the PLAN pattern `ST8 <n>`."""
+        pack = {"pack": "p", "skills": 2, "errors": 0, "warnings": 1, "by_code": {"ST8": 1}, "check_exit": 0, "st8_evals": 0}
+        self.assertEqual("p: 2 skills, 0 errors (ST5 0), 1 warnings (ST8 1); check exits 0", doctor.pack_line(pack))
 
     def test_check_exit_follows_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
