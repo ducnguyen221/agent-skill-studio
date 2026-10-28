@@ -326,7 +326,7 @@ def build_parser(prog: str = "catalog") -> argparse.ArgumentParser:
     p.add_argument("--roots-from", choices=("opcos",), help="take the roots from an OpcOS tree (paths.json and the plugin manifests), as `doctor --roots-from opcos`; not with --roots or --roots-file")
     p.add_argument("--roots", help="skill roots separated by ';' (default: the repo's skills/; outside the repo --roots or --roots-file is required)")
     p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment")
-    p.add_argument("--installed", metavar="HARNESSES", help="comma list of claude,codex,antigravity: read the copies installed there and show khớp/khác/— beside every skill; a harness whose locator fails is a root that is not ok")
+    p.add_argument("--installed", metavar="HARNESSES", help="comma list of claude,codex,antigravity: read the copies installed there and show match / differ / absent beside every skill; a harness whose locator fails is a root that is not ok")
     p.add_argument("--overlap", action="store_true", help="name pairs of skills that may overlap and give each one of five labels with its evidence and a fixed suggestion (only a suggestion: every pair needs a person); without it `pairs` is null")
     p.add_argument("--json", action="store_true", help="print the JSON report (with --out it goes to the file only)")
     p.add_argument("--out", help="write the JSON report here; the folder must exist; not under skills/, a scanned root or a harness folder; not a secret-looking name")
