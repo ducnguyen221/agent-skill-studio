@@ -772,10 +772,27 @@ class TreeDigestSemanticTests(TmpCase):
         self.assertIsNone(R.tree_digest_semantic(a, C.CLOUD_MARKERS))
 
     def test_a_warned_frontmatter_scalar_still_folds(self):
-        """bắt-lỗi: the parser warns (FM1) about a value it cannot read, as in 35 real skills; the quoted and the bare spelling of it must still digest alike."""
-        a, b = self.pair(b"---\nname: s\ndescription: Use when x.\nsource: a [b] c\n---\n\nBody\n",
-                         b'---\nname: s\ndescription: "Use when x."\nsource: a [b] c\n---\n\nBody\n')
+        """bắt-lỗi: RF-10.11 the parser warns (FM1, one finding) about a bare `: ` in a value; the quoted spelling of it must still digest alike."""
+        a, b = self.pair(b"---\nname: s\ndescription: Use when x: y.\n---\n\nBody\n", b'---\nname: s\ndescription: "Use when x: y."\n---\n\nBody\n')
         self.assertTrue(self.same(a, b))
+
+    def frontmatter(self, extra: bytes) -> bytes:
+        return b"---\nname: s\ndescription: D. Use when x.\n" + extra + b"---\n\nBody\n"
+
+    def test_lines_the_parser_drops_still_count(self):
+        """bắt-lỗi: RF-10.10 a list item, a nested metadata line, a bad key and a duplicate key are dropped by parse_frontmatter; a change in them must differ."""
+        cases = {
+            "list item": (b"allowed-tools:\n  - Read\n", b"allowed-tools:\n  - Bash\n"),
+            "nested metadata": (b"metadata:\n  group: a\n  deep:\n    x: 1\n", b"metadata:\n  group: a\n  deep:\n    x: 2\n"),
+            "bad key": (b"[x]: 1\n", b"[y]: 2\n"),
+            "duplicate key": (b"owner: A\nowner: C\n", b"owner: B\nowner: C\n"),
+        }
+        for name, (one, two) in cases.items():
+            with self.subTest(name):
+                a, b = self.pair(self.frontmatter(one), self.frontmatter(two))
+                self.assertFalse(self.same(a, b))
+                a, b = self.pair(self.frontmatter(one), self.frontmatter(one.replace(b"\n", b"\r\n").replace(b"\r\n", b"  \r\n")))
+                self.assertTrue(self.same(a, b), "CRLF and trailing spaces are folded in the lines kept as they are")
 
     def test_unparsable_frontmatter_falls_back_to_folded_text(self):
         """bắt-lỗi: a SKILL.md without frontmatter, or not UTF-8, still digests (CRLF folded) and does not raise."""

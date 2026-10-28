@@ -454,6 +454,26 @@ def _file_bytes(path: Path) -> bytes | None:
         return None
 
 
+# Findings of parse_frontmatter that mean the line was NOT taken into the parsed dict (a scalar it cannot read keeps its raw value there, so it is not one of these).
+_DROPPED_LINE = ("invalid YAML top-level", "unexpected indentation", "metadata must be", "duplicate frontmatter key")
+_DUPLICATE_KEY = re.compile(r"duplicate frontmatter key '(.*)'$")
+
+
+def _dropped_frontmatter_lines(head: list, findings: list) -> list:
+    """The frontmatter lines (line end and trailing spaces stripped) that parse_frontmatter dropped, in file order: a list item, a bad key, a nested metadata
+    line it does not read, and every line of a key given twice (the dict keeps only the last). A change in one of them must change the digest."""
+    wanted: set = set()
+    for item in findings:
+        message = item.get("message", "")
+        if message.startswith(_DROPPED_LINE):
+            wanted.add(item["line"] - 1)
+        twice = _DUPLICATE_KEY.match(message)
+        if twice:
+            key = twice.group(1)
+            wanted.update(i for i, raw in enumerate(head) if i and raw.startswith(key) and raw[len(key):].lstrip(" \t").startswith(":"))
+    return [head[i].rstrip() for i in sorted(wanted) if 0 < i < len(head)]
+
+
 def _semantic_file_sha256(path: Path, rel: str) -> str | None:
     """SHA-256 of a file as the semantic tree sees it: SKILL.md = its parsed frontmatter (sorted keys) + its body, CRLF folded to LF; another text file
     (SEMANTIC_TEXT_SUFFIXES) with CRLF folded to LF; any other file as its bytes. A SKILL.md that is not UTF-8 or has no parsable frontmatter counts as text."""
@@ -465,11 +485,12 @@ def _semantic_file_sha256(path: Path, rel: str) -> str | None:
             text = data.decode("utf-8").replace("\r\n", "\n")
         except UnicodeDecodeError:
             return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
-        parsed, _, end = fs.parse_frontmatter(text, path)
+        parsed, findings, end = fs.parse_frontmatter(text, path)
         if not end:  # no frontmatter at all; findings alone (a scalar the offline parser warns about) leave a usable dict
             return hashlib.sha256(text.encode("utf-8")).hexdigest()
-        body = "".join(text.splitlines(keepends=True)[end:])
-        return hashlib.sha256((json.dumps(parsed, sort_keys=True, ensure_ascii=True) + "\n" + body).encode("utf-8")).hexdigest()
+        lines = text.splitlines(keepends=True)
+        kept = "\n".join(_dropped_frontmatter_lines(lines[:end], findings))
+        return hashlib.sha256((json.dumps(parsed, sort_keys=True, ensure_ascii=True) + "\n" + kept + "\n" + "".join(lines[end:])).encode("utf-8")).hexdigest()
     if path.suffix.lower() in SEMANTIC_TEXT_SUFFIXES:
         data = data.replace(b"\r\n", b"\n")
     return hashlib.sha256(data).hexdigest()
