@@ -16,7 +16,7 @@ CONTENTS_OVER_LINES = 100  # SK-15: a reference longer than this needs a `## Con
 # one-line hint each gets in `## Contents`.
 EXTRA_SECTIONS = ("Ưu tiên khi luật mâu thuẫn", "Vòng đời", "Definition of Done")
 EXTRA_HINTS = ("which file wins on a conflict", "Draft to Production, version bumps", "what finished means")
-HEAD_RE =re.compile(r"^### (SK-\d\d) — (.+? \[[^\]]+\] · kiểm: \S.*)$")
+HEAD_RE = re.compile(r"^### (SK-\d\d) — (.+? \[[^\]]+\] · kiểm: \S.*)$")
 
 
 def _frontmatter_value(text: str, key: str) -> str:
