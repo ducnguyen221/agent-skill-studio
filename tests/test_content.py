@@ -1,4 +1,4 @@
-"""Offline tests for the SPR-33 TK7 content kit (examples/, once content/: description pairs, eval cases, two exemplar skills).
+"""Offline tests for the SPR-33 TK7 content kit (content/: description pairs, eval cases, two exemplar skills).
 
 Run: python -X utf8 -m pytest tests/test_content.py -q -p no:cacheprovider
 """
@@ -22,7 +22,7 @@ studio_evals = sys.modules["studio_evals"]
 studio_lint = sys.modules["studio_lint"]
 studio_validate = sys.modules["studio_validate"]
 
-CONTENT = ROOT / "examples"
+CONTENT = ROOT / "content"
 EXEMPLAR = CONTENT / "exemplar" / "writing-commit-messages"
 EXEMPLAR_VI = CONTENT / "exemplar-vi" / "writing-release-notes"
 
@@ -129,7 +129,7 @@ def skill_body(path: Path) -> str:
 
 class ContentKitTests(unittest.TestCase):
     def test_content_kit_counts(self):
-        self.assertTrue((CONTENT / "README.md").is_file(), "examples/README.md missing")
+        self.assertTrue((CONTENT / "README.md").is_file(), "content/README.md missing")
         # description pairs
         pairs = blocks(read(CONTENT / "descriptions.md"), "Pair")
         self.assertGreaterEqual(len(pairs), 7)
@@ -191,8 +191,7 @@ class ContentKitTests(unittest.TestCase):
         self.assertTrue((EXEMPLAR_VI / "SKILL.md").is_file())
 
     def test_content_outside_skills(self):
-        self.assertFalse(any(p.name == "examples" for p in (ROOT / "skills").rglob("*")), "examples/ must not live under skills/")
-        self.assertFalse((ROOT / "content").exists(), "content/ moved to examples/ (SPR-03 TK2)")
+        self.assertFalse(any(p.name == "content" for p in (ROOT / "skills").rglob("*")), "content/ must not live under skills/")
 
     def test_exemplar_validates_clean(self):
         findings = studio_validate.validate_skill(EXEMPLAR)

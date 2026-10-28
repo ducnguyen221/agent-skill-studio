@@ -226,9 +226,7 @@ def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path, fron
     """FR16 / SPEC 9.10: VI1-VI5, all WARN, only when the body is Vietnamese (detect_lang). Line numbers are file lines.
     VI1 body not NFC (first deviating line) · VI2 d/m/yyyy date · VI3 sentence over VI_SENTENCE_MAX words ·
     VI4 frontmatter outside `description` holds Vietnamese letters, or `description` does but has no 'Use when' ·
-    VI5 a '## ' section of at least VI5_SECTION_MIN_LETTERS letters with under VI5_ACCENT_MIN diacritics, unless the sections under
-    VI5_ACCENT_MIN hold more than VI5_ENGLISH_BODY_SHARE of the prose letters (code and tables are not prose): a mostly English body
-    is not reported section by section (FR14.1)."""
+    VI5 a '## ' section of at least VI5_SECTION_MIN_LETTERS letters with under VI5_ACCENT_MIN diacritics."""
     lines = prose_lines(body)
     if _vi_lang(lines) != "vi":
         return []
@@ -295,25 +293,17 @@ def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path, fron
     if accented(desc) and not C.VI_TRIGGER_RE.search(desc) and not (at <= len(front) and C.VI_OK_MARK in front[at - 1]):
         findings.append(fs.emit("WARN", "VI4", manifest, at,
                              "description has Vietnamese letters but no 'Use when' trigger phrase; write it in English and add Vietnamese only as extra trigger words (V13)"))
-    sections: list = []  # [line, letters, letters with a diacritic, title] per '## ' section of the prose
     section = None
     for rel, text in lines + [(0, "# end")]:
         if re.match(r"^#{1,2}\s+\S", text):
-            if section:
-                sections.append(section)
+            if section and section[1] >= C.VI5_SECTION_MIN_LETTERS and section[2] / section[1] < C.VI5_ACCENT_MIN:
+                findings.append(fs.emit("WARN", "VI5", manifest, body_start + section[0],
+                                     "section '%s' has %d letters and almost no Vietnamese diacritics; one language per skill, write it in Vietnamese (V14)"
+                                     % (section[3], section[1])))
             section = [rel, 0, 0, text.strip("# ").strip()] if re.match(r"^##\s", text) else None
         elif section:
             count, with_accent = _vi_counts(text)
             section[1], section[2] = section[1] + count, section[2] + with_accent
-    prose_letters = sum(_vi_counts(text)[0] for _, text in lines)
-    english = sum(sec[1] for sec in sections if sec[1] and sec[2] / sec[1] < C.VI5_ACCENT_MIN)
-    if prose_letters and english / prose_letters > C.VI5_ENGLISH_BODY_SHARE:
-        return findings  # a body that is mostly English (FR14.1): not reported section by section
-    for sec in sections:
-        if sec[1] >= C.VI5_SECTION_MIN_LETTERS and sec[2] / sec[1] < C.VI5_ACCENT_MIN:
-            findings.append(fs.emit("WARN", "VI5", manifest, body_start + sec[0],
-                                 "section '%s' has %d letters and almost no Vietnamese diacritics; one language per skill, write it in Vietnamese (V14)"
-                                 % (sec[3], sec[1])))
     return findings
 
 

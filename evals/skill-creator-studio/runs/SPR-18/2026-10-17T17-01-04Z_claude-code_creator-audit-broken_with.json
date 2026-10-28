@@ -1,0 +1,47 @@
+{
+  "case_id": "creator-audit-broken",
+  "pair_id": "skill-creator-studio/creator-audit-broken/claude-code",
+  "timestamp": "2026-10-17T17:01:04.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "typical",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 7,
+        "tool": "Skill",
+        "via": "Skill",
+        "match": "agent-skill-studio:skill-creator-studio"
+      }
+    ],
+    "scripts": [
+      {
+        "line": 18,
+        "tool": "Bash",
+        "match": "python -I \"~/OpcOS/plugins/agent-skill-studio/skills/skill-creator-studio/scripts/studio.py\" audit \"~/OpcOS/workspaces/spr18-eval/claude-code/2026-10-17T17-01-0"
+      }
+    ],
+    "transcript_sha256_full": "609743164dfd478c0338b8cc749789c791c25a326ebfd90804be218791df9ca0",
+    "transcript_sha256_filtered": "ac12b4f1a7a6a50af59251db20c030452fbd4fa15703c1f2f3368b5c43e25a7c",
+    "line_numbers_refer_to": "filtered transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T17-01-04Z_claude-code_creator-audit-broken_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-17-skill-studio-eval/evidence/transcripts/2026-10-17T17-01-04Z_claude-code_creator-audit-broken_with.jsonl (OpcOS repo; filtered copy: tool calls, tool results cut to 500 chars, skill catalogue as names only, no system prompt, paths and e-mail redacted; full copy stays outside git, identified by sha256 above)",
+  "cwd": "~/OpcOS/workspaces/spr18-eval/claude-code/2026-10-17T17-01-04Z_creator-audit-broken_with",
+  "skill_sha256_loaded": "9f7250d0720959409e44944ac6a3341a0469e3db1019142be3f22a520274833a",
+  "skill_sha256_repo": "9f7250d0720959409e44944ac6a3341a0469e3db1019142be3f22a520274833a",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports; Codex: ~/.codex/AGENTS.md)",
+  "ledger_id": "dc2c245b-7d1a-477d-94e0-68acf6ec760e",
+  "wall_seconds": 34.1,
+  "timeout_s": 300,
+  "output_excerpt": "**Kết quả: Không đạt.** Skill `broken-skill` có 3 lỗi tĩnh (validator `studio.py audit`: 3 errors, 0 warnings) cộng thêm các lỗi tôi thấy khi đọc tay. Tôi không sửa file nào.\n\nSkill: `fixtures/broken-skill/SKILL.md` (9 dòng) | Runtime: Claude Code | Date: 2026-10-18\n\n| Path:line | Rule | Severity | Evidence | Proposed fix | Risk |\n|---|---|---|---|---|---|\n| SKILL.md:2 | SK-00 / FM2 | Cao | `name:",
+  "status": "ran",
+  "batch": "SPR-18-TK3-20261017",
+  "cost_usd": 0.3036597,
+  "skill_sha256_repo_worktree_tip": "c6441846fe718670b45ee86bd0680887215c1cb21d6c12b5c61a03625e731567",
+  "status_note": "runner first compared against worktree tip (differs only in scripts/studio.py, SPR-18 TK1/TK2); corrected to the frozen manifest hash, which equals the marketplace-source version Claude loaded (SKILL.md and references byte-identical)"
+}

@@ -43,11 +43,7 @@ def find_skills(args):
     if args.all:
         if root is None:
             raise ValueError("--all requires Studio repository; use an explicit Skill path")
-        skipped: list = []
-        found = fs.skill_dirs(root, skipped)
-        for item in skipped:  # a skill that was not looked at is said, never left out silently (FR13.1); the exit code is not changed by it
-            print("WARN: --all skipped %s (%s); it is not checked" % (item["path"], item["reason"]), file=sys.stderr)
-        return found
+        return fs.skill_dirs(root)
     if not args.skill:
         raise ValueError("provide a skill path or --all")
     if getattr(args, "typed", False):
@@ -126,13 +122,11 @@ def cmd_evals(args) -> int:
         findings = evals.check_evals(path)
         reports.append({"skill": path.name, "findings": findings})
     gate_root, gate_dir = (evals.gate_root() if args.all else None), None  # the gate follows the engine's repository, never the cwd; outside a repository, or in one without evals/, it is skipped (FR6.2)
-    if args.all and evals.installed_engine():  # said once per run, on stderr: a skipped gate is never mistaken for a passed one (FR13.3)
-        print("note: model_evaluated gate skipped: installed engine (%s); run `evals --all` from the Studio repository to check it" % Path(__file__).resolve().parent, file=sys.stderr)
     if gate_root is not None:
-        catalog = gate_root / evals.CATALOG_REL
+        catalog = gate_root / "registry" / "catalog.json"
         problems = evals.catalog_problems(gate_root)
         if problems:
-            reports.append({"skill": evals.CATALOG_REL, "findings": [fs.emit("ERROR", "EV20", catalog, 0, p) for p in problems]})
+            reports.append({"skill": "registry/catalog.json", "findings": [fs.emit("ERROR", "EV20", catalog, 0, p) for p in problems]})
             gate_dir = catalog
     if args.json:
         print(json.dumps({"reports": reports, "model_runs_performed": 0}, ensure_ascii=False, indent=2))

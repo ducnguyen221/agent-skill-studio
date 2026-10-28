@@ -15,6 +15,3 @@ coverage/
 .tmp/
 *.bak-*
 .coverage
-
-# raw run logs live in the OpcOS ledger, not here (SPR-03)
-evals/*/runs/

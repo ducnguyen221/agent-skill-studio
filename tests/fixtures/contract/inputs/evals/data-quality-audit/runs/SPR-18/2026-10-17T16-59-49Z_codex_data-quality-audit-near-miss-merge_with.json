@@ -1,0 +1,55 @@
+{
+  "case_id": "data-quality-audit-near-miss-merge",
+  "pair_id": "data-quality-audit/data-quality-audit-near-miss-merge/codex",
+  "timestamp": "2026-10-17T16:59:49.000Z",
+  "runtime": "codex",
+  "model": "gpt-6-luna",
+  "with_skill": true,
+  "kind": "near-miss",
+  "triggered": true,
+  "activation_evidence": {
+    "hits": [
+      {
+        "line": 16,
+        "tool": "exec",
+        "via": "read-SKILL.md",
+        "match": "Get-Content -LiteralPath '.agents\\skills\\data-quality-audit\\SKILL.md'"
+      }
+    ],
+    "scripts": [
+      {
+        "line": 18,
+        "tool": "exec",
+        "match": "python .agents\\skills\\data-quality-audit\\scripts\\validate_csv.py --help"
+      },
+      {
+        "line": 20,
+        "tool": "exec",
+        "match": "python .agents\\skills\\data-quality-audit\\scripts\\validate_csv.py --file fixtures\\orders.csv --required order_id,customer_id,amount"
+      },
+      {
+        "line": 20,
+        "tool": "exec",
+        "match": "python .agents\\skills\\data-quality-audit\\scripts\\validate_csv.py --file fixtures\\customers.csv --required customer_id,name"
+      }
+    ],
+    "transcript_sha256_full": "459818d2639214a845e02f4a175bf8ebc5be5827cbc6bb66d57738df7fbd8634",
+    "transcript_sha256_filtered": "ae6b42b2808715be405884f692a60d60fd9ad65063f877e5f95b92c0e905e90e",
+    "line_numbers_refer_to": "filtered transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T16-59-49Z_codex_data-quality-audit-near-miss-merge_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-17-skill-studio-eval/evidence/transcripts/2026-10-17T16-59-49Z_codex_data-quality-audit-near-miss-merge_with.jsonl (OpcOS repo; filtered copy: tool calls, tool results cut to 500 chars, skill catalogue as names only, no system prompt, paths and e-mail redacted; full copy stays outside git, identified by sha256 above)",
+  "cwd": "~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T16-59-49Z_data-quality-audit-near-miss-merge_with",
+  "skill_sha256_loaded": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "skill_sha256_repo": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "pinned_model": "gpt-6-luna",
+  "actual_model": "gpt-6-luna",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports; Codex: ~/.codex/AGENTS.md)",
+  "ledger_id": "126ca17c-9bf2-420e-937e-3880fa458676",
+  "wall_seconds": 64.7,
+  "timeout_s": 300,
+  "output_excerpt": "Ghép `fixtures/orders.csv` với `fixtures/customers.csv` theo `customer_id`:\n\n| order_id | customer_id | amount | name |\n|---|---|---:|---|\n| 1 | c1 | 10 | Alice |\n| 2 | c2 | 20 | Bob |\n| 3 | c1 | 30 | Alice |\n\nĐã ghép 3 đơn hàng; không có đơn nào thiếu khách hàng tương ứng. CSV nguồn không bị sửa.",
+  "status": "ran",
+  "batch": "SPR-18-TK3-20261017",
+  "stderr_tail": "[bridge] cảnh báo: biến thuộc namespace codex nhưng CHƯA có trong danh sách trắng nên KHÔNG tới callee: CODEX_BRIDGE — nếu thật sự cần, thêm vào CODEX_TOOL_ENV.allow trong bridges/lib/env.mjs\n"
+}

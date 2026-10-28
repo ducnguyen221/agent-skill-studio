@@ -199,8 +199,8 @@ def cmd_install(args) -> int:
     if dest.resolve() == folder or fs.valid_resolved_under(dest, folder):
         print("ERROR: destination is the source Skill or nested under it; refusing self-overwrite", file=sys.stderr)
         return 1
-    if fs.is_link(dest):  # before exists(): a dangling link is not "there" for exists() and would crash mkdir; one that cannot be probed counts as a link (lexists would say False for it)
-        print("ERROR: symlink destination refused: %s" % dest, file=sys.stderr)
+    if os.path.lexists(dest) and fs.is_link(dest):  # before exists(): a dangling link is not "there" for exists() and would crash mkdir
+        print("ERROR: symlink destination refused", file=sys.stderr)
         return 1
     if dest.exists() and not args.force:
         print("ERROR: %s exists; no changes made. Use --force only if you intend replacement." % dest, file=sys.stderr)
@@ -211,7 +211,7 @@ def cmd_install(args) -> int:
         from datetime import datetime, timezone
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backups_dir = skill_root.parent / ".skill-studio-backups"
-        if fs.is_link(backups_dir):
+        if os.path.lexists(backups_dir) and fs.is_link(backups_dir):
             print("ERROR: backup folder %s is a link; nothing was changed" % backups_dir, file=sys.stderr)
             return 1
         backup = backups_dir / (dest.name + "-" + stamp)

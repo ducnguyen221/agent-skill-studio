@@ -1,16 +1,15 @@
 ---
 title: "Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15"
 status: active
-updated: 2026-10-28
+updated: 2026-10-23
 ---
 # Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15
 
-**Checked:** 2026-10-22 (A10–A16 mở lại ngày này; A1–A9 giữ mốc 2026-10-12). Tài liệu này phân biệt **nguồn chính thức / tài liệu cộng đồng / quyết định nội bộ**. Không viện dẫn PDF như thể PDF là văn bản chính thức của Anthropic. `Official` trong bảng nghĩa là sự kiện hay đặc tả do nhà cung cấp công bố, không đồng nghĩa họ gắn rule đó là MUST.
+**Checked:** 2026-10-22 (A10–A16 mở lại ngày này; A1–A9 giữ mốc 2026-10-12). Tài liệu này phân biệt **nguồn chính thức / tài liệu cộng đồng / quyết định nội bộ**. Không viện dẫn PDF như thể PDF là văn bản chính thức của Anthropic.
 
 ## Contents
 - Nguồn đã đối chiếu
 - Ma trận quy tắc
-- Bản đồ 46 check RoboNuggets
 - Khác biệt cần lưu ý
 - Quy trình cập nhật
 
@@ -64,82 +63,6 @@ updated: 2026-10-28
 | SK-14 Chữ ép buộc có lý do | — (mới) | A10, A13 | Ngôn ngữ ép buộc làm model gần đây phản ứng quá đà; giải thích lý do hiệu quả hơn mệnh lệnh cứng | `CT10` WARN; chữ trơ chỉ trong khối low-freedom hoặc khối strict |
 | SK-15 Contents và điều giữ ở đầu | — (mới) | A2, A3 | Reference >100 dòng nên có mục lục; sau compaction giữ 5 000 token đầu | Thân >100 dòng nên có Contents (`ST7`), định dạng và ≤12 mục là `[nội bộ]`; không có luật chính thức "đọc N dòng đầu" |
 
-## Bản đồ 46 check RoboNuggets
-
-**Nguồn:** [robonuggets/skill-creator-plus](https://github.com/robonuggets/skill-creator-plus) (đọc README, `SKILL.md`, references/audit-checklist.md, references/testing.md). Đây là **repo cộng đồng** MIT, không phải sản phẩm chính thức của Anthropic. Mapping dưới đây là **phân loại của Studio**, không sao chép nội dung validator của repo.
-
-### Nguyên tắc mapping
-
-- `Portable`: kiểm tra theo đặc tả chung; `Claude`: tính năng đặc thù Claude Code; `Studio`: kinh nghiệm quản trị nội bộ.
-- Mã `FM1..LB2` xuất phát từ README của repo. Mã `SK-00..SK-15` là chuẩn thiết kế tại `SKILL_AUTHORING_STANDARD.md`.
-- Máy có thể tự kiểm tra syntax/paths, nhưng các vấn đề chất lượng (đúng trigger, quá chi tiết, risk) vẫn cần reviewer/agent eval.
-
-| Community ID | Ý chính | Studio mapping | Phạm vi | Check |
-|---|---|---|---|---|
-| FM1 | YAML parses, starts line 1 | SK-00 | Portable | Static |
-| FM2 | Valid name and folder match | SK-00 | Portable | Static |
-| FM3 | Activity-oriented name | SK-05 | Studio | Review |
-| FM4 | Recognized fields per runtime | SK-00 | Portable/Claude | Static |
-| FM5 | Invocation deliberately configured | SK-03, SK-10 | Claude | Review |
-| DS1 | Description length/format | SK-00 | Portable | Static |
-| DS2 | Description third-person | SK-05 | Best practice | Heuristic |
-| DS3 | What+when and user language | SK-05 | Portable/Best practice | Review |
-| DS4 | Important use-case first, listing budget | SK-05 | Claude | Static+Review |
-| ST1 | SKILL body <500 lines | SK-01 | Best practice | Static WARN |
-| ST2 | Important rules near top | SK-12 | Claude | Review |
-| ST3 | Break out details, on demand | SK-01 | Portable | Review |
-| ST4 | References directly linked from SKILL | SK-01 | Best practice | Static+Review |
-| ST5 | TOC for reference >100 lines | SK-15 | Best practice | Static WARN |
-| ST6 | Reachable, named files, no backups | SK-01, SK-09 | Studio | Static+Review |
-| ST7 | POSIX path slashes in docs | SK-09 | Best practice | Static heuristic |
-| CT1 | Remove generic redundant context | SK-05 | Best practice | Review |
-| CT2 | Freedom per risk/fragility | SK-03 | Best practice | Review |
-| CT3 | Avoid stale time-sensitive guidance | SK-05 | Best practice | Review |
-| CT4 | Consistent terminology | SK-05 | Best practice | Review |
-| CT5 | Label strict/flexible templates | SK-08 | Best practice | Review |
-| CT6 | Examples for style-sensitive output | SK-08 | Best practice | Review |
-| CT7 | One default plus escape hatch | SK-08 | Studio | Review |
-| CT8 | Full MCP tool names | SK-09 | Best practice | Review |
-| CT9 | No TODO/FIXME placeholders in release | SK-07 | Studio | Static WARN |
-| CT10 | One rule in one location | SK-05 | Studio | Review |
-| WF1 | Checklist, checkable done, go-back | SK-06 | Best practice | Review |
-| WF2 | Validator feedback loop | SK-07 | Best practice | Review |
-| WF3 | Plan/validate/execute before destructive | SK-03, SK-10 | Best practice | Review |
-| WF4 | Standing instructions vs one-time lines | SK-12 | Claude | Review |
-| SC1 | Solve errors in script instead of defer | SK-07 | Best practice | Code review |
-| SC2 | Explain constants | SK-09 | Best practice | Code review |
-| SC3 | Distinguish run vs read script | SK-09 | Best practice | Review |
-| SC4 | Actionable error output | SK-07 | Best practice | Code review |
-| SC5 | Explicit package requirements/install | SK-09 | Best practice | Static+Review |
-| NM1 | Remove over-prescription after testing | SK-04, SK-05 | Model-specific | Eval |
-| NM2 | Avoid internal reasoning echo | SK-13 | Model-specific | Static heuristic |
-| NM3 | Explain why rule exists | SK-05 | Best practice | Review |
-| NM4 | Brief steering, capitals sparingly | SK-05 | Best practice | Review |
-| NM5 | Explicit verification, fresh checker | SK-07, SK-11 | Best practice | Review |
-| HK1 | Must-hold -> hook/policy | SK-10 | Claude-specific hook | Security test |
-| TS1 | >=3 evals, baseline before skill | SK-11 | Best practice | Static+Eval |
-| TS2 | Fresh session, Skill on/off | SK-11 | Best practice | Eval |
-| TS3 | Models actually used | SK-04 | Best practice | Eval |
-| LB1 | No competing triggers | SK-05 | Studio | Library review |
-| LB2 | Unused skills managed/disabled | SK-05 | Claude-specific tooling | Library review |
-
-### Chủ động không sao chép nguyên xi
-
-- Trường frontmatter ngoài 6 fields chỉ được dùng trong **target-specific** Claude variant.
-- `Hooks` là một hình thức enforcement của Claude, không được biến thành thiết kế portable duy nhất.
-- Script validator của cộng đồng là nguồn tham khảo kiểm tra, **không** được xem như thẩm quyền kỹ thuật mạnh hơn tài liệu chính thức.
-- Một rule thuộc nhóm "Advice" có thể bổ ích nhưng không được trình bày như điều kiện bắt buộc của Anthropic.
-
-### Backlog review semantic (không thể kiểm tra hoàn toàn bằng regex)
-
-1. Skill quá chung, trùng trigger với Skill khác, hoặc quá nhiều phạm vi.
-2. Ref quá lớn nhưng được đọc ở mọi run, làm mất lợi thế disclosure.
-3. Cơ chế enforce nguy hiểm chỉ là một dòng prose.
-4. Skill tạo output đẹp nhưng sai factual/harness task.
-5. Rule có thể bỏ được trên model mới: phải chạy eval, không xóa dựa vào cảm giác.
-
-**Tổng số community rule IDs trong ma trận: 46** (FM 5 + DS 4 + ST 7 + CT 10 + WF 4 + SC 5 + NM 5 + HK 1 + TS 3 + LB 2).
-
 ## Khác biệt cần lưu ý
 
 1. **Tên video nói "10 NEW"**: không chứng minh cả mười là feature mới cùng ngày. Các hướng dẫn gốc được thu thập thành top 10; bản PDF thừa nhận những quy tắc từ nguồn chính thức.
@@ -155,9 +78,9 @@ updated: 2026-10-28
 ## Quy trình cập nhật
 
 - Mỗi claim có source link, date checked và vị trí PDF phù hợp.
-- Khi vendor docs cập nhật, ghi phiên bản mới, rà lại các rule `MUST/SHOULD`, `HARNESSES.md` và test case. Đánh dấu stale nếu không thể kiểm tra.
+- Khi vendor docs cập nhật, ghi phiên bản mới, rà lại các rule `MUST/SHOULD`, adapter và test case. Đánh dấu stale nếu không thể kiểm tra.
 - Không ghi dữ liệu user/customer vào upstream evidence log; chỉ lưu synthetic fixtures và link nguồn công khai.
 
 ### Citation practice
 
-Nguồn chính thức dùng để kiểm tra chức năng/format của vendor; README cộng đồng dùng để xác định nội dung repo RoboNuggets; PDF dùng để xác định các quy tắc mà user muốn hệ thống hóa. Không lấy số sao GitHub/stars làm evidence về độ tin cậy.
+Nguồn chính thức dùng để kiểm tra chức năng/format của vendor; README cộng đồng dùng để xác định nội dung repo RoboNuggets; PDF dùng để xác định chính xác 13 quy tắc mà user muốn hệ thống hóa. Không lấy số sao GitHub/stars làm evidence về độ tin cậy.

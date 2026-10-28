@@ -1,0 +1,25 @@
+Bạn thêm marketplace (kho liệt kê plugin) trước, rồi cài plugin từ kho đó. Tôi chưa chạy lệnh nào.
+
+1. **Thêm marketplace.** Trong Claude Code, gõ `/plugin marketplace add <nguồn>`. Nguồn có thể là:
+   - viết tắt GitHub `owner/repo`
+   - URL git
+   - đường dẫn thư mục trên máy
+
+   Marketplace của Anthropic thường đã có sẵn, nên bước này chỉ cần với kho bên thứ ba.
+
+2. **Cài plugin.** Có hai cách:
+   - Dùng lệnh: `/plugin install <tên-plugin>@<tên-marketplace>`.
+   - Dùng giao diện: gõ `/plugin`, mở tab **Discover**, chọn plugin rồi chọn Install. Claude Code sẽ hỏi phạm vi cài: *user* (mọi project), *project* (chia sẻ qua repo) hoặc *local* (chỉ riêng bạn trong repo này).
+
+3. **Nạp lại.** Chạy `/reload-plugins` hoặc khởi động lại phiên để skill, command, agent, hook và MCP của plugin có hiệu lực.
+
+4. **Kiểm tra.** Tab **Installed** trong `/plugin` sẽ liệt kê plugin. Command của plugin có dạng `/<tên-plugin>:<command>`.
+
+Quản lý về sau, cũng trong `/plugin`:
+- cập nhật danh mục bằng `/plugin marketplace update`
+- tắt/bật bằng `disable`/`enable`
+- gỡ bằng `uninstall`
+
+Bên ngoài phiên, có thể dùng `claude plugin install …` ở terminal.
+
+**Lưu ý bảo mật:** plugin có thể chạy hook và MCP server với quyền của bạn. Chỉ thêm marketplace và cài plugin từ nguồn bạn tin cậy, và nên đọc nội dung plugin trước khi cài.

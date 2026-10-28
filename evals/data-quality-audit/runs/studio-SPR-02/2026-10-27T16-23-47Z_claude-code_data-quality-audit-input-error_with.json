@@ -1,0 +1,32 @@
+{
+  "case_id": "data-quality-audit-input-error",
+  "pair_id": "data-quality-audit/data-quality-audit-input-error/claude-code",
+  "timestamp": "2026-10-27T16:23:47.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "input-error",
+  "should_trigger": true,
+  "loading_mode": "plugin-dir",
+  "plugin_dir": "<local>/opcos/batch-f1e3f71/plugin (git archive f1e3f717d653df24844306425afc46a6fd95643c, autocrlf=false)",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "20c717817f9bdc29a764ba11de46bd38bff129366813ef099e4b70270082e020",
+    "line_numbers_refer_to": "original transcript",
+    "redacted_copy": "ledger evidence/transcripts-TK14/data-quality-audit_data-quality-audit-input-error.jsonl (OpcOS repo, not committed here)"
+  },
+  "output_excerpt": "**Không kiểm được: file này không có cột `customer_id`.**\n\nFile duy nhất trong thư mục là `fixtures\\missing_column.csv`. Header của nó là `id,amount`, gồm 3 dòng dữ liệu (id 1, 2, 3).\n\n- Cột `customer_id` không tồn tại, nên chưa thể kiểm \"mỗi dòng có `customer_id`\" hay \"`customer_id` là duy nhất\".\n- Cột `id` có 3 giá trị khác nhau, nhưng tôi không coi nó là `customer_id`. Chưa rõ nó có phải mã khách hàng hay không.\n\n**Cần bạn chọn:**\n1. Nếu đây không phải file định tải, gửi đường dẫn đúng và tôi kiểm lại.\n2. Nếu `id` thật sự là mã khách hàng, hãy nói rõ. Khi đó tôi kiểm cột `id`, và nên đổi tê",
+  "cwd": "<local>/opcos/batch-f1e3f71/runs/data-quality-audit-input-error",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports)",
+  "session_id": "f103d96f-a807-4b56-a56e-338d94ec078f",
+  "ledger_id": "f103d96f-a807-4b56-a56e-338d94ec078f",
+  "wall_seconds": 14.3,
+  "timeout_s": 600,
+  "status": "ran",
+  "batch": "SPR-02-TK14-f1e3f71",
+  "cost_usd": 0.2776972999999999
+}

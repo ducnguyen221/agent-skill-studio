@@ -1,7 +1,7 @@
 ---
 title: "Evaluation Standard — Cách chứng minh Skill hoạt động"
 status: active
-updated: 2026-10-28
+updated: 2026-10-23
 ---
 # Evaluation Standard — Cách chứng minh Skill hoạt động
 
@@ -14,13 +14,12 @@ updated: 2026-10-28
 - Log test nên có
 - Không pass giả (`not_run`)
 - Phân vai hai hệ eval
-- Khối evaluated
 - Xuất sang agentskills
 - Cách reviewer đánh giá
 
 ## Phạm vi và nơi lưu
 
-**Mặc định Studio:** `evals/<skill-name>/cases.json`, `rubric.md`, `fixtures/`, `baselines/`, `evidence/<lô>.json` (bằng chứng gọn mỗi lô; log thô của lô nằm ở ledger OpcOS, xem [Khối evaluated](#khối-evaluated)). Repo giữ bộ test; package runtime Skill **không chứa evals**.
+**Mặc định Studio:** `evals/<skill-name>/cases.json`, `rubric.md`, `fixtures/`, `baselines/`, `runs/` (runs có thể tạo khi thực thi, không phải bằng chứng có sẵn). Repo giữ bộ test; package runtime Skill **không chứa evals**.
 
 Nếu một Skill độc lập không có repo, có thể colocate evals bên trong folder Skill; phải exclude khi publish và ghi rõ trong packager. Không trộn private fixtures vào `assets/` phát hành.
 
@@ -91,23 +90,6 @@ Chưa chạy model: xem [Không pass giả](#không-pass-giả-not_run). Không 
 ## Xuất sang agentskills
 
 `studio.py evals <skill> --export agentskills` ghi `evals/<skill>/cases.json` sang định dạng agentskills theo ánh xạ SPEC mục 9.6 của SPR-33 (`system/docs/plans/2026-10-22-skill-studio-standard-v1/SPEC.md` trong repo OpcOS). Cú pháp đầy đủ: `studio.py evals <skill>|--all --export agentskills [--out DIR] [--force] [--json]`. Chỉ ca `should_trigger: true` được xuất (ca âm bị loại và được đếm trong dòng `exported N, excluded M`). `--out` mặc định `dist/agentskills` và không được nằm dưới `skills/` hay dưới thư mục eval (`evals/`, đang đóng băng) (thoát 2). Eval nháp hoặc `cases.json` hỏng thoát 1 mà không ghi file; file đích đã có mà thiếu `--force` cũng thoát 1. Tên fixture chứa `:` bị từ chối, hai tên chỉ khác hoa/thường hay dạng Unicode coi là trùng (thoát 1). Lỗi ghi giữa chừng thì file do lượt chạy đó tạo ra được xoá lại. Bộ xuất chỉ chép các fixture mà `cases.json` tham chiếu và từ chối đường bất thường, link hay junction, tên nhạy cảm (theo một danh sách) và đường nằm trong vùng secret hoặc cloud theo tên đường; việc kiểm tên chỉ mang tính heuristic (bí danh Windows như dấu chấm hoặc khoảng trắng cuối, tên dạng 8.3 có thể lọt), nên hãy rà fixture trước khi phát hành gói.
-
-## Khối evaluated
-
-Mỗi skill của repo có một mục trong `evals/catalog.json` (tạo skill mới thì thêm mục; test kiểm đường dẫn) và có thể mang khối `evaluated` ghi kết quả đo model thật. Cổng `evals --all` (mã `EV20`) không tin con số khai: nó đọc file bằng chứng gọn mà khối trỏ tới (`evals/<skill>/evidence/<lô>.json`; log thô của lô nằm ở ledger OpcOS, dựng lại file gọn bằng `activation.py compact`, xem [RUNBOOK](../evals/RUNBOOK.md)), đếm lại từ các log trong đó và so với khối. `model_evaluated: true` chỉ hợp lệ khi khối nói `passed`; khối có mặt cả khi cờ là `false`.
-
-| Khoá | Giá trị | Cổng kiểm |
-|---|---|---|
-| `result` | `passed`, `below-threshold`, `partial`, `not_run` | phải bằng giá trị cổng tính lại: không harness nào `ran` → `not_run`; có harness `ran` chưa đạt ngưỡng → `below-threshold`; mọi harness `ran` đạt nhưng còn harness `not_run:…` → `partial`; còn lại → `passed`. Cờ `true` đòi `passed` |
-| `batch_sha` | 40 ký tự hex thường: bản skill mà lô đã chạy | đúng định dạng |
-| `batch_sha_kind` | `commit` hoặc `tree`: `batch_sha` là mã commit hay mã cây | bắt buộc đi kèm `batch_sha` |
-| `sprint` | tên lô, một tên thư mục tương đối | là tên file bằng chứng gọn |
-| `date` | `YYYY-MM-DD` | bắt buộc khi có harness `ran`; chọn khối `ab` cùng ngày trong file gọn |
-| `harnesses` | map harness → `ran` hoặc `not_run:<lý do>` | khoá thuộc `targets` của skill; cờ `true` đòi khoá bằng đúng `targets`; `not_run` thì không được có số hay log `ran` |
-| `evidence` | đúng `evals/<skill>/evidence/<sprint>.json` | bắt buộc |
-| `ab_report` | cùng đường với `evidence` | nếu có phải bằng `evidence`; cờ `true` đòi có |
-
-Với mỗi harness `ran`, số đếm lại từ log phải đạt: kích hoạt đúng ≥4, kích hoạt sai 0, cặp A/B 5 trong đó `better` ≥3 và `worse` 0; số ca dương và âm bằng số ca của `cases.json`. Chưa đạt thì `result` là `below-threshold`, không bao giờ sửa ngưỡng cho vừa số đo.
 
 ## Cách reviewer đánh giá
 

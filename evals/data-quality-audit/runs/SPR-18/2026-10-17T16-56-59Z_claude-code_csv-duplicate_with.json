@@ -1,0 +1,32 @@
+{
+  "case_id": "csv-duplicate",
+  "pair_id": "data-quality-audit/csv-duplicate/claude-code",
+  "timestamp": "2026-10-17T16:56:59.000Z",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "with_skill": true,
+  "kind": "typical",
+  "triggered": false,
+  "activation_evidence": {
+    "hits": [],
+    "scripts": [],
+    "transcript_sha256_full": "11bb03416aaa6af07daeb2889062575899eea32b321a9c1e1e8648ac78ed6b52",
+    "transcript_sha256_filtered": "d8c39fcdc729f4c3ca5e48b5b280956c0adc43ee9ca3c242b80fde81d388ccb7",
+    "line_numbers_refer_to": "filtered transcript",
+    "full_copy_outside_git": "%LOCALAPPDATA%\\opcos\\spr18\\transcripts\\2026-10-17T16-56-59Z_claude-code_csv-duplicate_with.full.jsonl"
+  },
+  "transcript_path": "system/docs/plans/2026-10-17-skill-studio-eval/evidence/transcripts/2026-10-17T16-56-59Z_claude-code_csv-duplicate_with.jsonl (OpcOS repo; filtered copy: tool calls, tool results cut to 500 chars, skill catalogue as names only, no system prompt, paths and e-mail redacted; full copy stays outside git, identified by sha256 above)",
+  "cwd": "~/OpcOS/workspaces/spr18-eval/claude-code/2026-10-17T16-56-59Z_csv-duplicate_with",
+  "skill_sha256_loaded": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "skill_sha256_repo": "e513b73e1d892979eeecd3a83258f15ecf087a082da1aa549b7877609283b896",
+  "pinned_model": "claude-sonnet-5-5",
+  "actual_model": "claude-sonnet-5-5",
+  "preamble": "user-level global instructions of the machine load in this harness (Claude: ~/.claude/CLAUDE.md imports; Codex: ~/.codex/AGENTS.md)",
+  "ledger_id": "1ea4c1ca-d11b-46ea-bb39-52f40b23e709",
+  "wall_seconds": 18.8,
+  "timeout_s": 300,
+  "output_excerpt": "`fixtures/duplicates.csv` has one duplicate ID and one missing amount. The file has the header `id,amount` and 3 data rows. I treated `id` as the transaction ID.\n\n**Duplicate IDs**\n- `id` = `1` appears twice: line 2 (amount `150.0`) and line 4 (amount `90.0`). The amounts differ, so these are conflicting records, not exact copies.\n\n**Missing amounts**\n- Line 3: `id` = `2`, the `amount` field is em",
+  "status": "ran",
+  "batch": "SPR-18-TK3-20261017",
+  "cost_usd": 0.1375363
+}

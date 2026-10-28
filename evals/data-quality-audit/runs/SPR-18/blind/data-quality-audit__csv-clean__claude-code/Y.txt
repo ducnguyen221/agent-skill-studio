@@ -1,0 +1,14 @@
+`fixtures/clean.csv` đạt cả 4 kiểm tra, có thể import vào Power BI. Tôi đọc trực tiếp file 3 dòng dữ liệu, không chạy script.
+
+| Kiểm tra | Kết quả | Chi tiết |
+|---|---|---|
+| Có đủ cột `id` và `amount` | Đạt | Header là `id,amount` |
+| Không có ô trống ở hai cột | Đạt | Cả 3 dòng đều có đủ `id` và `amount` |
+| `id` không trùng | Đạt | Các giá trị là 1, 2, 3 |
+| `amount` là số | Đạt | Các giá trị là 120.5, 50, 80.25 |
+
+Hai điều cần lưu ý khi import:
+- Dấu thập phân là dấu chấm. Nếu Power BI chạy với locale dùng dấu phẩy (ví dụ vi-VN), cột `amount` có thể bị đọc sai. Hãy đặt Locale của bước Changed Type là English (United States).
+- Nên đặt `id` là kiểu Whole Number và `amount` là Decimal Number (hoặc Fixed Decimal) để khớp với dữ liệu.
+
+Đây là file duy nhất trong thư mục làm việc. Nếu bạn muốn kiểm tra file bán hàng khác, hãy gửi đường dẫn. Tôi không tạo file tạm nào.

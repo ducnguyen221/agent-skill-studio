@@ -1,0 +1,5 @@
+`fixtures/order_lines.csv` has one repeated key: `(order_id=1, line_no=1)`.
+
+- CSV row 4 repeats CSV row 2 (counting the header as row 1).
+- The audit checked 3 data rows and reported `duplicate-key` for columns `order_id` and `line_no`.
+- The source file was left unchanged.

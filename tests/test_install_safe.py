@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = "examples/data-quality-audit"
+SKILL = "skills/data-quality-audit"
 
 
 def make_link(link: Path, target: Path) -> bool:

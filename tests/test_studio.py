@@ -20,7 +20,6 @@ ROOT = Path(__file__).resolve().parents[1]
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine  # noqa: E402
-from _batches import write_compact  # noqa: E402
 
 studio = _engine.engine
 studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
@@ -41,8 +40,7 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
     mutate(runs_dir, ab_dict, harnesses_dict, evaluated_dict) may break the evidence before it is written (gate self-tests)."""
     base = Path(base)
     evals_dir = base / "evals" / "fake-skill"
-    runs = base / "_raw" / "SPR-18"  # the raw run folder lives outside the repository tree; the gate reads its compact file (SPR-03 FR3)
-    evals_dir.mkdir(parents=True)
+    runs = evals_dir / "runs" / "SPR-18"
     runs.mkdir(parents=True)
     cases = [{"id": "pos%d" % i, "kind": "typical", "should_trigger": True} for i in range(5)] + [{"id": "neg%d" % i, "kind": "near-miss", "should_trigger": False} for i in range(3)]
     (evals_dir / "cases.json").write_text(json.dumps({"skill_name": "fake-skill", "cases": cases}), encoding="utf-8")
@@ -65,7 +63,7 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
     if status is None:
         status = "model-evaluated" if model_evaluated else "prototype-static-validated"
     evaluated = {"sprint": "SPR-18", "date": "2026-10-18", "harnesses": harnesses,
-                 "ab_report": "evals/fake-skill/evidence/SPR-18.json", "evidence": "evals/fake-skill/evidence/SPR-18.json",
+                 "ab_report": "evals/fake-skill/runs/SPR-18/ab-2026-10-18.md",
                  "result": result if result is not None else ("passed" if (model_evaluated if flag is None else flag) else "partial"),
                  "batch_sha": batch_sha if batch_sha is not None else "a" * 40,
                  "batch_sha_kind": kind}
@@ -73,7 +71,6 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
         mutate(runs, ab, harnesses, evaluated)
     if write_ab:
         (runs / "ab-2026-10-18.json").write_text(json.dumps(ab), encoding="utf-8")
-    write_compact(runs, "fake-skill", "SPR-18", evals_dir / "evidence" / "SPR-18.json")
     catalog = {"skills": [{"name": "fake-skill", "evals": "evals/fake-skill", "status": status, "targets": ["claude-code", "codex", "antigravity"],
                            "model_evaluated": model_evaluated if flag is None else flag,
                            "evaluated": evaluated}]}
@@ -190,7 +187,7 @@ class StudioTests(unittest.TestCase):
     def test_shim_gives_the_same_output_as_the_engine_from_another_folder(self):
         """tương-đương: the root shim and the engine run directly print the same stdout and exit with the same code, whatever the cwd."""
         engine_path = ROOT / "skills" / "skill-creator-studio" / "scripts" / "studio.py"
-        cases = (["--version"], ["validate", str(ROOT / "examples" / "data-quality-audit"), "--json"], ["fmt", "--bogus-flag"], ["sync-nope"])
+        cases = (["--version"], ["validate", str(ROOT / "skills" / "data-quality-audit"), "--json"], ["fmt", "--bogus-flag"], ["sync-nope"])
         with tempfile.TemporaryDirectory() as t:
             for argv in cases:
                 with self.subTest(argv=argv):
@@ -211,7 +208,7 @@ class StudioTests(unittest.TestCase):
     def test_package_is_runtime_only(self):
         with tempfile.TemporaryDirectory() as t:
             package_dir = Path(t)
-            run = self.run_cli("package", "examples/data-quality-audit", "--out", package_dir)
+            run = self.run_cli("package", "skills/data-quality-audit", "--out", package_dir)
             self.assertEqual(0, run.returncode, run.stdout + run.stderr)
             zip_path = package_dir / "data-quality-audit.zip"
             self.assertTrue(zip_path.is_file())
@@ -232,11 +229,11 @@ class StudioTests(unittest.TestCase):
     def test_install_copy_and_no_implicit_overwrite(self):
         with tempfile.TemporaryDirectory() as t:
             workspace = Path(t)
-            first = self.run_cli("install", "examples/data-quality-audit", "--agent", "codex", "--workspace", workspace)
+            first = self.run_cli("install", "skills/data-quality-audit", "--agent", "codex", "--workspace", workspace)
             self.assertEqual(0, first.returncode, first.stdout + first.stderr)
             self.assertTrue((workspace / ".agents" / "skills" / "data-quality-audit" / "SKILL.md").is_file())
-            self.assertEqual(1, self.run_cli("install", "examples/data-quality-audit", "--agent", "antigravity", "--workspace", workspace).returncode)
-            claude = self.run_cli("install", "examples/data-quality-audit", "--agent", "claude", "--workspace", workspace)
+            self.assertEqual(1, self.run_cli("install", "skills/data-quality-audit", "--agent", "antigravity", "--workspace", workspace).returncode)
+            claude = self.run_cli("install", "skills/data-quality-audit", "--agent", "claude", "--workspace", workspace)
             self.assertEqual(0, claude.returncode, claude.stdout + claude.stderr)
             self.assertTrue((workspace / ".claude" / "skills" / "data-quality-audit" / "SKILL.md").exists())
 
@@ -246,7 +243,7 @@ class StudioTests(unittest.TestCase):
             src = workspace / ".agents" / "skills" / "data-quality-audit"
             src.parent.mkdir(parents=True)
             import shutil
-            shutil.copytree(ROOT / "examples" / "data-quality-audit", src)
+            shutil.copytree(ROOT / "skills" / "data-quality-audit", src)
             attempt = self.run_cli("install", src, "--agent", "codex", "--workspace", workspace, "--force")
             self.assertEqual(1, attempt.returncode)
             self.assertTrue((src / "SKILL.md").exists())
@@ -331,46 +328,18 @@ class StudioTests(unittest.TestCase):
                 self.assertIn("invalid choice", run.stderr)
                 self.assertNotIn("sync-template", run.stderr.split("choose from")[-1])
 
-    def test_shipped_skills(self):
-        """FR15.1: only skill-creator-studio is shipped from skills/; the CSV sample lives in examples/ and the catalog says it is not shipped."""
-        self.assertEqual(["skill-creator-studio"], [d.name for d in studio_fs.skill_dirs(ROOT)])
-        obj = json.loads((ROOT / "evals" / "catalog.json").read_text(encoding="utf-8"))
-        entry = {x["name"]: x for x in obj["skills"]}["data-quality-audit"]
-        self.assertEqual("examples/data-quality-audit", entry["path"])
-        self.assertIs(False, entry.get("shipped"))
-
-    def test_catalog_paths(self):
-        """Every catalog `path` holds a SKILL.md and its eval folder a cases.json; every skill under skills/ is in the catalog."""
-        obj = json.loads((ROOT / "evals" / "catalog.json").read_text(encoding="utf-8"))
+    def test_registry_matches_skill_folders(self):
+        obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
+        catalog_names = {x["name"] for x in obj["skills"]}
+        actual_names = {x.name for x in studio_fs.skill_dirs(ROOT)}
+        self.assertEqual(actual_names, catalog_names)
         for x in obj["skills"]:
-            with self.subTest(skill=x["name"]):
-                self.assertTrue((ROOT / x["path"] / "SKILL.md").is_file(), x["path"])
-                self.assertTrue((ROOT / x["evals"] / "cases.json").is_file(), x["evals"])
-        self.assertLessEqual({d.name for d in studio_fs.skill_dirs(ROOT)}, {x["name"] for x in obj["skills"]})
-
-    @staticmethod
-    def shipped_mismatches(entries):
-        """Names whose `shipped: false` does not match 'path is outside skills/' (the two must hold together)."""
-        bad = []
-        for x in entries:
-            outside = not x["path"].replace("\\", "/").startswith("skills/")
-            if (x.get("shipped") is False) != outside:
-                bad.append(x["name"])
-        return bad
-
-    def test_shipped_false_iff_path_outside_skills(self):
-        """Review TK2: `shipped: false` holds exactly when `path` is not under skills/; only skills/ is packaged and installed."""
-        obj = json.loads((ROOT / "evals" / "catalog.json").read_text(encoding="utf-8"))
-        self.assertEqual([], self.shipped_mismatches(obj["skills"]))
-        # the check itself must be able to fail: both ways of breaking the pair are seen
-        moved = [dict(x, path="examples/" + x["name"]) if x["name"] == "skill-creator-studio" else x for x in obj["skills"]]
-        self.assertEqual(["skill-creator-studio"], self.shipped_mismatches(moved), "outside skills/ without shipped: false")
-        flagged = [dict(x, shipped=False) if x["name"] == "skill-creator-studio" else x for x in obj["skills"]]
-        self.assertEqual(["skill-creator-studio"], self.shipped_mismatches(flagged), "shipped: false while under skills/")
+            self.assertTrue((ROOT / x["path"] / "SKILL.md").is_file())
+            self.assertTrue((ROOT / x["evals"] / "cases.json").is_file())
 
     def test_model_evaluated_requires_counted_evidence(self, catalog_path=None):
         """`model_evaluated: true` is allowed only with A/B evidence recounted from the run logs in the repo."""
-        problems = studio_evals.model_evaluated_problems(Path(catalog_path) if catalog_path else ROOT / "evals" / "catalog.json", ROOT)
+        problems = studio_evals.model_evaluated_problems(Path(catalog_path) if catalog_path else ROOT / "registry" / "catalog.json", ROOT)
         self.assertEqual([], problems)
 
     # --- gate self-tests: fake catalogs/logs live in a temp dir, never in the repo ---
@@ -543,7 +512,7 @@ class StudioTests(unittest.TestCase):
 
     def test_gate_red_ab_report_of_another_skill(self):
         def m(runs, ab, h, ev):
-            ev["ab_report"] = "evals/other-skill/evidence/SPR-18.json"
+            ev["ab_report"] = "evals/other-skill/runs/SPR-18/ab-2026-10-18.md"
         self._gate_red(m, "ab_report")
 
     def test_gate_red_not_run_harness_with_ran_baseline(self):
@@ -568,15 +537,14 @@ class StudioTests(unittest.TestCase):
 
     def test_gate_blocks_enabling_with_real_numbers(self):
         """Real SPR-18 evidence (better 0, Codex negative 2/3) must not allow flipping data-quality-audit to true."""
-        obj = json.loads((ROOT / "evals" / "catalog.json").read_text(encoding="utf-8"))
+        obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
         for x in obj["skills"]:
             if x["name"] == "data-quality-audit":
                 x["model_evaluated"] = True
                 x["status"] = "model-evaluated"
                 x["evaluated"] = {"sprint": "SPR-18", "date": "2026-10-18",
                                   "harnesses": {"claude-code": "ran", "codex": "ran", "antigravity": "not_run:headless-no-skill-catalog"},
-                                  "evidence": "evals/data-quality-audit/evidence/SPR-18.json",
-                                  "ab_report": "evals/data-quality-audit/evidence/SPR-18.json"}
+                                  "ab_report": "evals/data-quality-audit/runs/SPR-18/ab-2026-10-18.md"}
         with tempfile.TemporaryDirectory() as t:
             path = Path(t) / "catalog.json"
             path.write_text(json.dumps(obj), encoding="utf-8")
@@ -743,7 +711,7 @@ class TemplateTests(unittest.TestCase):
     def test_install_user_antigravity_under_home(self):
         with tempfile.TemporaryDirectory() as t:
             home, env = self.make_home(t, ".gemini/config")
-            run = self.run_cli_env(env, "install", "examples/data-quality-audit", "--agent", "antigravity", "--user")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "antigravity", "--user")
             self.assertEqual(0, run.returncode, run.stdout + run.stderr)
             dest = home / ".gemini" / "config" / "skills" / "data-quality-audit"
             self.assertTrue((dest / "SKILL.md").is_file())
@@ -753,7 +721,7 @@ class TemplateTests(unittest.TestCase):
     def test_install_user_codex_under_home(self):
         with tempfile.TemporaryDirectory() as t:
             home, env = self.make_home(t, ".agents")
-            run = self.run_cli_env(env, "install", "examples/data-quality-audit", "--agent", "codex", "--user")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "codex", "--user")
             self.assertEqual(0, run.returncode, run.stdout + run.stderr)
             dest = home / ".agents" / "skills" / "data-quality-audit"
             self.assertTrue((dest / "SKILL.md").is_file())
@@ -762,7 +730,7 @@ class TemplateTests(unittest.TestCase):
     def test_install_user_claude_exit2(self):
         with tempfile.TemporaryDirectory() as t:
             home, env = self.make_home(t, ".claude")
-            run = self.run_cli_env(env, "install", "examples/data-quality-audit", "--agent", "claude", "--user")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "claude", "--user")
             self.assertEqual(2, run.returncode, run.stdout + run.stderr)
             self.assertIn("not supported for claude", run.stderr)
             self.assertEqual([], list((home / ".claude").iterdir()))
@@ -770,7 +738,7 @@ class TemplateTests(unittest.TestCase):
     def test_install_user_with_workspace_exit2(self):
         with tempfile.TemporaryDirectory() as t:
             home, env = self.make_home(t, ".agents")
-            run = self.run_cli_env(env, "install", "examples/data-quality-audit", "--agent", "codex", "--user", "--workspace", ".")
+            run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "codex", "--user", "--workspace", ".")
             self.assertEqual(2, run.returncode, run.stdout + run.stderr)
             self.assertIn("not allowed with argument", run.stderr)
             self.assertEqual([], list((home / ".agents").iterdir()))
@@ -779,7 +747,7 @@ class TemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             for agent, parent in (("antigravity", ".gemini"), ("codex", ".agents")):
                 home, env = self.make_home(Path(tempfile.mkdtemp(dir=t)))
-                run = self.run_cli_env(env, "install", "examples/data-quality-audit", "--agent", agent, "--user")
+                run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", agent, "--user")
                 self.assertEqual(2, run.returncode, run.stdout + run.stderr)
                 self.assertIn("parent directory not found", run.stderr)
                 self.assertEqual([], list(home.iterdir()), "must not create anything under HOME")
@@ -807,7 +775,7 @@ class TemplateTests(unittest.TestCase):
 
     def test_install_without_scope_flag_means_workspace_dot(self):
         """No --workspace/--user is --workspace . (the current directory), not its parent."""
-        source = (ROOT / "examples" / "data-quality-audit").resolve()
+        source = (ROOT / "skills" / "data-quality-audit").resolve()
         with tempfile.TemporaryDirectory() as t:
             cwd = Path(t) / "proj" / "inner"
             cwd.mkdir(parents=True)
@@ -839,7 +807,7 @@ class TemplateTests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, env), mock.patch.object(Path, "is_symlink", fake), \
                     contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                code = studio.main(["install", str(ROOT / "examples" / "data-quality-audit"), "--agent", "codex", "--user", "--force"])
+                code = studio.main(["install", str(ROOT / "skills" / "data-quality-audit"), "--agent", "codex", "--user", "--force"])
             self.assertEqual((1, True), (code, "symlink destination refused" in err.getvalue()), err.getvalue())
             self.assertEqual("keep", (dest / "marker.txt").read_text(encoding="utf-8"))
             self.assertEqual(["data-quality-audit"], sorted(p.name for p in dest.parent.iterdir()), "no backup may be created")
@@ -864,7 +832,7 @@ class TemplateTests(unittest.TestCase):
             dest = home / ".agents" / "skills" / "data-quality-audit"
             _winapi.CreateJunction(str(outside), str(dest))
             try:
-                run = self.run_cli_env(env, "install", "examples/data-quality-audit", "--agent", "codex", "--user", "--force")
+                run = self.run_cli_env(env, "install", "skills/data-quality-audit", "--agent", "codex", "--user", "--force")
                 self.assertEqual(1, run.returncode, run.stdout + run.stderr)
                 self.assertIn("symlink destination refused", run.stderr)
                 self.assertEqual(before, tree_sha(outside), "junction target must not be written through")
@@ -891,7 +859,7 @@ class TemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             home, env = self.make_home(t, ".agents/skills")
             source = Path(t) / "src" / "data-quality-audit"
-            shutil.copytree(ROOT / "examples" / "data-quality-audit", source)
+            shutil.copytree(ROOT / "skills" / "data-quality-audit", source)
             before = tree_sha(source)
             dest = home / ".agents" / "skills" / "data-quality-audit"
             _winapi.CreateJunction(str(source), str(dest))
@@ -937,7 +905,7 @@ class TemplateTests(unittest.TestCase):
                     code = exc.code
             return code, out.getvalue(), err.getvalue()
 
-        skill = ROOT / "examples" / "data-quality-audit"
+        skill = ROOT / "skills" / "data-quality-audit"
         with tempfile.TemporaryDirectory() as t:
             home, env = self.make_home(t, ".gemini/config", ".agents")
             with mock.patch.dict(os.environ, env):
@@ -999,9 +967,9 @@ class TemplateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             ws = Path(t) / "ws"
             ws.mkdir()
-            self.assertEqual(0, call("install", ROOT / "examples" / "data-quality-audit", "--agent", "claude", "--workspace", ws)[0])
+            self.assertEqual(0, call("install", ROOT / "skills" / "data-quality-audit", "--agent", "claude", "--workspace", ws)[0])
             self.assertTrue((ws / ".claude" / "skills" / "data-quality-audit" / "SKILL.md").is_file())
-            code, _, err = call("install", ROOT / "examples" / "data-quality-audit", "--agent", "codex", "--workspace", Path(t) / "absent")
+            code, _, err = call("install", ROOT / "skills" / "data-quality-audit", "--agent", "codex", "--workspace", Path(t) / "absent")
             self.assertEqual((2, True), (code, "workspace directory not found" in err))
 
 

@@ -2,7 +2,7 @@
 name: skill-creator-studio
 description: "Creates, audits, refines and packages reusable Agent Skills using portable authoring rules and evidence-based quality checks. Use when asked to build a new SKILL.md, review an existing skill library, fix a failing skill, or prepare skill releases for Claude Code, Codex or Google Antigravity."
 metadata:
-  version: "0.2.0"
+  version: "0.1.0"
   author: "Agent Skill Studio"
 ---
 
@@ -35,8 +35,6 @@ Creates or improves Agent Skills with evidence, independent checks and no silent
 | **REFINE** | Existing Skill fails or new evidence arrives | Proposed targeted changes; apply approved changes, regression checks |
 
 Commands below run from this Skill's folder as `python3 scripts/studio.py <command>` (commands: `new`, `check`, `validate`, `audit`, `evals`, `package`, `install`, `doctor`, `fmt`; Python 3.9+, standard library only; `--help` lists exact parameters), or `studio.py` at a Studio repo root. It is never an automatic agent action: run it only where you have permission. In any mode, when a claim about a rule or its source needs checking, read [references/SOURCE_NOTES.md](references/SOURCE_NOTES.md). Internal engine modules (imported by `studio.py`, do not run directly): `scripts/studio_const.py`, `scripts/studio_dist.py`, `scripts/studio_doctor.py`, `scripts/studio_evals.py`, `scripts/studio_fmt.py`, `scripts/studio_fs.py`, `scripts/studio_lint.py`, `scripts/studio_scaffold.py`, `scripts/studio_validate.py`.
-
-The core authoring rules `SK-00`…`SK-15` (level and check for each) are in [references/CORE_RULES.md](references/CORE_RULES.md); read it when you need to know which rule a finding or a draft falls under.
 
 ## NEW — create a Skill
 

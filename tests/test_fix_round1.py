@@ -24,18 +24,18 @@ MARK_PAYLOAD = "from pathlib import Path\nPath(%r).write_text('executed')\ndef s
 
 
 def foreign_repo(base: Path, mark: Path) -> Path:
-    """A tree that looks like a Studio repository (two marker files, a catalog, evidence/) with a hostile evals/tools/activation.py."""
+    """A tree that looks like a Studio repository (two marker files, a catalog, runs/) with a hostile evals/tools/activation.py."""
     x = base / "X"
     (x / ".claude-plugin").mkdir(parents=True)
     (x / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
     (x / "standards").mkdir()
     (x / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("# standard\n", encoding="utf-8")
-    (x / "evals").mkdir()
+    (x / "registry").mkdir()
     catalog = {"skills": [{"name": "x", "targets": ["claude-code"], "evals": "evals/x", "status": "candidate", "model_evaluated": False,
-                           "evaluated": {"result": "not_run", "batch_sha": "0" * 40, "batch_sha_kind": "commit", "sprint": "S", "evidence": "evals/x/evidence/S.json",
+                           "evaluated": {"result": "not_run", "batch_sha": "0" * 40, "batch_sha_kind": "commit", "sprint": "S",
                                          "harnesses": {"claude-code": "not_run:none"}}}]}
-    (x / "evals" / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
-    (x / "evals" / "x" / "evidence").mkdir(parents=True)
+    (x / "registry" / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
+    (x / "evals" / "x" / "runs" / "S").mkdir(parents=True)
     (x / "evals" / "x" / "cases.json").write_text('{"skill": "x", "cases": []}', encoding="utf-8")
     (x / "evals" / "tools").mkdir()
     (x / "evals" / "tools" / "activation.py").write_text(MARK_PAYLOAD % str(mark), encoding="utf-8")
@@ -67,8 +67,8 @@ class Rfs1GateNeverRunsTreeCode(CatalogGateBase):
         self.assertEqual([], self.ev20(out))
 
     def test_repo_with_evals_but_without_catalog_is_still_ev20(self):
-        """tương-đương: RF-S1 a repository with evals/ and no evals/catalog.json keeps its EV20."""
-        (self.repo / "evals" / "catalog.json").unlink()
+        """tương-đương: RF-S1 a repository with evals/ and no registry/catalog.json keeps its EV20."""
+        (self.repo / "registry" / "catalog.json").unlink()
         code, out, _ = self.evals_all("--json")
         self.assertEqual(1, code)
         self.assertEqual(1, len(self.ev20(out)))
@@ -113,7 +113,7 @@ class Rfs2CatalogPathsStayInTree(CatalogGateBase):
                  ("evals", "../outside"), ("evals", str(outside)), ("evals", "evals/x:y")]
         for key, value in cases:
             with self.subTest(key=key, value=value):
-                with mock.patch.object(E.evals, "summarize_logs", create=True, return_value={}) as spy:
+                with mock.patch.object(E.evals, "summarize", create=True, return_value={}) as spy:
                     self.setUp()  # fresh copy per case
                     self._set(**{key: value})
                     problems = E.evals.catalog_problems(self.repo)
@@ -121,7 +121,7 @@ class Rfs2CatalogPathsStayInTree(CatalogGateBase):
                 spy.assert_not_called()
 
     def test_date_that_is_not_a_plain_date_is_ev20_and_no_file_outside_is_read(self):
-        """bắt-lỗi (red at 698f552: the file ab-<date>.json outside runs_dir is read, no «YYYY-MM-DD» message): RF-S2 `evaluated.date` must be YYYY-MM-DD; since SPR-03 it only picks a block inside the compact evidence, and no file outside the repository is opened."""
+        """bắt-lỗi (red at 698f552: the file ab-<date>.json outside runs_dir is read, no «YYYY-MM-DD» message): RF-S2 `evaluated.date` must be YYYY-MM-DD before it names a file."""
         outside = self.tmp / "outside"
         outside.mkdir()
         (outside / "x.json").write_text(json.dumps({"per_runtime": {}}), encoding="utf-8")
@@ -138,10 +138,10 @@ class Rfs2CatalogPathsStayInTree(CatalogGateBase):
                 with mock.patch.object(E.evals, "_load_json", side_effect=lambda p: (reads.append(Path(p)), real(p))[1]):
                     problems = E.evals.catalog_problems(self.repo)
                 self.assertTrue(any("YYYY-MM-DD" in p for p in problems), problems)
-                self.assertFalse([r for r in reads if self.repo not in r.parents and r != self.repo], reads)
+                self.assertFalse([r for r in reads if r.name.startswith("ab-") and "data-quality-audit" in r.as_posix() and r.name != "ab-2026-10-18.json" or r.name == "x.json"], reads)
 
-    def test_evidence_dir_is_walked_before_it_is_counted(self):
-        """bắt-lỗi (red at 3cc1bd3: no evidence folder is walked): RF-S2 / FR3.2 the evidence folder itself goes through the safe walk before any file in it is read."""
+    def test_runs_dir_is_walked_before_it_is_counted(self):
+        """bắt-lỗi (red at df4043b: the summarize call is not preceded by a walk of runs_dir): RF-S2 the runs_dir itself goes through the safe walk."""
         seen = []
         real = E.fs.walk_files
 
@@ -150,7 +150,8 @@ class Rfs2CatalogPathsStayInTree(CatalogGateBase):
             return real(base, *a, **k)
         with mock.patch.object(E.fs, "walk_files", side_effect=spy_walk):
             E.evals.catalog_problems(self.repo)
-        self.assertIn(self.repo / "evals" / "data-quality-audit" / "evidence", seen)
+        runs_dir = self.repo / "evals" / "data-quality-audit" / "runs" / "SPR-18"
+        self.assertIn(runs_dir, seen)
 
 
 class Rfs3CheckRefusesSecretZone(unittest.TestCase):

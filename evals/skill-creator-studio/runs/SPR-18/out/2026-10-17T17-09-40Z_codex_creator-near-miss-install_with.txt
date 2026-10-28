@@ -1,0 +1,7 @@
+1. Start Claude Code in a terminal and enter `/plugin` to browse the **Discover** tab. Anthropic’s official marketplace is usually available by default.
+2. Search for the plugin and open its details. If it’s from another marketplace, add that marketplace first with `/plugin marketplace add <marketplace-source>`.
+3. Review what the plugin adds, especially any hooks or MCP servers, since plugins run with your user permissions.
+4. Enter `/plugin install <plugin-name>@<marketplace-name>` and choose an install scope: for you, for everyone on this project, or just for you in this project.
+5. Follow any setup or reload prompt, then check the **Installed** tab or type `/` to find the plugin’s commands or skills.
+
+These are the current steps in the [Claude Code plugin installation guide](https://code.claude.com/docs/en/plugins/install). I didn’t run anything.

@@ -16,7 +16,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests" / "fixtures" / "doctor"
-CLEAN_ROOTS = ";".join(str(ROOT / x) for x in ("skills", "examples/data-quality-audit", "examples/exemplar", "examples/exemplar-vi"))
+CLEAN_ROOTS = ";".join(str(ROOT / x) for x in ("skills", "content/exemplar", "content/exemplar-vi"))
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine  # noqa: E402
@@ -484,7 +484,7 @@ class DoctorTests(unittest.TestCase):
     def test_doctor_cli_subprocess_exit_codes(self):
         env = dict(os.environ, PYTHONUTF8="1")
         cmd = [sys.executable, "-X", "utf8", str(ROOT / "studio.py"), "doctor"]
-        self.assertEqual(subprocess.run(cmd + ["--roots", str(ROOT / "examples" / "exemplar")], env=env, capture_output=True).returncode, 0)
+        self.assertEqual(subprocess.run(cmd + ["--roots", str(ROOT / "content" / "exemplar")], env=env, capture_output=True).returncode, 0)
         self.assertEqual(subprocess.run(cmd + ["--roots", str(FIX)], env=env, capture_output=True).returncode, 1)
         self.assertEqual(subprocess.run(cmd + ["--roots", str(ROOT / ".tmp" / "khong-co")], env=env, capture_output=True).returncode, 2)
 

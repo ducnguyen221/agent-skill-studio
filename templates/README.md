@@ -22,6 +22,4 @@ Trong bản đầy đủ:
 
 `evals/` chủ đích **không nằm trong template skill runtime**. Lệnh `new` tạo `evals/<name>/cases.json` riêng, rỗng có chủ đích. Phải viết 3 test thật mới đủ điều kiện release.
 
-`starter-project/` là mẫu **cho dự án khác** (không phải skill): `AGENTS.md` là bộ luật chung duy nhất; `CLAUDE.md` nạp nó bằng `@AGENTS.md`, Codex đọc thẳng `AGENTS.md`, `GEMINI.md` trỏ về `AGENTS.md`; mỗi file có dòng `install` đúng cờ của engine. Xem [README của mẫu](starter-project/README.md).
-
 Kiểm trình bày sau khi sửa tài liệu này: `python3 studio.py fmt --check templates/README.md`. Hai template chỉ có một bản, ở `skills/skill-creator-studio/assets/skill-template/` và `assets/skill-template-full/`; lệnh `new` luôn lấy từ đó, trong hay ngoài repo, nên không còn bản sao để đồng bộ. Sửa template thì sửa thẳng ở đó.

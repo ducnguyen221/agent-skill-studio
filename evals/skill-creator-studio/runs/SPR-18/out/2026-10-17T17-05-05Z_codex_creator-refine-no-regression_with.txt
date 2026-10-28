@@ -1,0 +1,13 @@
+I couldn’t find a reporting skill in the files available inside this workspace. The closest relevant file is the bundled skill template, which already has a **Validate** step before **Report** and says completion requires relevant validations to pass ([SKILL.md](/~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T17-05-05Z_creator-refine-no-regression_with/.agents/skills/skill-creator-studio/assets/skill-template/SKILL.md:33)). So the evidence points to a missing *completion gate*, rather than a missing validation instruction.
+
+**Minimal fix to consider:** strengthen the Report step: “Do not report the task as complete until validation has been run and its result checked. If validation can’t be run, say `NOT RUN` and mark completion as unverified.” Keep the current instructions during the comparison.
+
+**A/B test before removing anything:**
+
+- **A:** Current skill instructions.
+- **B:** Current instructions plus the proposed gate.
+- Run both in fresh sessions on the same three cases: a valid output, an output that fails validation, and a case where validation can’t be run.
+- Check whether each run actually performs and inspects validation, handles failures without claiming completion, and labels unavailable checks `NOT RUN`. Also include one unrelated prompt to check that the skill’s trigger behavior hasn’t changed.
+- Adopt B only if it improves the validation behavior without regressing the other cases. Remove superseded wording only after that comparison.
+
+No files were changed, and no model A/B run was performed. I’d need the reporting skill’s location to confirm whether this proposal fits it.

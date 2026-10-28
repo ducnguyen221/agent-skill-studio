@@ -44,7 +44,7 @@ class SkillCopy(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.tmp = Path(self._tmp.name)
         self.skill = self.tmp / "data-quality-audit"
-        shutil.copytree(ROOT / "examples" / "data-quality-audit", self.skill)
+        shutil.copytree(ROOT / "skills" / "data-quality-audit", self.skill)
 
 
 SECRET_NAMES = ["auth.json", "prod.credentials.json", ".ENV", "ID_RSA", "Secrets.JSON", "Credentials.JSON", "server.PEM", ".env.production"]
@@ -144,7 +144,7 @@ class MoveAsideTests(unittest.TestCase):
     def test_bat_loi_install_force_when_rename_is_denied_leaves_the_old_skill_intact(self):
         """bắt-lỗi: `install --force` with a rename denied: exit 1, the installed Skill is complete, the message says it was left in place."""
         skill = self.tmp / "data-quality-audit"
-        shutil.copytree(ROOT / "examples" / "data-quality-audit", skill)
+        shutil.copytree(ROOT / "skills" / "data-quality-audit", skill)
         ws = self.tmp / "ws"
         ws.mkdir()
         self.assertEqual(0, run("install", str(skill), "--agent", "claude", "--workspace", str(ws))[0])

@@ -241,9 +241,9 @@ class FmtMoreTests(unittest.TestCase):
                 self.assertIn(code_name, out)
                 self.assertEqual(run("--fix", str(path))[0], 0, "fixable: --fix clears it")
         base = self.tmp / "repo"
-        doc = write(base / "examples" / "d.md", "# T\n")
+        doc = write(base / "content" / "d.md", "# T\n")
         self.assertEqual(run("--check", str(doc), root=base)[0], 1)
-        late = write(base / "examples" / "late.md", "# T\n\n---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\n---\n\nbody\n")
+        late = write(base / "content" / "late.md", "# T\n\n---\ntitle: \"T\"\nstatus: active\nupdated: 2026-10-23\n---\n\nbody\n")
         code, out, _ = run("--fix", str(late), root=base)
         self.assertEqual(code, 1, "frontmatter that starts late is reported, not moved")
         self.assertIn("FT5", out)
@@ -305,50 +305,6 @@ class FmtMoreTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("--all only reports", err)
         self.assertEqual(tree_snapshot(base), before)
-
-    def _listed(self, base, *extra):
-        out = run("--all", "--json", *extra, root=base)[1]
-        return sorted(str(Path(f["path"]).relative_to(base).as_posix()) for f in __import__("json").loads(out)["files"])
-
-    def test_fmt_all_skips_fixtures(self):
-        base = self.tmp / "repo"
-        for rel in ("tests/fixtures/x.md", "tests/fixtures/deep/more/z.md", "evals/s/fixtures/y.md", "evals/s/cases.md", "tests/notes.md", "docs/ok.md"):
-            write(base / rel, "# T  \n")
-        self.assertEqual(self._listed(base), ["docs/ok.md", "evals/s/cases.md", "tests/notes.md"])
-        code, out, _ = run("--all", root=base)
-        self.assertNotIn("fixtures", out, "a skipped fixture is not even reported")
-
-    def test_fmt_all_fixtures_rule_is_only_for_tests_and_evals_skill(self):
-        base = self.tmp / "repo"
-        for rel in ("skills/s/fixtures/a.md", "examples/e/fixtures/b.md", "fixtures/c.md", "tests/sub/fixtures/d.md", "evals/fixtures/e.md",
-                    "evals/s/x/fixtures/f.md", "docs/tests/fixtures/g.md"):
-            write(base / rel, "# T  \n")
-        self.assertEqual(self._listed(base), sorted(["skills/s/fixtures/a.md", "examples/e/fixtures/b.md", "fixtures/c.md", "tests/sub/fixtures/d.md",
-                                                     "evals/fixtures/e.md", "evals/s/x/fixtures/f.md", "docs/tests/fixtures/g.md"]),
-                         "'fixtures' elsewhere (skills/, examples/, a deeper tests/ or evals/ path) is documentation like any other")
-
-    def test_fmt_explicit_folder_still_reads_fixtures(self):
-        base = self.tmp / "repo"
-        for rel in ("tests/fixtures/x.md", "tests/notes.md", "evals/s/fixtures/y.md", "docs/ok.md"):
-            write(base / rel, "# T  \n")
-        got = lambda *a: sorted(str(Path(f["path"]).relative_to(base).as_posix()) for f in __import__("json").loads(run("--check", "--json", *a, root=base)[1])["files"])
-        self.assertEqual(got(str(base / "tests")), ["tests/fixtures/x.md", "tests/notes.md"], "no --all: a named folder is read whole")
-        self.assertEqual(got(str(base / "tests" / "fixtures")), ["tests/fixtures/x.md"])
-        self.assertEqual(got(str(base / "evals")), ["evals/s/fixtures/y.md"])
-        self.assertEqual(self._listed(base), ["docs/ok.md", "tests/notes.md"], "--all still skips them")
-        self.assertEqual(sorted(p.relative_to(base).as_posix() for p in studio_fmt.iter_md([base / "tests"], False, None)),
-                         ["tests/fixtures/x.md", "tests/notes.md"], "no repo root: nothing is skipped")
-        self.assertEqual(sorted(p.relative_to(base).as_posix() for p in studio_fmt.iter_md([base / "tests"], False, base)),
-                         ["tests/fixtures/x.md", "tests/notes.md"], "a root without all_repo does not skip")
-        self.assertEqual(sorted(p.relative_to(base).as_posix() for p in studio_fmt.iter_md([base / "tests"], True, base)),
-                         ["docs/ok.md", "tests/notes.md"], "all_repo skips fixtures")
-
-    def test_fmt_all_scans_examples(self):
-        base = self.tmp / "repo"
-        for rel in ("examples/csv/SKILL.md", "examples/csv/references/r.md", "examples/README.md"):
-            write(base / rel, "# T  \n")
-        self.assertEqual(self._listed(base), sorted(["examples/README.md", "examples/csv/SKILL.md", "examples/csv/references/r.md"]))
-        self.assertEqual(run("--all", root=base)[0], 1, "examples/ is checked like normal docs")
 
     def test_fmt_skips_secret_names_cloud_zone_and_big_files(self):
         base = self.tmp / "repo"
@@ -421,11 +377,10 @@ class FmtMoreTests(unittest.TestCase):
         base = self.tmp
         self.assertEqual(studio_fmt.classify_md(base / "x" / "SKILL.vi.md", base), "skill")
         self.assertEqual(studio_fmt.classify_md(base / "standards" / "A.md", base), "studio-doc")
-        self.assertEqual(studio_fmt.classify_md(base / "examples" / "A.md", base), "studio-doc")
-        self.assertEqual(studio_fmt.classify_md(base / "examples" / "exemplar" / "A.md", base), "other")
-        self.assertEqual(studio_fmt.classify_md(base / "content" / "A.md", base), "other", "content/ moved to examples/ (SPR-03 TK2)")
+        self.assertEqual(studio_fmt.classify_md(base / "content" / "A.md", base), "studio-doc")
+        self.assertEqual(studio_fmt.classify_md(base / "content" / "exemplar" / "A.md", base), "other")
         self.assertEqual(studio_fmt.classify_md(base / "templates" / "README.md", base), "studio-doc")
-        self.assertEqual(studio_fmt.classify_md(base / "templates" / "starter-project" / "README.md", base), "other")
+        self.assertEqual(studio_fmt.classify_md(base / "templates" / "project" / "README.md", base), "other")
         self.assertEqual(studio_fmt.classify_md(base / "references" / "PROCESS_TEMPLATE.md", base), "process")
         self.assertEqual(studio_fmt.classify_md(base / "references" / "AUDIT_WORKFLOW.md", base), "process")
         self.assertEqual(studio_fmt.classify_md(base / "standards" / "A.md", None), "other")
