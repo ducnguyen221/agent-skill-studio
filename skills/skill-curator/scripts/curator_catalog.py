@@ -20,6 +20,7 @@ import studio_doctor as doctor
 import studio_evals as evals
 import studio_fs as fs
 import studio_roots as roots_mod
+import curator_installed
 
 SCHEMA = 1
 HARNESSES = ("claude", "codex", "antigravity")
@@ -110,8 +111,9 @@ def _plugin_version(plugin: Path | None, markers: tuple, cache: dict) -> str | N
     return cache[key]
 
 
-def _evals_entries(plugin: Path | None, cache: dict) -> dict:
-    """{skill path relative to the plugin: model_evaluated} from the plugin's evals/catalog.json, when it is a plain file of the Studio schema; else {}."""
+def _evals_entries(plugin: Path | None, cache: dict, notes: list | None = None) -> dict:
+    """{skill path relative to the plugin: model_evaluated} from the plugin's evals/catalog.json, when it is a plain file of the Studio schema; else {}.
+    A file nested so deep that parsing it overflows is not data: {} and one note (RF-9.1)."""
     if plugin is None:
         return {}
     key = os.path.normcase(os.fspath(plugin))
@@ -123,6 +125,10 @@ def _evals_entries(plugin: Path | None, cache: dict) -> dict:
                 data = evals._load_json(path)
             except (ValueError, OSError):
                 data = None
+            except (RecursionError, MemoryError):  # not a ValueError: a few hundred KB of `[` is enough
+                data = None
+                if notes is not None:
+                    notes.append("%s: evals/catalog.json is too deeply nested to read; model_evaluated is null" % home_path(path))
             if isinstance(data, dict) and isinstance(data.get("schema_version"), str) and isinstance(data.get("skills"), list):
                 for item in data["skills"]:
                     if isinstance(item, dict) and isinstance(item.get("path"), str):
@@ -145,9 +151,10 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
     here as `--roots-from opcos` does. `overlap` is accepted and `pairs` stays null (the pair labels come with TK11). Notes about what was dropped are
     appended to `notes` when a list is given."""
     markers = C.CLOUD_MARKERS + tuple(skip_markers)
-    skills, _ = scanned if scanned is not None else roots_mod.collect_skills(roots, markers)
+    sources = [r for r in roots if r["kind"] != "harness"]  # a harness root is only reported: it holds copies, not source skills
+    skills, _ = scanned if scanned is not None else roots_mod.collect_skills(sources, markers)
     paths = [s["path"] for s in skills]
-    usable = [Path(r["path"]) for r in roots if r["status"] != "error" and r["path"]]
+    usable = [Path(r["path"]) for r in sources if r["status"] != "error" and r["path"]]
     report = doctor.doctor_run(usable, profile, "portable", False, None, tuple(skip_markers), scanned=(paths, []))
     by_path = {os.path.normcase(e["path"]): e for e in report["skills"]}
     by_key: dict = {}
@@ -165,10 +172,10 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
         digest = roots_mod.tree_sha256(folder, markers)
         entry = by_path.get(os.path.normcase(doctor._posix(folder)), {})
         rel = folder.relative_to(plugin).as_posix() if plugin is not None else ""
-        flag = _evals_entries(plugin, catalogs).get(rel)
+        flag = _evals_entries(plugin, catalogs, notes).get(rel)
         state = {h: {"state": "absent", "version": None} for h in HARNESSES}
-        for item in by_key.get((skill["plugin"], folder.name), []):
-            if item["harness"] in state and state[item["harness"]]["state"] == "absent":
+        for item in by_key.get((skill["plugin"], folder.name), []):  # one harness may hold several copies (two scopes): `match` wins over `differ`
+            if item["harness"] in state and state[item["harness"]]["state"] != "match":
                 theirs = roots_mod.tree_sha256(Path(item["path"]), markers)
                 state[item["harness"]] = {"state": "match" if digest is not None and theirs == digest else "differ", "version": item.get("version")}
                 used.add((item["harness"], item["plugin"], item["skill"]))
@@ -244,11 +251,12 @@ def build_parser(prog: str = "catalog") -> argparse.ArgumentParser:
     p.add_argument("--roots-from", choices=("opcos",), help="take the roots from an OpcOS tree (paths.json and the plugin manifests), as `doctor --roots-from opcos`; not with --roots or --roots-file")
     p.add_argument("--roots", help="skill roots separated by ';' (default: the repo's skills/; outside the repo --roots or --roots-file is required)")
     p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment")
-    p.add_argument("--installed", metavar="HARNESSES", help="comma list of claude,codex,antigravity: read the copies installed there (not read yet: every harness shows as absent)")
+    p.add_argument("--installed", metavar="HARNESSES", help="comma list of claude,codex,antigravity: read the copies installed there and show khớp/khác/— beside every skill; a harness whose locator fails is a root that is not ok")
     p.add_argument("--overlap", action="store_true", help="find skills that overlap (not available yet: `pairs` stays null)")
     p.add_argument("--json", action="store_true", help="print the JSON report (with --out it goes to the file only)")
     p.add_argument("--out", help="write the JSON report here; the folder must exist; not under skills/, a scanned root or a harness folder; not a secret-looking name")
     p.add_argument("--md", help="write CATALOG.md here, same placement rules; an existing file is replaced only when its first line is <!-- studio catalog -->")
+    p.add_argument("--home", help=argparse.SUPPRESS)  # tests only: stands for the home folder when the harness folders are read
     p.add_argument("--skip-marker", action="append", metavar="TEXT", help="skip any path containing TEXT (case-insensitive); repeatable")
     return p
 
@@ -352,11 +360,18 @@ def run(args) -> int:
         _say("ERROR: no skill found in %s" % (", ".join(home_path(r) for r in roots) or "any root"), sys.stderr)
         return 2
     notes: list = []
+    installed: list = []
     if wanted:
-        _say("NOTE: --installed %s: installed copies are not read yet; every harness shows as absent" % ",".join(wanted), sys.stderr)
+        home = Path(os.path.abspath(os.path.expanduser(args.home))) if args.home else Path.home()
+        records = list(records)
+        for harness in HARNESSES:
+            if harness in wanted:
+                found, harness_root = curator_installed.locate(harness, home, markers)
+                installed.extend(found)
+                records.append(harness_root)
     if args.overlap:
         _say("NOTE: --overlap is not available yet; pairs stays null", sys.stderr)
-    report = build(records, [], bool(args.overlap), "opcos" if opcos is not None else "portable", scanned, skip_markers, notes)
+    report = build(records, installed, bool(args.overlap), "opcos" if opcos is not None else "portable", scanned, skip_markers, notes)
     for line in notes:
         _say("NOTE: %s" % line, sys.stderr)
     for target, kind, flag in targets:

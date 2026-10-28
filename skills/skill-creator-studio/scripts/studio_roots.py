@@ -268,9 +268,9 @@ def _nested_skills(skill: Path, extra: tuple, skipped: list, budget: dict, depth
     return found
 
 
-def _plugin_scan(plugin: Path, markers: tuple, budget: dict | None = None) -> tuple:
-    """(plugin name, skill folders, skipped[{path, reason}]) of one plugin folder, read from its `.claude-plugin/plugin.json`."""
-    manifest = plugin / ".claude-plugin" / "plugin.json"
+def _plugin_scan(plugin: Path, markers: tuple, budget: dict | None = None, manifest_dir: str = ".claude-plugin") -> tuple:
+    """(plugin name, skill folders, skipped[{path, reason}]) of one plugin folder, read from its `<manifest_dir>/plugin.json` (`.claude-plugin`; an installed Codex copy has `.codex-plugin`)."""
+    manifest = plugin / manifest_dir / "plugin.json"
     skipped: list = []
     budget = {"left": C.DOCTOR_MAX_DIRS, "cut": False} if budget is None else budget
     if fs.link_in_chain(manifest, plugin) is not None:

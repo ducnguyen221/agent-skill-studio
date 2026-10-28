@@ -21,7 +21,7 @@
 | Skill | the `name` of the skill (folder name when the manifest cannot be read) |
 | Việc | description, one line, at most 160 characters |
 | Bản | version in the plugin manifest of the repo |
-| Claude, Codex, Antigravity | installed copy: `khớp` same tree hash, `khác (version)` different, `—` none or not read yet |
+| Claude, Codex, Antigravity | installed copy: `khớp` same tree hash, `khác (version)` different, `—` none, or the harness was not asked for with `--installed` |
 | Lỗi | `doctor` ERROR / WARN count for the skill |
 | Đã đo | `model_evaluated` from the repo's `evals/catalog.json`; `—` when the repo has none |
 

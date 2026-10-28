@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "plugins": {
+    "demo@mk": [
+      {
+        "scope": "user",
+        "installPath": "@HOME@/.claude/plugins/cache/mk/demo/1.0.0",
+        "version": "1.0.0"
+      }
+    ],
+    "extra@mk": [
+      {
+        "scope": "user",
+        "installPath": "@HOME@/.claude/plugins/cache/mk/extra/0.1.0",
+        "version": "0.1.0"
+      }
+    ]
+  }
+}
