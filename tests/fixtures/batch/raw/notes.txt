@@ -1,0 +1,3 @@
+Fixture batch
+
+Raw folder of a tiny batch: not a log, still covered by source_sha256.

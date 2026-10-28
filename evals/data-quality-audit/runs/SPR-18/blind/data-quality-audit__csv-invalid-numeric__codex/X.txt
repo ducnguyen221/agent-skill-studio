@@ -1,1 +1,0 @@
-Validation failed: `fixtures/invalid_numeric.csv` has a nonnumeric invoice total, `amount=hello` on row ID `2`. The other totals are numeric, but the CSV is not ready for a dataset refresh. No files were changed; no refresh was run.

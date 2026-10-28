@@ -1,3 +1,0 @@
-**Không nên load file này:** `fixtures\missing_column.csv` có header `id,amount`, nên thiếu cột `customer_id`.
-
-Cột `id` có đủ 3 giá trị (`1`, `2`, `3`) và cả ba đều duy nhất. Nhưng `id` không thay thế được `customer_id` nếu quy trình load yêu cầu đúng tên cột đó.

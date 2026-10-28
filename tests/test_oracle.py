@@ -11,7 +11,7 @@ oracle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(oracle)
 
 DQA = ROOT / "evals" / "data-quality-audit"
-SCRIPT = ROOT / "skills" / "data-quality-audit" / "scripts" / "validate_csv.py"
+SCRIPT = ROOT / "examples" / "data-quality-audit" / "scripts" / "validate_csv.py"
 
 # case id -> (fixture, script args exactly as the case prompt implies, baseline-style answer, numbered by data row)
 CASES = {

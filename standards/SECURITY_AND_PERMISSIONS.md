@@ -1,3 +1,8 @@
+---
+title: "Security & Permissions Standard"
+status: active
+updated: 2026-10-28
+---
 # Security & Permissions Standard
 
 ## Mục tiêu và ranh giới
@@ -14,7 +19,7 @@ Skill là tài liệu hướng dẫn và có thể kèm mã thực thi. **Không
 | Destructive action | `rm`, `DROP`, deploy production | Dry run / plan / diff / explicit approval / rollback |
 | Data exposure | Upload dữ liệu KPIM/COMPA vào cloud trái phép | Data classification, minimization, allowlist đích |
 | Hidden evaluator answers | Ship `evals/` vào Skill bundle | Evals ngoài runtime, packager exclude |
-| Cross-agent mismatch | Copy Claude `hooks` sang Codex | Adapters, targeted config, host sandbox tests |
+| Cross-agent mismatch | Copy Claude `hooks` sang Codex | Cấu hình riêng theo agent ([HARNESSES.md](HARNESSES.md)), host sandbox tests |
 
 ## Chính sách action risk
 
@@ -39,6 +44,10 @@ Với Claude Code, hook trong SKILL frontmatter có thể sống từ lúc Skill
 - Không đưa dataset khách hàng thật vào fixture/test baseline khi không được phép; dữ liệu mẫu phải synthetic.
 - Khi script cần package, công bố dependency và version thực sự, chạy cùng quyền tối thiểu.
 - Không ghi secrets trong README, SKILL.md, test output hoặc log. Mọi access token phải được truyền qua biến môi trường/secret manager với chính sách runtime.
+
+## Engine không nạp mã từ repo chứa nó
+
+Engine (`studio.py` và các mô-đun cạnh nó) không có cơ chế nạp mã từ repo chứa nó. Engine được chép rời hoặc cài vào cây lạ không biết repo nào là «của nó», nên mọi cổng chỉ đọc dữ liệu (JSON, log, Markdown) và không nạp mã theo vị trí: không theo thư mục làm việc, biến môi trường hay đường dò được. Muốn thêm một cổng cần mã thì mã đó nằm trong chính engine, đi qua review bảo mật.
 
 ## Kiểm thử hard-stop (bắt buộc khi Side-effect)
 

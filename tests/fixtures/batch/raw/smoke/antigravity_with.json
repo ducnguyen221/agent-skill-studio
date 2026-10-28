@@ -1,0 +1,7 @@
+{
+  "case_id": "smoke-presence",
+  "runtime": "antigravity",
+  "with_skill": true,
+  "kind": "smoke",
+  "triggered": null
+}

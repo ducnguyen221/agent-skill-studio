@@ -20,7 +20,8 @@ Normalisation beyond paths and times (engine 1211bfa behaves differently per OS,
 Usage:
   python tests/contract_runner.py                      compare the working tree with golden.json
   python tests/contract_runner.py --engine <repo root> run another tree (for example a `git archive` of 1211bfa)
-  python tests/contract_runner.py --write-golden --engine <archive of 1211bfa>   (re)generate golden.json
+  python tests/contract_runner.py --write-golden --engine <archive of 1211bfa>   create golden.json (refused when it exists)
+  python tests/contract_runner.py --record-after <case-id> --by SPR-03/TKn      record a deliberate change: writes `after`, never `before`
   python tests/contract_runner.py --only R-version     run the cases whose id starts with the text
 """
 from __future__ import annotations
@@ -211,14 +212,15 @@ def slots_path(template: str, slots: dict) -> Path:
     return Path(SLOT_RE.sub(lambda m: str(slots[m.group(1)]), template))
 
 
-def run_all(engine: Path, only: str = "") -> dict:
-    """Run every case against `engine` (a repo root) in a fresh temp dir that is removed afterwards. Returns {id: result}."""
+def run_all(engine: Path, only: str = "", exact: bool = False) -> dict:
+    """Run every case against `engine` (a repo root) in a fresh temp dir that is removed afterwards. Returns {id: result}.
+    `only` selects the cases whose id starts with it (exact: whose id is it)."""
     engine = Path(engine).resolve()
     base = Path(tempfile.mkdtemp(prefix="studio-contract-")).resolve()
     try:
         shared = base / "ws"
         build_repo(engine, shared)
-        return {c["id"]: run_case(c, engine, base, shared) for c in load_cases() if c["id"].startswith(only)}
+        return {c["id"]: run_case(c, engine, base, shared) for c in load_cases() if (c["id"] == only if exact else c["id"].startswith(only))}
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
@@ -248,22 +250,61 @@ def write_golden(results: dict, source: str) -> None:
             out[cid] = {"changed_by": cases[cid]["changed_by"], "before": res, "after": None}
         else:
             out[cid] = res
-    text = dumps({"schema": 1, "source": source, "cases": out}) + "\n"
-    with open(GOLDEN_FILE, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(text)
+    store(GOLDEN_FILE, dumps({"schema": 1, "source": source, "cases": out}))
+
+
+def store(path: Path, text: str) -> None:
+    """Write `text` plus a final LF, UTF-8, LF line ends on every OS."""
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text + "\n")
+
+
+def record_after(entry: dict, result: dict, by: str) -> dict:
+    """The golden entry once the case is recorded as deliberately changed. A flat entry is wrapped: {changed_by, before: the entry as it was, after: result}.
+    An entry that is already wrapped keeps `changed_by` and `before` and takes the new `after`. `before` is never written (SPR-03 RK2)."""
+    if "changed_by" in entry:
+        return {"changed_by": entry["changed_by"], "before": entry["before"], "after": result}
+    return {"changed_by": by, "before": entry, "after": result}
+
+
+def cmd_record_after(cid: str, by: str, engine: Path) -> int:
+    golden = json.loads(GOLDEN_FILE.read_text(encoding="utf-8"))
+    results = run_all(engine, cid, exact=True)
+    if cid not in golden["cases"] or cid not in results:
+        print("ERROR: %s is not a case of this suite" % cid, file=sys.stderr)
+        return 2
+    golden["cases"][cid] = record_after(golden["cases"][cid], results[cid], by)
+    store(GOLDEN_FILE, dumps(golden))
+    raw = json.loads(CASES_FILE.read_text(encoding="utf-8"))
+    for case in raw["cases"]:
+        if case["id"] == cid and not case.get("changed_by"):  # cases.json and golden.json must mark the same cases (test_contract_regression)
+            case["changed_by"] = by
+            store(CASES_FILE, json.dumps(raw, indent=1, ensure_ascii=False))
+    print("recorded after of %s (by %s)" % (cid, by))
+    return 0
 
 
 def main(argv: list | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--engine", default=str(REPO_ROOT), help="repo root of the code under test (default: this repo)")
-    ap.add_argument("--write-golden", action="store_true", help="write golden.json from the run instead of comparing")
+    ap.add_argument("--write-golden", action="store_true", help="create golden.json from the run instead of comparing (refused when it exists)")
+    ap.add_argument("--record-after", metavar="CASE_ID", help="record the result of this case as the `after` of its golden entry")
+    ap.add_argument("--by", help="with --record-after: who changed the answer, for example SPR-03/TK1")
     ap.add_argument("--source", default="git archive 1211bfa", help="label stored in golden.json")
     ap.add_argument("--only", default="", help="run only the cases whose id starts with this text")
     args = ap.parse_args(argv)
-    results = run_all(Path(args.engine), args.only)
+    if args.record_after:
+        if not args.by or args.write_golden or args.only:
+            ap.error("--record-after needs --by and takes neither --write-golden nor --only")
+        return cmd_record_after(args.record_after, args.by, Path(args.engine))
     if args.write_golden:
+        if GOLDEN_FILE.exists():
+            print("ERROR: %s exists; its `before` answers are frozen - use --record-after <case-id> --by <task>" % GOLDEN_FILE, file=sys.stderr)
+            return 2
         if args.only:
             ap.error("--write-golden needs the whole suite (no --only)")
+    results = run_all(Path(args.engine), args.only)
+    if args.write_golden:
         write_golden(results, args.source)
         print("wrote %s: %d cases" % (GOLDEN_FILE, len(results)))
         return 0

@@ -1,3 +1,0 @@
-`fixtures/clean.csv` passes the requested checks: it has `id` and `amount` columns, all 3 IDs are present and unique, and all 3 amounts are numeric. Their total is **250.75**.
-
-It is ready to proceed to Power BI for these checks. I made no file changes.

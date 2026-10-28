@@ -1,3 +1,0 @@
-**Refresh blocker:** `fixtures/invalid_numeric.csv` failed validation. The audit checked 3 rows and found row 3 has `hello` in `amount`, which is not numeric.
-
-I treated `amount` as the invoice total. Correct that source value and rerun validation before refreshing. The CSV was not modified.

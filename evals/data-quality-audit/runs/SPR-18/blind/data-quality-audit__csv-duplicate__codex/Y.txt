@@ -1,4 +1,0 @@
-`fixtures/duplicates.csv` has two failures:
-
-- **Duplicate transaction ID:** `id=1` appears on lines **2** (`amount=150.0`) and **4** (`amount=90.0`).
-- **Missing amount:** `id=2` has an empty amount on line **3**.

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "skills" / "data-quality-audit" / "scripts" / "validate_csv.py"
+SCRIPT = ROOT / "examples" / "data-quality-audit" / "scripts" / "validate_csv.py"
 SPEC = importlib.util.spec_from_file_location("csvqa", SCRIPT)
 csvqa = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(csvqa)

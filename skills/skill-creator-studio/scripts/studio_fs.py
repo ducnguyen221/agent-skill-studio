@@ -120,38 +120,69 @@ def repo_root(start: Path) -> Path | None:
     return None
 
 
-def skill_dirs(root: Path) -> list[Path]:
-    """The folders under `root/skills` that hold a SKILL.md. A link (symlink, junction), a cloud placeholder and a `skills` folder that is
-    itself a link are neither listed nor entered, and nothing is stat-ed through a link (SPR-02 FR7.1: the pattern of walk_files)."""
+def skill_dirs(root: Path, skipped: list | None = None) -> list[Path]:
+    """The folders under `root/skills` that hold a SKILL.md. A link (symlink, junction), a path that cannot be probed (`is_link` is True for it, FR13.1),
+    a cloud placeholder and a `skills` folder that is itself a link are neither listed nor entered, and nothing is stat-ed through a link (SPR-02 FR7.1:
+    the pattern of walk_files). Each one left out is appended to `skipped` as {path, reason} (`link`, `cloud`, `unreadable`) when a list is given, so a
+    caller can say that a skill was not looked at instead of reporting «all good» without it."""
+    def skip(path, reason: str) -> None:
+        if skipped is not None:
+            skipped.append({"path": os.fspath(path), "reason": reason})
+
     base = root / "skills"
-    if is_link(base) or path_is_cloud(base):
+    if is_link(base):
+        skip(base, "link")
+        return []
+    if path_is_cloud(base):
+        skip(base, "cloud")
         return []
     try:
         with os.scandir(base) as scan:
             entries = list(scan)
+    except (FileNotFoundError, NotADirectoryError):
+        return []
     except OSError:
+        skip(base, "unreadable")
         return []
     found = []
     for entry in entries:
         path = Path(entry.path)
         try:
-            if entry.is_symlink() or entry_is_cloud(entry) or not entry.is_dir(follow_symlinks=False) or is_link(path):
-                continue
+            if entry.is_symlink():
+                skip(path, "link")
+            elif entry_is_cloud(entry):
+                skip(path, "cloud")
+            elif not entry.is_dir(follow_symlinks=False):
+                pass  # a plain file in skills/ is not a skill candidate
+            elif is_link(path):
+                skip(path, "link")
+            else:
+                manifest = path / "SKILL.md"
+                if is_link(manifest):  # lstat, never stat: a SKILL.md that is a link is not a skill and its target is not asked about (FR11.1)
+                    skip(manifest, "link")
+                else:
+                    try:
+                        if stat.S_ISREG(os.lstat(manifest).st_mode):
+                            found.append(path)
+                    except (FileNotFoundError, NotADirectoryError):
+                        pass  # no SKILL.md: not a skill
         except OSError:
-            continue
-        if (path / "SKILL.md").exists():
-            found.append(path)
+            skip(path, "unreadable")
     return sorted(found)
 
 
 def is_link(path: Path) -> bool:
-    """True for a symlink or, on Windows, any reparse point such as a directory junction (os.path.isjunction needs Python 3.12)."""
-    try:  # pathlib re-raises ENAMETOOLONG and the like from is_symlink(): a path that cannot be probed is not a link (1a RF-T6)
+    """True for a symlink or, on Windows, any reparse point such as a directory junction (os.path.isjunction needs Python 3.12).
+    Fails closed (SPR-03 FR13.1): a path that does not exist (or whose parent is not a folder) is not a link, but any other OSError while probing
+    it (PermissionError, ENAMETOOLONG, Windows winerror 123) makes it «a link», so the caller refuses or skips it instead of treating it as plain."""
+    try:  # pathlib re-raises ENAMETOOLONG and the like from is_symlink(); lstat then asks again, so an error that pathlib swallows still counts
         if path.is_symlink():
             return True
         return bool(getattr(os.lstat(path), "st_file_attributes", 0) & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return False
+    except OSError:
+        return True
 
 
 def valid_resolved_under(child: Path, parent: Path) -> bool:
@@ -616,7 +647,7 @@ def _remove_quietly(path) -> None:
 def _is_dir_quiet(path: Path) -> bool:
     """True for a real folder. A link (symlink, junction), a cloud placeholder, a missing path and an OSError the stdlib does not swallow
     (ENAMETOOLONG on POSIX) are 'not a directory'; one lstat, so the target of a link is never stat-ed (SPR-02 FR7.1)."""
-    try:  # is_link() asks pathlib first, which re-raises ENAMETOOLONG and similar: every OSError means 'not a directory'
+    try:  # is_link() is True for a path that cannot be probed (ENAMETOOLONG and similar): not a directory; any other OSError means the same
         if is_link(path) or path_is_cloud(path):
             return False
         return stat.S_ISDIR(os.lstat(path).st_mode)

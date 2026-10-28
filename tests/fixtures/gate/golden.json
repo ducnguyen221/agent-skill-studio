@@ -1,0 +1,77 @@
+{
+  "cases": {
+    "as committed": [],
+    "dqa all not_run": [
+      "data-quality-audit: harness claude-code is 'not_run:a' but EVID(data-quality-audit,SPR-18) has a ran log for it",
+      "data-quality-audit: harness codex is 'not_run:b' but EVID(data-quality-audit,SPR-18) has a ran log for it"
+    ],
+    "dqa codex not_run": [
+      "data-quality-audit: harness codex is 'not_run:x' but EVID(data-quality-audit,SPR-18) has a ran log for it",
+      "data-quality-audit: harness codex is 'not_run:x' but ab-2026-10-18.json has per_runtime numbers for it"
+    ],
+    "dqa date other": [
+      "data-quality-audit: ab-2026-10-19.json missing under EVID(data-quality-audit,SPR-18)"
+    ],
+    "dqa flag true": [
+      "data-quality-audit: claude-code better=0 required >= 3",
+      "data-quality-audit: codex better=0 required >= 3",
+      "data-quality-audit: codex negative_triggered=2 required == 0",
+      "data-quality-audit: codex positive_triggered=3 required >= 4",
+      "data-quality-audit: model_evaluated=true needs evaluated.result == 'passed' (declared 'below-threshold', recomputed 'below-threshold')"
+    ],
+    "dqa flag true every harness": [
+      "data-quality-audit: claude-code better=0 required >= 3",
+      "data-quality-audit: codex better=0 required >= 3",
+      "data-quality-audit: codex negative_triggered=2 required == 0",
+      "data-quality-audit: codex positive_triggered=3 required >= 4",
+      "data-quality-audit: model_evaluated=true needs evaluated.result == 'passed' (declared 'passed', recomputed 'below-threshold')"
+    ],
+    "dqa result partial": [
+      "data-quality-audit: evaluated.result 'partial' != recomputed 'below-threshold'"
+    ],
+    "dqa result passed flag false": [
+      "data-quality-audit: model_evaluated=false but evaluated.result is 'passed' (recomputed 'below-threshold')"
+    ],
+    "dqa sprint SPR-33": [
+      "data-quality-audit: ab-2026-10-18.json missing under EVID(data-quality-audit,SPR-33)"
+    ],
+    "dqa sprint studio-SPR-02 flag true": [
+      "data-quality-audit: ab-2026-10-18.json missing under EVID(data-quality-audit,studio-SPR-02)",
+      "data-quality-audit: model_evaluated=true needs evaluated.result == 'passed' (declared 'passed', recomputed 'below-threshold')"
+    ],
+    "dqa targets claude-code only": [
+      "data-quality-audit: evaluated.harnesses has harness outside targets: ['antigravity', 'codex']",
+      "data-quality-audit: log 2026-10-17T16-55-00Z_codex_csv-clean_with.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-17T16-56-02Z_codex_csv-duplicate_with.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-17T16-56-34Z_codex_csv-invalid-numeric_with.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-17T16-57-33Z_codex_csv-negative_with.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-17T16-58-02Z_codex_data-quality-audit-edge-2_with.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-17T16-58-38Z_codex_data-quality-audit-input-error_with.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-17T16-59-11Z_codex_data-quality-audit-near-miss-convert_with.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-17T16-59-49Z_codex_data-quality-audit-near-miss-merge_with.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-18T02-47-29Z_codex_csv-clean_base.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-18T02-48-11Z_codex_csv-duplicate_base.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-18T02-48-44Z_codex_csv-invalid-numeric_base.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-18T02-49-20Z_codex_data-quality-audit-edge-2_base.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log 2026-10-18T02-49-52Z_codex_data-quality-audit-input-error_base.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log antigravity_with.json has runtime 'antigravity' not in targets ['claude-code']",
+      "data-quality-audit: log codex_base.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log codex_base_clean.json has runtime 'codex' not in targets ['claude-code']",
+      "data-quality-audit: log codex_with.json has runtime 'codex' not in targets ['claude-code']"
+    ],
+    "scs flag true (no evaluated block)": [
+      "skill-creator-studio: model_evaluated=true without an `evaluated` block"
+    ],
+    "scs targets claude-code only": [
+      "skill-creator-studio: log 2026-10-17T17-00-55Z_codex_creator-new-skill_with.json has runtime 'codex' not in targets ['claude-code']",
+      "skill-creator-studio: log 2026-10-17T17-04-30Z_codex_creator-audit-broken_with.json has runtime 'codex' not in targets ['claude-code']",
+      "skill-creator-studio: log 2026-10-17T17-05-05Z_codex_creator-refine-no-regression_with.json has runtime 'codex' not in targets ['claude-code']",
+      "skill-creator-studio: log 2026-10-17T17-06-00Z_codex_creator-negative-task_with.json has runtime 'codex' not in targets ['claude-code']",
+      "skill-creator-studio: log 2026-10-17T17-06-31Z_codex_creator-edge-2_with.json has runtime 'codex' not in targets ['claude-code']",
+      "skill-creator-studio: log 2026-10-17T17-08-58Z_codex_creator-input-error_with.json has runtime 'codex' not in targets ['claude-code']",
+      "skill-creator-studio: log 2026-10-17T17-09-40Z_codex_creator-near-miss-install_with.json has runtime 'codex' not in targets ['claude-code']",
+      "skill-creator-studio: log 2026-10-17T17-10-16Z_codex_creator-near-miss-list_with.json has runtime 'codex' not in targets ['claude-code']"
+    ]
+  },
+  "source": "gate of git archive 3cc1bd3 (raw runs/), paths normalised to EVID(<evals folder>,<batch>)"
+}
