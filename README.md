@@ -18,7 +18,7 @@ Nhiều file Markdown chưa làm nên một Skill tốt. Studio giữ sáu việ
 
 **Ranh giới:** engine kiểm cấu trúc hoàn toàn ngoại tuyến và **không gọi** Claude, Codex hay Antigravity. Đo bằng model thật chạy theo [evals/RUNBOOK.md](evals/RUNBOOK.md); chưa chạy thì ghi `not_run`, không ghi đạt giả ([Không pass giả](standards/EVALUATION_STANDARD.md#không-pass-giả-not_run)).
 
-## Cây 6 thư mục
+## Cây thư mục: sáu thư mục thư viện và `docs/`
 
 ```text
 agent-skill-studio/
@@ -31,7 +31,8 @@ agent-skill-studio/
 ├── templates/   # starter-project/ (mẫu luật cho dự án khác); hai khuôn skill nằm ở skills/…/assets/
 ├── examples/    # mẫu để chép: descriptions.md, eval-cases.md, exemplar/, exemplar-vi/, data-quality-audit/
 ├── evals/       # catalog.json, RUNBOOK.md, tools/, <skill>/{cases.json, rubric.md, expected/, fixtures/, evidence/}
-└── tests/       # unittest ngoại tuyến, bộ ca hợp đồng của CLI trong fixtures/contract/
+├── tests/       # unittest ngoại tuyến, bộ ca hợp đồng của CLI trong fixtures/contract/
+└── docs/        # website tĩnh trên OpcOS Design System (xem docs/README.md); không vào gói phát hành
 ```
 
 Engine nằm một chỗ: `skills/skill-creator-studio/scripts/` (`studio.py` là CLI, kèm chín mô-đun `studio_*.py`). `evals/` và `tests/` không vào gói phát hành. Log thô của lượt đo nằm ở sổ OpcOS; repo chỉ giữ file gọn `evals/<skill>/evidence/<lô>.json` mà cổng đếm lại được.

@@ -1,0 +1,192 @@
+{
+  "generator": "opcos-site-kit/build-docs",
+  "version": 1,
+  "docs": [
+    {
+      "src": "AGENTS.md",
+      "out": "docs/AGENTS/index.html",
+      "title": "Agent Skill Studio — Repository Instructions",
+      "sha256": "d8d77711404c47024ca423f714c860d1409a43a305289af30172c8478e2a1910"
+    },
+    {
+      "src": "CHANGELOG.md",
+      "out": "docs/CHANGELOG/index.html",
+      "title": "Changelog",
+      "sha256": "076ffacc31d1f3fd58a1150b54fa034d2d064d577ba8c028bf00a02b0400a2be"
+    },
+    {
+      "src": "CLAUDE.md",
+      "out": "docs/CLAUDE/index.html",
+      "title": "Claude Code adapter for Agent Skill Studio",
+      "sha256": "b7facee631bde5de4f19cc12c176b77579feae06a17a0f251dd9cb098d489b23"
+    },
+    {
+      "src": "GEMINI.md",
+      "out": "docs/GEMINI/index.html",
+      "title": "Antigravity notes for Agent Skill Studio",
+      "sha256": "3c1ba640a6cd9736f9f93e2f6164ca9a7451e0a81fe129a4bb27be72139dbb85"
+    },
+    {
+      "src": "LICENSE_POLICY.md",
+      "out": "docs/LICENSE_POLICY/index.html",
+      "title": "License Policy",
+      "sha256": "8e2f935caeef6f7f0a692fd4422b9144b0d4d5f07901638a8353ed819e99c5b0"
+    },
+    {
+      "src": "README.md",
+      "out": "docs/README/index.html",
+      "title": "Agent Skill Studio",
+      "sha256": "8b60be7b56763360e8ada122efd57fe0eac9845f331ecc88078c1ce1652d3f49"
+    },
+    {
+      "src": "evals/RUNBOOK.md",
+      "out": "docs/evals/RUNBOOK/index.html",
+      "title": "Evals Runbook — kiểm định Skill bằng model thật",
+      "sha256": "fcd71a463b0b166b2c0ce34d9af1e8a6205acad74acd212534f7483b7e5b1469"
+    },
+    {
+      "src": "evals/skill-creator-studio/rubric.md",
+      "out": "docs/evals/skill-creator-studio/rubric/index.html",
+      "title": "Skill Creator Studio — Evaluation rubric",
+      "sha256": "f3cc25f24cf3de2ac4e67203b21de837762fb10c5efbfb1863e66e7568836127"
+    },
+    {
+      "src": "examples/README.md",
+      "out": "docs/examples/README/index.html",
+      "title": "Bộ ví dụ mẫu",
+      "sha256": "3185e8e3d3e06370b4f86079017bb33708f24508c68ffdccd8bbb96e51e43386"
+    },
+    {
+      "src": "examples/data-quality-audit/SKILL.md",
+      "out": "docs/examples/data-quality-audit/SKILL/index.html",
+      "title": "Data Quality Audit — CSV",
+      "sha256": "ed3aa1acf1db82a504191c3a56e6a4423353fc424c0f95a882d5d5c04fbf9b18"
+    },
+    {
+      "src": "examples/descriptions.md",
+      "out": "docs/examples/descriptions/index.html",
+      "title": "Cặp description tốt và xấu",
+      "sha256": "a600dfc9897cd694331e7557c2d2c5956b1bbac772491a05cb8010acf0cc7ac4"
+    },
+    {
+      "src": "examples/eval-cases.md",
+      "out": "docs/examples/eval-cases/index.html",
+      "title": "Mẫu case eval",
+      "sha256": "0981d03c9e41d376ad55b94159ec871fc7b03d426a10a3f03cd52306732bcb08"
+    },
+    {
+      "src": "examples/exemplar-vi/writing-release-notes/SKILL.md",
+      "out": "docs/examples/exemplar-vi/writing-release-notes/SKILL/index.html",
+      "title": "Writing Release Notes",
+      "sha256": "bb7ba0ef374f273cfdf3cc050f29bb599668f5b3c882a8a1bdf5ed64c60742ed"
+    },
+    {
+      "src": "examples/exemplar/writing-commit-messages/SKILL.md",
+      "out": "docs/examples/exemplar/writing-commit-messages/SKILL/index.html",
+      "title": "Writing Commit Messages",
+      "sha256": "b8393f29a775f55b994b55e719609044cbd56acb58d7359e39470a26eb39f2c5"
+    },
+    {
+      "src": "skills/skill-creator-studio/SKILL.md",
+      "out": "docs/skills/skill-creator-studio/SKILL/index.html",
+      "title": "Skill Creator Studio",
+      "sha256": "66db40bd0f992d7c12210f625c34087e3baa9cc305b3dac0b021117e6fe3ca7d"
+    },
+    {
+      "src": "skills/skill-creator-studio/references/AUDIT_CHECKLIST.md",
+      "out": "docs/skills/skill-creator-studio/references/AUDIT_CHECKLIST/index.html",
+      "title": "Audit Checklist — Findings before fixes",
+      "sha256": "6e061b4f64595a58339b6950d1f34b10dde2974b7a8873969e13c7abcaf74774"
+    },
+    {
+      "src": "skills/skill-creator-studio/references/CORE_RULES.md",
+      "out": "docs/skills/skill-creator-studio/references/CORE_RULES/index.html",
+      "title": "Core Rules",
+      "sha256": "25ef0a4f5045092707736f3bf21b7e2cd6f907838ef6906f9deab428c1d2a35c"
+    },
+    {
+      "src": "skills/skill-creator-studio/references/NEW_WORKFLOW.md",
+      "out": "docs/skills/skill-creator-studio/references/NEW_WORKFLOW/index.html",
+      "title": "NEW Workflow — Design a skill with tests first",
+      "sha256": "93aee697ea9a55c41fb24d0c3ca3c61b130a9c26ecc3e03271d05129644ccb68"
+    },
+    {
+      "src": "skills/skill-creator-studio/references/REFINE_WORKFLOW.md",
+      "out": "docs/skills/skill-creator-studio/references/REFINE_WORKFLOW/index.html",
+      "title": "REFINE Workflow — Test before deleting",
+      "sha256": "b2d66d77a02f0e596e5f58365bafc88a315b1b9b82466a9f59c345148ae6951b"
+    },
+    {
+      "src": "skills/skill-creator-studio/references/SOURCE_NOTES.md",
+      "out": "docs/skills/skill-creator-studio/references/SOURCE_NOTES/index.html",
+      "title": "Source Notes — Source-of-truth discipline",
+      "sha256": "5d5218c212e2800ce894487ff8e3101c636a31d092bd6219a1a731c0b0e0d277"
+    },
+    {
+      "src": "standards/DOC_TYPES.md",
+      "out": "docs/standards/DOC_TYPES/index.html",
+      "title": "Doc Types — luật cho ba loại tài liệu",
+      "sha256": "20a12edcc8df039e4a0115eff122ca3a04a72c97895d67d2b1ccbb9fe1f34e19"
+    },
+    {
+      "src": "standards/EVALUATION_STANDARD.md",
+      "out": "docs/standards/EVALUATION_STANDARD/index.html",
+      "title": "Evaluation Standard — Cách chứng minh Skill hoạt động",
+      "sha256": "2e1532f42ad1c9f52af50956d50709d6da4729d7020979048d9cb405d00f33b6"
+    },
+    {
+      "src": "standards/HARNESSES.md",
+      "out": "docs/standards/HARNESSES/index.html",
+      "title": "Harnesses — Claude Code, Codex, Antigravity",
+      "sha256": "7c840edbec1be75c2e73638184fc2ac57c20def29399d1ecfd33fac06c319faa"
+    },
+    {
+      "src": "standards/README.md",
+      "out": "docs/standards/README/index.html",
+      "title": "Standards Directory",
+      "sha256": "37cdc4578022ae675dbdd123a988cfe93e0fd9f46271322bc6bdcacab868daa0"
+    },
+    {
+      "src": "standards/SECURITY_AND_PERMISSIONS.md",
+      "out": "docs/standards/SECURITY_AND_PERMISSIONS/index.html",
+      "title": "Security & Permissions Standard",
+      "sha256": "f527b5d175820d6669e09317e0bdf3fd339d4f9e7c5e7907bd7e0eb3ed52a66e"
+    },
+    {
+      "src": "standards/SKILL_AUTHORING_STANDARD.md",
+      "out": "docs/standards/SKILL_AUTHORING_STANDARD/index.html",
+      "title": "Skill Authoring Standard — SK-00…SK-15",
+      "sha256": "c7b012d7670ff402c83f3bbf02fcbdfa61ec150eda3b7275de059dfdce464bea"
+    },
+    {
+      "src": "standards/SOURCE_TRACEABILITY.md",
+      "out": "docs/standards/SOURCE_TRACEABILITY/index.html",
+      "title": "Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15",
+      "sha256": "8d7b7b799fe31a92ad48330039b0b76710a4ee9f5f32b07437b3c10b9dac4ae4"
+    },
+    {
+      "src": "standards/VIETNAMESE_SKILL_WRITING.md",
+      "out": "docs/standards/VIETNAMESE_SKILL_WRITING/index.html",
+      "title": "Chuẩn viết tiếng Việt cho skill",
+      "sha256": "98f15fc07299b15026d904d5589694174f46fce50d4145d319e9708b3660f307"
+    },
+    {
+      "src": "templates/README.md",
+      "out": "docs/templates/README/index.html",
+      "title": "Templates",
+      "sha256": "184a7c77aa1504359f4981849644ce6ae1b8c9cced9eb49c75ca9e99e327ac0e"
+    },
+    {
+      "src": "templates/starter-project/AGENTS.md",
+      "out": "docs/templates/starter-project/AGENTS/index.html",
+      "title": "Project Agent Instructions (cross-agent starting template)",
+      "sha256": "c6f036b91937f310a475c3c98edce48d7ca062151685d0ae0bf53eeab353f52c"
+    },
+    {
+      "src": "templates/starter-project/README.md",
+      "out": "docs/templates/starter-project/README/index.html",
+      "title": "Project entrypoint template",
+      "sha256": "de15306fc1072e2d891eb3f0b92494fa8c4152a8018dcc1b5c44327420cfe5fc"
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="vi" data-lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluation Standard — Cách chứng minh Skill hoạt động · Docs · Agent Skill Studio</title>
+<meta name="description" content="Tài liệu standards/EVALUATION_STANDARD.md của Agent Skill Studio.">
+<link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/docs/standards/EVALUATION_STANDARD/">
+<link rel="icon" href="../../../assets/logo.svg">
+<link rel="stylesheet" href="../../../assets/ds/site.css?v=1.0.0">
+</head>
+<body>
+<canvas id="netbg" aria-hidden="true"></canvas>
+<a class="skip" href="#main">Bỏ qua điều hướng</a>
+<header class="site" id="siteHeader">
+  <div class="wrap nav">
+    <a class="brand" href="../../../index.html"><img src="../../../assets/logo.svg" alt="">Agent Skill Studio</a>
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="../../../index.html">Trang chủ</a>
+      <a href="../../../about/index.html">Giới thiệu</a>
+      <a href="../../../install/index.html">Cài đặt</a>
+      <a href="../../../guide/index.html">Cách dùng</a>
+      <a href="../../../flow/index.html">Luồng &amp; quy trình</a>
+      <a href="../../../principles/index.html">Nguyên tắc</a>
+      <a href="../../../docs/index.html" class="active" aria-current="page">Docs</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm gh" href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+    <button class="theme-btn" type="button" data-ds-theme-toggle aria-label="Giao diện"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  </div>
+</header>
+<main id="main">
+<div class="wrap"><div class="doc-layout">
+  <nav class="doc-toc" aria-label="Tài liệu">
+    <b>Tài liệu</b>
+    <ul>
+      <li><a href="../../../docs/AGENTS/index.html">Agent Skill Studio — Repository Instructions</a></li>
+      <li><a href="../../../docs/CHANGELOG/index.html">Changelog</a></li>
+      <li><a href="../../../docs/CLAUDE/index.html">Claude Code adapter for Agent Skill Studio</a></li>
+      <li><a href="../../../docs/GEMINI/index.html">Antigravity notes for Agent Skill Studio</a></li>
+      <li><a href="../../../docs/LICENSE_POLICY/index.html">License Policy</a></li>
+      <li><a href="../../../docs/README/index.html">Agent Skill Studio</a></li>
+    </ul>
+    <p class="dir">evals/</p>
+    <ul>
+      <li><a href="../../../docs/evals/RUNBOOK/index.html">Evals Runbook — kiểm định Skill bằng model thật</a></li>
+    </ul>
+    <p class="dir">evals/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../docs/evals/skill-creator-studio/rubric/index.html">Skill Creator Studio — Evaluation rubric</a></li>
+    </ul>
+    <p class="dir">examples/</p>
+    <ul>
+      <li><a href="../../../docs/examples/README/index.html">Bộ ví dụ mẫu</a></li>
+      <li><a href="../../../docs/examples/descriptions/index.html">Cặp description tốt và xấu</a></li>
+      <li><a href="../../../docs/examples/eval-cases/index.html">Mẫu case eval</a></li>
+    </ul>
+    <p class="dir">examples/data-quality-audit/</p>
+    <ul>
+      <li><a href="../../../docs/examples/data-quality-audit/SKILL/index.html">Data Quality Audit — CSV</a></li>
+    </ul>
+    <p class="dir">examples/exemplar-vi/writing-release-notes/</p>
+    <ul>
+      <li><a href="../../../docs/examples/exemplar-vi/writing-release-notes/SKILL/index.html">Writing Release Notes</a></li>
+    </ul>
+    <p class="dir">examples/exemplar/writing-commit-messages/</p>
+    <ul>
+      <li><a href="../../../docs/examples/exemplar/writing-commit-messages/SKILL/index.html">Writing Commit Messages</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../docs/skills/skill-creator-studio/SKILL/index.html">Skill Creator Studio</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/references/</p>
+    <ul>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/AUDIT_CHECKLIST/index.html">Audit Checklist — Findings before fixes</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/CORE_RULES/index.html">Core Rules</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/NEW_WORKFLOW/index.html">NEW Workflow — Design a skill with tests first</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/REFINE_WORKFLOW/index.html">REFINE Workflow — Test before deleting</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/SOURCE_NOTES/index.html">Source Notes — Source-of-truth discipline</a></li>
+    </ul>
+    <p class="dir">standards/</p>
+    <ul>
+      <li><a href="../../../docs/standards/DOC_TYPES/index.html">Doc Types — luật cho ba loại tài liệu</a></li>
+      <li><a href="../../../docs/standards/EVALUATION_STANDARD/index.html" aria-current="page">Evaluation Standard — Cách chứng minh Skill hoạt động</a></li>
+      <li><a href="../../../docs/standards/HARNESSES/index.html">Harnesses — Claude Code, Codex, Antigravity</a></li>
+      <li><a href="../../../docs/standards/README/index.html">Standards Directory</a></li>
+      <li><a href="../../../docs/standards/SECURITY_AND_PERMISSIONS/index.html">Security &amp; Permissions Standard</a></li>
+      <li><a href="../../../docs/standards/SKILL_AUTHORING_STANDARD/index.html">Skill Authoring Standard — SK-00…SK-15</a></li>
+      <li><a href="../../../docs/standards/SOURCE_TRACEABILITY/index.html">Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15</a></li>
+      <li><a href="../../../docs/standards/VIETNAMESE_SKILL_WRITING/index.html">Chuẩn viết tiếng Việt cho skill</a></li>
+    </ul>
+    <p class="dir">templates/</p>
+    <ul>
+      <li><a href="../../../docs/templates/README/index.html">Templates</a></li>
+    </ul>
+    <p class="dir">templates/starter-project/</p>
+    <ul>
+      <li><a href="../../../docs/templates/starter-project/AGENTS/index.html">Project Agent Instructions (cross-agent starting template)</a></li>
+      <li><a href="../../../docs/templates/starter-project/README/index.html">Project entrypoint template</a></li>
+    </ul>
+  </nav>
+  <article class="prose">
+    <div class="doc-meta"><a href="../../../docs/index.html">Docs</a> / <code>standards/EVALUATION_STANDARD.md</code></div>
+<h1>Evaluation Standard — Cách chứng minh Skill hoạt động</h1>
+<h2>Contents</h2>
+<ul><li>Phạm vi và nơi lưu</li><li>Loại bài kiểm thử</li><li>Thiết kế test cases</li><li>Cách chạy baseline và A/B</li><li>Release gate nội bộ</li><li>Log test nên có</li><li>Không pass giả (<code>not_run</code>)</li><li>Phân vai hai hệ eval</li><li>Khối evaluated</li><li>Xuất sang agentskills</li><li>Cách reviewer đánh giá</li></ul>
+<h2>Phạm vi và nơi lưu</h2>
+<p><strong>Mặc định Studio:</strong> <code>evals/&lt;skill-name&gt;/cases.json</code>, <code>rubric.md</code>, <code>fixtures/</code>, <code>baselines/</code>, <code>evidence/&lt;lô&gt;.json</code> (bằng chứng gọn mỗi lô; log thô của lô nằm ở ledger OpcOS, xem <a href="#khối-evaluated">Khối evaluated</a>). Repo giữ bộ test; package runtime Skill <strong>không chứa evals</strong>.</p>
+<p>Nếu một Skill độc lập không có repo, có thể colocate evals bên trong folder Skill; phải exclude khi publish và ghi rõ trong packager. Không trộn private fixtures vào <code>assets/</code> phát hành.</p>
+<h2>Loại bài kiểm thử</h2>
+<table><thead><tr><th>Loại</th><th>Cần xác minh</th><th>Công cụ</th></tr></thead><tbody><tr><td>Structural</td><td>Frontmatter, paths, references, thông số</td><td><code>studio.py validate</code></td></tr><tr><td>Trigger positive</td><td>Request thuộc phạm vi làm Skill kích hoạt</td><td>Fresh-session Claude/Codex/AGY</td></tr><tr><td>Trigger negative</td><td>Request ngoài phạm vi không kích hoạt</td><td>Fresh-session Claude/Codex/AGY</td></tr><tr><td>Execution</td><td>Agent đọc đúng references, chạy đúng scripts, hoàn thành steps</td><td>Agent logs/observation</td></tr><tr><td>Output quality</td><td>Data, code, content đạt rubric</td><td>Deterministic script + human/model grader phù hợp</td></tr><tr><td>Safety</td><td>Thao tác không có approval bị chặn</td><td>Permission sandbox/hook dry-run</td></tr><tr><td>Regression</td><td>Phiên bản mới không kém bản cũ trên test quan trọng</td><td>A/B logs và review</td></tr><tr><td>Context/cost</td><td>Mức dùng token/time đủ hiệu quả</td><td>Telemetry có điều kiện, không ước đoán</td></tr></tbody></table>
+<h2>Thiết kế test cases</h2>
+<p><code>cases.json</code> là <strong>Studio-owned evaluation manifest</strong> (không tuyên bố tương thích runner của vendor nào). Mỗi case có <code>id</code>, <code>prompt</code>, <code>should_trigger</code> (boolean), <code>expected_behaviors</code> (array non-empty), <code>quality_criteria</code>, và tùy chọn <code>fixtures</code>. Giữ ít nhất 3 tình huống thật và ít nhất một negative case; nên thêm edge cases và high-risk case nếu có.</p>
+<p><strong>Dữ liệu test</strong>: chỉ dùng synthetic/public, không đưa secrets. <code>expected_behaviors</code> phải có kết quả có thể quan sát, như <code>measure uses DATEADD with appropriate date table assumption</code>, không viết &quot;agent is smart&quot;.</p>
+<h2>Cách chạy baseline và A/B</h2>
+<ol><li>Chọn &gt;=3 bài test. Ghi task, version, model, runtime, dữ liệu đầu vào, rubric trước khi viết Skill.</li><li>Chạy prompt <strong>không có Skill</strong> trong phiên mới; chấm kết quả bằng rubric, lưu baseline.</li><li>Chạy prompt tương đương <strong>có Skill</strong> trong phiên mới; chấm các tiêu chí và ghi file đã đọc/scripts đã chạy.</li><li>Lặp trên model thực sử dụng. Với Skill mission-critical, test đủ các model/runtime sản xuất; với Skill thông thường có thể ưu tiên model phổ biến.</li><li>So sánh pass/fail, false trigger, blocked actions, chất lượng, chi phí thực nếu đo được; quyết định Keep / Refine / Roll back.</li><li>Khi bỏ một rule bị cho là dư thừa, test version có và không có rule để tránh regression.</li></ol>
+<h2>Release gate nội bộ</h2>
+<ul><li><strong>Prototype:</strong> static checks pass và đã có evals template, được dùng thử nội bộ với nhãn prototype.</li><li><strong>Candidate:</strong> &gt;=3 scenarios, 1 negative, baseline ghi nhận (hoặc justified unavailable), các nguồn tài liệu đã review, script smoke test pass.</li><li><strong>Production:</strong> dữ liệu từ phiên test thực tế trên các runtime mục tiêu; kết quả đạt rubric; không có safety-critical failure; owner signoff và rollback.</li></ul>
+<p>Chưa chạy model: xem <a href="#không-pass-giả-not_run">Không pass giả</a>. Không đặt ngưỡng chất lượng phần trăm phổ quát; mỗi skill xác định hard acceptance riêng tại <code>rubric.md</code>.</p>
+<h2>Log test nên có</h2>
+<pre><code class="language-json">{
+  &quot;case_id&quot;: &quot;creator-positive-new&quot;,
+  &quot;skill_version&quot;: &quot;0.1.0&quot;,
+  &quot;runtime&quot;: &quot;claude-code&quot;,
+  &quot;model&quot;: &quot;&lt;actual model ID&gt;&quot;,
+  &quot;run_at&quot;: &quot;&lt;ISO date-time&gt;&quot;,
+  &quot;with_skill&quot;: true,
+  &quot;observed_files&quot;: [],
+  &quot;score&quot;: null,
+  &quot;status&quot;: &quot;not_run&quot;,
+  &quot;evidence&quot;: &quot;&lt;path to session log or screenshots if run&gt;&quot;
+}</code></pre>
+<h2>Không pass giả (<code>not_run</code>)</h2>
+<ul><li>Chưa chạy model thì ghi <code>not_run</code>; không gọi Skill là production-tested.</li><li>Một agent tự nhận đã pass mà không có log hay artefact thì không tính. Static JSON validator chỉ chứng minh metadata của case hợp lệ, không chứng minh model đã hoàn thành case.</li><li>Trong log chạy, giữ trường <code>null</code> và <code>status: &quot;not_run&quot;</code> cho đến khi có test thật; không tự điền score hay pass.</li></ul>
+<h2>Phân vai hai hệ eval</h2>
+<ul><li>RED/GREEN của <code>writing-skills</code> (agent-agile-team): kiểm áp lực hành vi.</li><li>A/B của Studio (mục &quot;Cách chạy baseline và A/B&quot;): kiểm kích hoạt và chất lượng đầu ra.</li></ul>
+<h2>Xuất sang agentskills</h2>
+<p><code>studio.py evals &lt;skill&gt; --export agentskills</code> ghi <code>evals/&lt;skill&gt;/cases.json</code> sang định dạng agentskills theo ánh xạ SPEC mục 9.6 của SPR-33 (<code>system/docs/plans/2026-10-22-skill-studio-standard-v1/SPEC.md</code> trong repo OpcOS). Cú pháp đầy đủ: <code>studio.py evals &lt;skill&gt;|--all --export agentskills [--out DIR] [--force] [--json]</code>. Chỉ ca <code>should_trigger: true</code> được xuất (ca âm bị loại và được đếm trong dòng <code>exported N, excluded M</code>). <code>--out</code> mặc định <code>dist/agentskills</code> và không được nằm dưới <code>skills/</code> hay dưới thư mục eval (<code>evals/</code>, đang đóng băng) (thoát 2). Eval nháp hoặc <code>cases.json</code> hỏng thoát 1 mà không ghi file; file đích đã có mà thiếu <code>--force</code> cũng thoát 1. Tên fixture chứa <code>:</code> bị từ chối, hai tên chỉ khác hoa/thường hay dạng Unicode coi là trùng (thoát 1). Lỗi ghi giữa chừng thì file do lượt chạy đó tạo ra được xoá lại. Bộ xuất chỉ chép các fixture mà <code>cases.json</code> tham chiếu và từ chối đường bất thường, link hay junction, tên nhạy cảm (theo một danh sách) và đường nằm trong vùng secret hoặc cloud theo tên đường; việc kiểm tên chỉ mang tính heuristic (bí danh Windows như dấu chấm hoặc khoảng trắng cuối, tên dạng 8.3 có thể lọt), nên hãy rà fixture trước khi phát hành gói.</p>
+<h2>Khối evaluated</h2>
+<p>Mỗi skill của repo có một mục trong <code>evals/catalog.json</code> (tạo skill mới thì thêm mục; test kiểm đường dẫn) và có thể mang khối <code>evaluated</code> ghi kết quả đo model thật. Cổng <code>evals --all</code> (mã <code>EV20</code>) không tin con số khai: nó đọc file bằng chứng gọn mà khối trỏ tới (<code>evals/&lt;skill&gt;/evidence/&lt;lô&gt;.json</code>; log thô của lô nằm ở ledger OpcOS, dựng lại file gọn bằng <code>activation.py compact</code>, xem <a href="../../../docs/evals/RUNBOOK/index.html">RUNBOOK</a>), đếm lại từ các log trong đó và so với khối. <code>model_evaluated: true</code> chỉ hợp lệ khi khối nói <code>passed</code>; khối có mặt cả khi cờ là <code>false</code>.</p>
+<table><thead><tr><th>Khoá</th><th>Giá trị</th><th>Cổng kiểm</th></tr></thead><tbody><tr><td><code>result</code></td><td><code>passed</code>, <code>below-threshold</code>, <code>partial</code>, <code>not_run</code></td><td>phải bằng giá trị cổng tính lại: không harness nào <code>ran</code> → <code>not_run</code>; có harness <code>ran</code> chưa đạt ngưỡng → <code>below-threshold</code>; mọi harness <code>ran</code> đạt nhưng còn harness <code>not_run:…</code> → <code>partial</code>; còn lại → <code>passed</code>. Cờ <code>true</code> đòi <code>passed</code></td></tr><tr><td><code>batch_sha</code></td><td>40 ký tự hex thường: bản skill mà lô đã chạy</td><td>đúng định dạng</td></tr><tr><td><code>batch_sha_kind</code></td><td><code>commit</code> hoặc <code>tree</code>: <code>batch_sha</code> là mã commit hay mã cây</td><td>bắt buộc đi kèm <code>batch_sha</code></td></tr><tr><td><code>sprint</code></td><td>tên lô, một tên thư mục tương đối</td><td>là tên file bằng chứng gọn</td></tr><tr><td><code>date</code></td><td><code>YYYY-MM-DD</code></td><td>bắt buộc khi có harness <code>ran</code>; chọn khối <code>ab</code> cùng ngày trong file gọn</td></tr><tr><td><code>harnesses</code></td><td>map harness → <code>ran</code> hoặc <code>not_run:&lt;lý do&gt;</code></td><td>khoá thuộc <code>targets</code> của skill; cờ <code>true</code> đòi khoá bằng đúng <code>targets</code>; <code>not_run</code> thì không được có số hay log <code>ran</code></td></tr><tr><td><code>evidence</code></td><td>đúng <code>evals/&lt;skill&gt;/evidence/&lt;sprint&gt;.json</code></td><td>bắt buộc</td></tr><tr><td><code>ab_report</code></td><td>cùng đường với <code>evidence</code></td><td>nếu có phải bằng <code>evidence</code>; cờ <code>true</code> đòi có</td></tr></tbody></table>
+<p>Với mỗi harness <code>ran</code>, số đếm lại từ log phải đạt: kích hoạt đúng ≥4, kích hoạt sai 0, cặp A/B 5 trong đó <code>better</code> ≥3 và <code>worse</code> 0; số ca dương và âm bằng số ca của <code>cases.json</code>. Chưa đạt thì <code>result</code> là <code>below-threshold</code>, không bao giờ sửa ngưỡng cho vừa số đo.</p>
+<h2>Cách reviewer đánh giá</h2>
+<ul><li>Prompt kích hoạt đúng? Không kích hoạt sai?</li><li>Agent có bỏ qua reference thiết yếu?</li><li>Có chạy script khi đáng lẽ run, hay chỉ đọc mô tả?</li><li>Có tuyên bố kết quả khi chưa kiểm tra?</li><li>Có lỗi hệ thống vì Skill quá dài hoặc model over-guided?</li><li>Với output dạng file, mở và kiểm tra file thật, không chỉ xem transcript.</li></ul>
+<p><strong>Nguồn:</strong> <a href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices">Anthropic Skill Best Practices</a>, <a href="https://code.claude.com/docs/en/skills">Claude Code Skills evaluation</a>, <a href="https://agentskills.io/skill-creation/evaluating-skills">Agent Skills evaluation</a>. Studio tách evals là quyết định thiết kế nội bộ.</p>
+  </article>
+</div></div>
+</main>
+<footer class="site">
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../assets/logo.svg" alt="" width="26" height="26">Agent Skill Studio</a>
+        <p class="foot-tag">Tạo, kiểm, đo và phân phối Agent Skills dùng chung cho Claude Code, Codex và Antigravity.</p>
+      </div>
+      <div class="foot-links">
+        <div class="foot-col">
+          <b>Sản phẩm</b>
+          <a href="../../../index.html">Trang chủ</a>
+          <a href="../../../about/index.html">Giới thiệu</a>
+          <a href="../../../install/index.html">Cài đặt</a>
+          <a href="../../../guide/index.html">Cách dùng</a>
+          <a href="../../../flow/index.html">Luồng &amp; quy trình</a>
+          <a href="../../../principles/index.html">Nguyên tắc</a>
+          <a href="../../../docs/index.html">Docs</a>
+        </div>
+        <div class="foot-col">
+          <b>Tài nguyên</b>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Nguyễn Quang Đức · MIT</span>
+      <span class="lic">MIT License · giữ credit tác giả</span>
+    </div>
+  </div>
+</footer>
+<script src="../../../assets/ds/site.js?v=1.0.0"></script>
+</body>
+</html>

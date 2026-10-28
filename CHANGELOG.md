@@ -1,5 +1,9 @@
 # Changelog
 
+## Chưa phát hành
+
+- `docs/`: website 7 trang trên OpcOS Design System dùng chung (Trang chủ, Giới thiệu, Cài đặt, Cách dùng, Luồng & quy trình, Nguyên tắc, Docs); thư mục thứ bảy của repo, không vào gói phát hành. `tests/test_layout.py` khoá bảy thư mục thay vì sáu.
+
 ## 0.2.0 — 2026-10-28
 
 Chặng 2 (agent-skill-studio:SPR-03): repo gọn sáu thư mục, luật nạp được cho ba agent, bằng chứng gọn mà cổng vẫn đếm lại được. Cộng cả mọi mục SPR-01, SPR-02 chưa phát hành bên dưới (ba chuẩn gộp vào `SKILL_AUTHORING_STANDARD.md` ở TK5 có lịch sử ngay trong mục TK5). **Đổi hợp đồng của bản này** (ai dùng bản `0.1.0` đọc kỹ):

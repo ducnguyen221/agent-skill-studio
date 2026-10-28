@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="vi" data-lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evals Runbook — kiểm định Skill bằng model thật · Docs · Agent Skill Studio</title>
+<meta name="description" content="Tài liệu evals/RUNBOOK.md của Agent Skill Studio.">
+<link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/docs/evals/RUNBOOK/">
+<link rel="icon" href="../../../assets/logo.svg">
+<link rel="stylesheet" href="../../../assets/ds/site.css?v=1.0.0">
+</head>
+<body>
+<canvas id="netbg" aria-hidden="true"></canvas>
+<a class="skip" href="#main">Bỏ qua điều hướng</a>
+<header class="site" id="siteHeader">
+  <div class="wrap nav">
+    <a class="brand" href="../../../index.html"><img src="../../../assets/logo.svg" alt="">Agent Skill Studio</a>
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="../../../index.html">Trang chủ</a>
+      <a href="../../../about/index.html">Giới thiệu</a>
+      <a href="../../../install/index.html">Cài đặt</a>
+      <a href="../../../guide/index.html">Cách dùng</a>
+      <a href="../../../flow/index.html">Luồng &amp; quy trình</a>
+      <a href="../../../principles/index.html">Nguyên tắc</a>
+      <a href="../../../docs/index.html" class="active" aria-current="page">Docs</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm gh" href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+    <button class="theme-btn" type="button" data-ds-theme-toggle aria-label="Giao diện"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  </div>
+</header>
+<main id="main">
+<div class="wrap"><div class="doc-layout">
+  <nav class="doc-toc" aria-label="Tài liệu">
+    <b>Tài liệu</b>
+    <ul>
+      <li><a href="../../../docs/AGENTS/index.html">Agent Skill Studio — Repository Instructions</a></li>
+      <li><a href="../../../docs/CHANGELOG/index.html">Changelog</a></li>
+      <li><a href="../../../docs/CLAUDE/index.html">Claude Code adapter for Agent Skill Studio</a></li>
+      <li><a href="../../../docs/GEMINI/index.html">Antigravity notes for Agent Skill Studio</a></li>
+      <li><a href="../../../docs/LICENSE_POLICY/index.html">License Policy</a></li>
+      <li><a href="../../../docs/README/index.html">Agent Skill Studio</a></li>
+    </ul>
+    <p class="dir">evals/</p>
+    <ul>
+      <li><a href="../../../docs/evals/RUNBOOK/index.html" aria-current="page">Evals Runbook — kiểm định Skill bằng model thật</a></li>
+    </ul>
+    <p class="dir">evals/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../docs/evals/skill-creator-studio/rubric/index.html">Skill Creator Studio — Evaluation rubric</a></li>
+    </ul>
+    <p class="dir">examples/</p>
+    <ul>
+      <li><a href="../../../docs/examples/README/index.html">Bộ ví dụ mẫu</a></li>
+      <li><a href="../../../docs/examples/descriptions/index.html">Cặp description tốt và xấu</a></li>
+      <li><a href="../../../docs/examples/eval-cases/index.html">Mẫu case eval</a></li>
+    </ul>
+    <p class="dir">examples/data-quality-audit/</p>
+    <ul>
+      <li><a href="../../../docs/examples/data-quality-audit/SKILL/index.html">Data Quality Audit — CSV</a></li>
+    </ul>
+    <p class="dir">examples/exemplar-vi/writing-release-notes/</p>
+    <ul>
+      <li><a href="../../../docs/examples/exemplar-vi/writing-release-notes/SKILL/index.html">Writing Release Notes</a></li>
+    </ul>
+    <p class="dir">examples/exemplar/writing-commit-messages/</p>
+    <ul>
+      <li><a href="../../../docs/examples/exemplar/writing-commit-messages/SKILL/index.html">Writing Commit Messages</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../docs/skills/skill-creator-studio/SKILL/index.html">Skill Creator Studio</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/references/</p>
+    <ul>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/AUDIT_CHECKLIST/index.html">Audit Checklist — Findings before fixes</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/CORE_RULES/index.html">Core Rules</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/NEW_WORKFLOW/index.html">NEW Workflow — Design a skill with tests first</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/REFINE_WORKFLOW/index.html">REFINE Workflow — Test before deleting</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/SOURCE_NOTES/index.html">Source Notes — Source-of-truth discipline</a></li>
+    </ul>
+    <p class="dir">standards/</p>
+    <ul>
+      <li><a href="../../../docs/standards/DOC_TYPES/index.html">Doc Types — luật cho ba loại tài liệu</a></li>
+      <li><a href="../../../docs/standards/EVALUATION_STANDARD/index.html">Evaluation Standard — Cách chứng minh Skill hoạt động</a></li>
+      <li><a href="../../../docs/standards/HARNESSES/index.html">Harnesses — Claude Code, Codex, Antigravity</a></li>
+      <li><a href="../../../docs/standards/README/index.html">Standards Directory</a></li>
+      <li><a href="../../../docs/standards/SECURITY_AND_PERMISSIONS/index.html">Security &amp; Permissions Standard</a></li>
+      <li><a href="../../../docs/standards/SKILL_AUTHORING_STANDARD/index.html">Skill Authoring Standard — SK-00…SK-15</a></li>
+      <li><a href="../../../docs/standards/SOURCE_TRACEABILITY/index.html">Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15</a></li>
+      <li><a href="../../../docs/standards/VIETNAMESE_SKILL_WRITING/index.html">Chuẩn viết tiếng Việt cho skill</a></li>
+    </ul>
+    <p class="dir">templates/</p>
+    <ul>
+      <li><a href="../../../docs/templates/README/index.html">Templates</a></li>
+    </ul>
+    <p class="dir">templates/starter-project/</p>
+    <ul>
+      <li><a href="../../../docs/templates/starter-project/AGENTS/index.html">Project Agent Instructions (cross-agent starting template)</a></li>
+      <li><a href="../../../docs/templates/starter-project/README/index.html">Project entrypoint template</a></li>
+    </ul>
+  </nav>
+  <article class="prose">
+    <div class="doc-meta"><a href="../../../docs/index.html">Docs</a> / <code>evals/RUNBOOK.md</code></div>
+<h1>Evals Runbook — kiểm định Skill bằng model thật</h1>
+<h2>Vì sao evals tách khỏi Skill?</h2>
+<p>Evals là các bài kiểm thử, rubric, dữ liệu thử và log no-skill baseline, <strong>không phải hướng dẫn thường trực của agent</strong>. Studio mặc định lưu tại repo-root <code>evals/&lt;skill-name&gt;/</code>, để tránh phát hành đáp án test hoặc private fixtures khi đóng gói Skill. Đây là lựa chọn thiết kế của Studio, không phải luật bắt buộc của Agent Skills.</p>
+<h2>Cấu trúc một bộ eval</h2>
+<pre><code class="language-text">evals/&lt;skill-name&gt;/
+  cases.json              # prompt, should_trigger, expected_behaviors, fixtures
+  rubric.md               # tiêu chí chấm độc lập, hard-fail điều kiện
+  fixtures/               # dữ liệu synthetic, không có customer data
+  baselines/BASELINE.md   # No-skill run, nếu chưa chạy ghi NOT RUN
+  evidence/&lt;lô&gt;.json      # bằng chứng gọn mỗi lô (activation.py compact); log thô của lô nằm ở ledger OpcOS, không ở repo</code></pre>
+<p>Công cụ chung nằm ở <code>evals/tools/</code> (chỉ thư viện chuẩn): <code>activation.py</code> đếm kích hoạt từ transcript (<code>verify</code>, <code>hash</code>, <code>count</code>, <code>freeze</code>, <code>summarize</code>, <code>compact</code>), <code>oracle.py</code> chấm đầu ra theo <code>expected/&lt;case-id&gt;.json</code>, <code>redact.py</code> làm bản transcript che email và đường dẫn máy để commit được.</p>
+<p>Xuất các ca positive sang định dạng agentskills (không gọi model): <code>python3 studio.py evals &lt;skill&gt; --export agentskills --out dist/agentskills</code> ghi <code>&lt;out&gt;/&lt;skill&gt;/evals/evals.json</code>; <code>--out</code> không được nằm dưới <code>skills/</code> hay <code>evals/</code>.</p>
+<h2>Bằng chứng gọn và kho thô</h2>
+<p>Từ SPR-03 thư mục <code>runs/</code> không còn trong repo. Cổng <code>model_evaluated</code> đọc <strong>một file gọn mỗi lô</strong>, <code>evals/&lt;skill&gt;/evidence/&lt;lô&gt;.json</code> (schema 1), và khối <code>evaluated</code> của <code>evals/catalog.json</code> trỏ tới nó bằng khoá bắt buộc <code>evidence</code> (cùng giá trị với <code>ab_report</code>). Bản thô của lô (log, <code>out/</code>, <code>blind/</code>, <code>smoke/</code>, <code>ab-*</code>, <code>manifest.json</code>) nằm ở repo OpcOS: <code>system/ledger/agent-skill-studio/evidence/&lt;lô&gt;/&lt;skill&gt;/</code>. Các đường <code>runs/&lt;lô&gt;/</code> trong phần lịch sử bên dưới là thư mục thô đó.</p>
+<p>Lệnh (đọc <code>evals/tools/activation.py --help</code>):</p>
+<ul><li><code>activation.py compact &lt;thư mục thô&gt; --skill S --batch B --out evals/S/evidence/B.json</code> sinh file gọn; thoát 2 khi file đã có, không bao giờ ghi đè.</li><li><code>activation.py compact --verify &lt;thư mục thô&gt; evals/S/evidence/B.json</code> dựng lại từ thư mục thô và so trùng byte (thoát 0 khi trùng, 1 khi lệch).</li><li><strong>Bắt buộc chạy <code>--verify</code> trước khi bật <code>model_evaluated: true</code>:</strong> file gọn có thể bị sửa tay, cổng không đối chiếu được thô (thô ngoài repo), chỉ <code>--verify</code> làm việc đó.</li><li><code>activation.py summarize &lt;thư mục thô&gt;</code> vẫn dùng cho công cụ đo; cổng và công cụ cùng một luật đếm trong engine (<code>studio_evals.summarize_logs</code>).</li></ul>
+<p>Chạy lô mới: ghi log vào thư mục thô ở ledger → <code>compact</code> → thêm khối <code>evaluated</code> (kèm <code>evidence</code>) vào <code>evals/catalog.json</code> → <code>python studio.py evals --all</code>.</p>
+<h2>Trước khi viết Skill</h2>
+<ol><li>Chọn &gt;=3 prompts thực tế: một typical, một edge, một negative trigger (không nên gọi Skill).</li><li>Ghi expected behavior và criteria <strong>trước</strong> khi viết nội dung Skill dài.</li><li>Chạy không Skill để có baseline, tốt nhất phiên mới; nếu không chạy được thì không bịa kết quả — định nghĩa: <a href="../../../docs/standards/EVALUATION_STANDARD/index.html#không-pass-giả-not_run">Không pass giả</a>.</li></ol>
+<h2>Khi chạy với Claude, Codex hoặc AGY</h2>
+<ol><li>Chọn runtime, exact model/version, tool availability và workspace permissions.</li><li>Chạy lần 1 trong <strong>fresh session, Skill không có mặt/disable đúng cách</strong>. Lưu prompt, output và log.</li><li>Chạy lần 2 trong <strong>fresh session, có Skill</strong>; quan sát activation, files read, scripts executed, permission prompts và output thật.</li><li>Dùng <code>rubric.md</code> chấm từng tiêu chí và so với baseline. Với side-effect phải dùng mock/staging.</li><li>Ghi file <code>&lt;thư mục thô của lô&gt;/&lt;ISO-UTC&gt;_&lt;runtime&gt;_&lt;case-id&gt;.json</code> cùng đường dẫn evidence/screenshot/session log (thư mục thô nằm ở ledger OpcOS, xem «Bằng chứng gọn và kho thô»).</li><li>Nếu yếu hơn baseline hoặc fail safety -&gt; REFINE, test lại; đừng chỉ thêm một đoạn &quot;must always&quot;.</li></ol>
+<h2>Mẫu run log</h2>
+<pre><code class="language-json">{
+  &quot;case_id&quot;: &quot;creator-new-skill&quot;,
+  &quot;timestamp&quot;: null,
+  &quot;runtime&quot;: null,
+  &quot;model&quot;: null,
+  &quot;with_skill&quot;: null,
+  &quot;triggered&quot;: null,
+  &quot;observed_files&quot;: [],
+  &quot;observed_scripts&quot;: [],
+  &quot;rubric_result&quot;: null,
+  &quot;status&quot;: &quot;not_run&quot;,
+  &quot;evidence_path&quot;: null
+}</code></pre>
+<h2>Static checker và giới hạn</h2>
+<p><code>python3 studio.py evals --all</code> kiểm tra cấu trúc <code>cases.json</code>: 3+ case, 1 positive +1 negative, <code>expected_behaviors</code>, local fixture paths; <strong>không gọi các model</strong> và không chấm kết quả. Chỉ nâng trạng thái lên production-tested khi có log thực tế trên những runtimes được sử dụng.</p>
+<h2>Bảo mật</h2>
+<p>Không upload dữ liệu production, tokens, email cá nhân hoặc thông tin khách hàng vào fixtures công khai. Với dữ liệu thật, lưu ở kho riêng có permission và trỏ test qua fake fixture/anonymized data.</p>
+<h2>Lô SPR-18 — phiên mới có/không skill, đếm kích hoạt từ transcript</h2>
+<p>Bộ câu, oracle (<code>expected/</code>), thước (<code>rubric.md</code>) và <code>runs/SPR-18/manifest.json</code> đã đóng băng; sửa một file đóng băng thì <code>activation.py verify</code> báo. Mỗi skill có 8 case: 5 positive (<code>typical</code> 2, <code>edge</code> 2, <code>input-error</code> 1) và 3 <code>near-miss</code>. Chỉ đo kích hoạt bằng <code>evals/tools/activation.py</code> (đếm lời gọi tool Skill hoặc lần đọc <code>…/&lt;skill&gt;/SKILL.md</code> của agent; không quét system prompt, nên tên skill trong danh mục không tính).</p>
+<p>Kiểm trước mỗi lô:</p>
+<pre><code class="language-text">python -X utf8 evals/tools/activation.py verify --eval-dir evals/&lt;skill&gt; --main-skill-dir &lt;OpcOS&gt;/plugins/agent-skill-studio/skills/&lt;skill&gt; --cache-skill-dir &lt;~/.claude&gt;/plugins/cache/agent-skill-studio/agent-skill-studio/&lt;phiên bản&gt;/skills/&lt;skill&gt; --manifest &lt;OpcOS&gt;/system/ledger/agent-skill-studio/evidence/&lt;lô&gt;/&lt;skill&gt;/manifest.json
+python -X utf8 evals/tools/activation.py hash &lt;thư mục skill&gt;          # băm cây skill, đã chuẩn hoá CRLF
+python -X utf8 evals/tools/activation.py count &lt;transcript.jsonl&gt; --skill &lt;skill&gt; --runtime claude-code|codex
+python -X utf8 evals/tools/activation.py summarize &lt;thư mục thô của lô&gt;</code></pre>
+<p>Đo thật (17/10/2026) — <code>runs/SPR-18/harness-status.json</code> và <code>runs/SPR-18/smoke/*</code>:</p>
+<table><thead><tr><th>Harness</th><th>Kết luận</th><th>Cách chạy</th></tr></thead><tbody><tr><td>Claude Code</td><td><strong>go</strong></td><td><code>claude -p --model claude-sonnet-5-5 --output-format json --permission-mode acceptEdits --allowedTools &quot;Skill,Read,Glob,Grep,Write,Edit,Bash(python:*),Bash(python3:*),Bash(py:*),Bash(ls:*),Bash(cat:*)&quot; --disallowedTools &quot;WebFetch,WebSearch&quot;</code> đọc prompt từ stdin, cwd là thư mục chạy sạch dưới <code>~/OpcOS/workspaces/spr18-eval/claude-code/&lt;run-id&gt;/</code>. Có skill: plugin bật sẵn. Không skill: thêm <code>--settings '{&quot;enabledPlugins&quot;:{&quot;agent-skill-studio@agent-skill-studio&quot;:false}}'</code> (tắt theo tiến trình, không đổi cài đặt máy; phép thử vắng skill sạch: transcript không còn nhắc tên skill nào). <code>claude -p</code> chạy lồng được. Transcript: <code>~/.claude/projects/&lt;cwd-slug&gt;/&lt;session_id&gt;.jsonl</code>. Plugin nạp từ thư mục nguồn marketplace, không phải cache — checkout nguồn phải đứng yên trên <code>main</code>.</td></tr><tr><td>Codex</td><td><strong>go</strong> (baseline cần cửa sổ tắt plugin, xem cuối dòng)</td><td><code>ask-codex ask --origin human --access workspace --cwd &lt;run-dir&gt; --model gpt-6-luna</code>, prompt qua stdin; skill đưa vào bằng <code>studio.py install &lt;skill&gt; --agent codex --workspace &lt;run-dir&gt;</code>. Baseline: Codex bật plugin <code>agent-skill-studio</code> toàn máy nên phiên không-skill vẫn thấy cả hai skill (smoke 17/10 hỏng); chưa có đường tắt theo tiến trình qua cầu. Cách đã dùng 18/10: khi không có phiên Codex tương tác, tắt plugin bằng <code>codex-config.ps1 -Set 'plugins.&quot;agent-skill-studio@agent-skill-studio&quot;.enabled=false'</code> trong đúng một cửa sổ lô, chạy smoke vắng skill (<code>smoke/codex_base_clean.json</code>) rồi 5 phiên, bật lại <code>=true</code> trong <code>finally</code>, so băm file config trước/sau. Cần Đức duyệt mỗi lần. Transcript: <code>~/.codex/sessions/&lt;yyyy&gt;/&lt;mm&gt;/&lt;dd&gt;/rollout-*-&lt;id&gt;.jsonl</code>, tìm theo <code>cwd</code> ở dòng đầu.</td></tr><tr><td>Antigravity</td><td><strong>no-go</strong> (<code>no-go:no-transcript;global-skill-root-not-isolated</code>)</td><td><code>ask-agy</code> headless không sinh transcript, và liệt kê cả skill chưa cài vào workspace (lấy từ <code>~/.gemini/antigravity/skills</code>) nên không tách được có/không skill.</td></tr></tbody></table>
+<p>Lưu ý khi chạy: dưới <code>--allowedTools</code> ở trên, lệnh Bash ghép (<code>cd … &amp;&amp; ls … &amp;&amp; python …</code>) bị từ chối; model tự chạy lại từng lệnh. Codex ghi cảnh báo &quot;Exceeded skills context budget&quot;: danh mục skill chỉ còn tên. Câu trả lời của cả hai harness theo tiếng Việt vì luật toàn cục của máy nạp vào phiên (ghi vào <code>preamble</code>).</p>
+<h3>Schema log một phiên (<code>runs/SPR-18/&lt;ISO&gt;_&lt;runtime&gt;_&lt;case-id&gt;_&lt;with|base&gt;.json</code>)</h3>
+<p>Giữ các khoá mẫu cũ và thêm: <code>pair_id</code> (<code>&lt;skill&gt;/&lt;case-id&gt;/&lt;runtime&gt;</code>), <code>with_skill</code>, <code>kind</code>, <code>triggered</code>, <code>activation_evidence</code> (<code>hits</code>, <code>scripts</code>, <code>transcript_sha256</code>), <code>transcript_path</code>, <code>cwd</code>, <code>skill_sha256_loaded</code>, <code>skill_sha256_repo</code>, <code>pinned_model</code>, <code>actual_model</code>, <code>preamble</code>, <code>ledger_id</code>, <code>status</code> ∈ <code>ran</code> | <code>not_run</code> | <code>contaminated</code> | <code>invalid-version</code> | <code>invalid-model</code>. Transcript đầy đủ không nằm trong repo này mà ở hồ sơ sprint của OpcOS; log chỉ giữ <code>hits</code> và băm.</p>
+<p>Lô SPR-33 ghi thêm năm khoá (đọc được từ log mẫu; <code>activation.py verify|summarize</code> không dùng chúng):</p>
+<ul><li><code>should_trigger</code>: kỳ vọng của bộ câu (<code>true</code> cho câu dương, <code>false</code> cho câu âm/near-miss), chép từ <code>cases.json</code>; so với <code>triggered</code> để tính dương/âm.</li><li><code>loading_mode</code>: cách skill vào phiên; <code>plugin-dir</code> = nạp bằng <code>--plugin-dir</code> từ cây <code>git archive</code> đã chốt (không dùng plugin cài sẵn của máy).</li><li><code>plugin_dir</code>: nguồn của cây plugin đó (thư mục thử và commit đã archive, <code>autocrlf=false</code>), viết dạng tương đối hoặc <code>~</code>, không đường tuyệt đối của máy.</li><li><code>session_id</code>: mã phiên <code>claude -p</code> (tên transcript <code>&lt;session_id&gt;.jsonl</code>); khi chạy không qua cầu A2A thì <code>ledger_id = session_id</code>.</li><li><code>not_run_reason</code>: lý do khi <code>status</code> khác <code>ran</code> (ví dụ chạm giới hạn phiên); khoá chỉ xuất hiện ở phiên không chạy, nên 16/16 log SPR-33 (đều <code>ran</code>) không mang khoá này.</li></ul>
+<h2>Antigravity — đo trong IDE (bàn giao cho sprint riêng RQ-117)</h2>
+<p>Cầu <code>ask-agy</code> (headless <code>--print</code>) không đo được kích hoạt: một lượt đo 17/10/2026 cho thấy (1) không có transcript (thư mục <code>brain/</code> không mọc thêm), (2) danh mục skill lấy từ thư mục skill toàn máy chứ không từ workspace thử, nên không có baseline sạch. Muốn đo phải chạy phiên trong IDE. Dùng lại nguyên bộ câu <code>evals/&lt;skill&gt;/cases.json</code>, oracle <code>expected/</code>, thước <code>rubric.md</code> (xem manifest), skill vào <code>.agents/skills</code> của workspace thử bằng <code>studio.py install … --agent antigravity --workspace &lt;run-dir&gt;</code>, và với baseline phải tạm đưa skill toàn máy ra khỏi <code>~/.gemini/antigravity/skills</code> (việc đổi máy, cần Đức duyệt riêng). Chấm kích hoạt bằng lịch sử tool call của IDE; không coi tên skill trong danh mục là kích hoạt.</p>
+<h2>Lô SPR-33 — cùng cách đo, trên Claude Code</h2>
+<p>Lô 16 lượt (8 case mỗi skill) chạy ngày 22/10/2026 với Claude Code 2.1.308, model <code>claude-sonnet-5-5</code>, nạp skill bằng <code>--plugin-dir</code> từ bản <code>git archive</code> tại SHA lô, đúng lệnh ở dòng Claude Code của bảng trên; log ở <code>runs/SPR-33/</code>, đếm bằng <code>activation.py count … --runtime claude-code</code> và <code>summarize</code>. Số đo và giới hạn: <code>QA_REPORT.md</code> (repo OpcOS, <code>system/ledger/agent-skill-studio/archive/QA_REPORT.md</code>). Codex và Antigravity thật không chạy ở lô này (<code>not_run:needs-directive</code>).</p>
+<h2>Luật lô — chạy lô kích hoạt mới</h2>
+<p>Ba luật cứng, rút từ lô SPR-33 (nguồn: <code>REPORT</code> SPR-33 mục <code>RF12</code>, <code>LN5</code>, <code>LN6</code>, <code>CO11</code>). Vi phạm thì lô không dùng làm bằng chứng.</p>
+<ol><li><strong><code>--plugin-dir</code> đặt NGOÀI cây cha của run dir, mỗi run một cha riêng.</strong> Lô <code>6d47a33</code> đặt <code>--plugin-dir</code> dưới cùng thư mục cha với các run dir: agent mò hệ file (<code>grep</code> cây cha) thấy <code>SKILL.md</code> và sản phẩm của lượt khác, một lượt kích hoạt vì mò chứ không vì mô tả skill (đó là toàn bộ chênh 3/5 so với 2/5). Cây plugin là bản <code>git archive</code> của <code>SHA lô</code> (không dùng checkout), đặt ở thư mục anh em của cây run, không phải tổ tiên của run dir.</li><li><strong>Che log bằng <code>evals/tools/redact.py</code> TRƯỚC khi commit.</strong> Transcript đầy đủ có đường người dùng và email; lô SPR-33 phải che lại 21 chỗ sau khi đã commit. Che xong mới <code>git add</code>; log trong repo chỉ giữ <code>hits</code> và băm.</li><li><strong><code>SHA lô</code> = HEAD sau review cuối</strong> (kể cả review bảo mật), không phải HEAD sau task thực thi: mỗi review tìm thấy sửa trong <code>skills/</code> là một lô 16 lượt mới (SPR-33 chạy ba lần: <code>f113954</code> huỷ, <code>6d47a33</code>, <code>b85329d</code>). Đóng băng rồi ghi 40 ký tự thập lục phân đầy đủ vào <code>manifest.json</code> của lô ở ledger (khoá <code>batch_sha</code>) và vào khối <code>evaluated.batch_sha</code> của <code>evals/catalog.json</code>; sửa <code>skills/</code> hay <code>studio.py</code> sau đó thì <code>SHA lô</code> vô hiệu.</li></ol>
+<p><strong>Dao động giữa lô.</strong> Thước kích hoạt không nhạy và n nhỏ: cùng cờ, cùng skill, hai lô khác nhau cho kết quả khác nhau — <code>data-quality-audit</code> positive 5/5 (lô <code>6d47a33</code>) so với 4/5 (lô <code>b85329d</code>); <code>skill-creator-studio</code> 3/5 so với 2/5 (nguồn: <code>REPORT</code> SPR-33 <code>VR9</code>). Chỉ khẳng định «không hồi quy» ở mức ngưỡng; đừng suy ra «tốt hơn» hay «kém đi» từ một lô.</p>
+<p><strong><code>activation.py verify</code> trên archive.</strong> <code>--main-skill-dir</code> và <code>--cache-skill-dir</code> phải trỏ cây <code>git archive</code> của <code>SHA lô</code> (cả hai), không trỏ checkout làm việc và không trỏ bản cài sẵn <code>~/.claude/plugins/cache/...</code> (bản đó là marketplace từ <code>main</code>, băm khác nên <code>verify</code> thoát 1 &quot;claude cache skill hash changed&quot;; xem <code>VR11</code>).</p>
+<p>PowerShell:</p>
+<pre><code class="language-powershell">$sha = (git rev-parse HEAD)                       # HEAD sau review cuối = SHA lô
+$arc = Join-Path $env:LOCALAPPDATA &quot;opcos\batch-$sha&quot;          # NGOÀI cây cha của mọi run dir
+New-Item -ItemType Directory -Force &quot;$arc\plugin&quot; | Out-Null
+git -c core.autocrlf=false archive $sha | tar -x -C &quot;$arc\plugin&quot;
+python -X utf8 evals/tools/activation.py verify --eval-dir evals/&lt;skill&gt; `
+  --main-skill-dir &quot;$arc\plugin\skills\&lt;skill&gt;&quot; --cache-skill-dir &quot;$arc\plugin\skills\&lt;skill&gt;&quot; `
+  --manifest &lt;OpcOS&gt;/system/ledger/agent-skill-studio/evidence/&lt;lô&gt;/&lt;skill&gt;/manifest.json
+# mỗi run: cwd = một cha riêng, plugin nạp từ archive
+claude -p --plugin-dir &quot;$arc\plugin&quot; --model claude-sonnet-5-5 --output-format json   # prompt qua stdin
+python -X utf8 evals/tools/redact.py filter &lt;transcript-vào&gt; &lt;log-ra&gt; --runtime claude-code   # trước git add</code></pre>
+<p>bash:</p>
+<pre><code class="language-bash">sha=$(git rev-parse HEAD)                          # HEAD sau review cuối = SHA lô
+arc=&quot;${XDG_STATE_HOME:-$HOME/.local/state}/opcos/batch-$sha&quot;   # NGOÀI cây cha của mọi run dir
+mkdir -p &quot;$arc/plugin&quot;
+git -c core.autocrlf=false archive &quot;$sha&quot; | tar -x -C &quot;$arc/plugin&quot;
+python3 -X utf8 evals/tools/activation.py verify --eval-dir evals/&lt;skill&gt; \
+  --main-skill-dir &quot;$arc/plugin/skills/&lt;skill&gt;&quot; --cache-skill-dir &quot;$arc/plugin/skills/&lt;skill&gt;&quot; \
+  --manifest &lt;OpcOS&gt;/system/ledger/agent-skill-studio/evidence/&lt;lô&gt;/&lt;skill&gt;/manifest.json
+claude -p --plugin-dir &quot;$arc/plugin&quot; --model claude-sonnet-5-5 --output-format json   # prompt qua stdin
+python3 -X utf8 evals/tools/redact.py filter &lt;transcript-vao&gt; &lt;log-ra&gt; --runtime claude-code   # truoc git add</code></pre>
+<p>Cờ của <code>redact.py</code> xem <code>python -X utf8 evals/tools/redact.py --help</code>; ví dụ trên chỉ minh hoạ thứ tự các bước.</p>
+<h3>Khối <code>evaluated</code> trong catalog</h3>
+<p>Khối <code>evaluated</code> (<code>sprint</code>, <code>date</code>, <code>harnesses</code>, <code>ab_report</code>) thêm <code>result</code> ∈ <code>passed</code> | <code>below-threshold</code> | <code>partial</code> | <code>not_run</code> và <code>batch_sha</code> (40 hex). Cổng <code>model_evaluated_problems</code> tính lại <code>result</code> từ run log: ưu tiên <code>not_run</code> (không harness nào chạy) &gt; <code>below-threshold</code> &gt; <code>partial</code> (có harness khai <code>not_run:&lt;lý do&gt;</code>) &gt; <code>passed</code>. <code>model_evaluated: false</code> chỉ bỏ phép áp ngưỡng <code>AB_THRESHOLDS</code>, mọi kiểm toàn vẹn giữ nguyên; <code>false</code> + <code>passed</code> đỏ. <code>true</code> giữ nguyên mọi kiểm cũ và đòi <code>result == passed</code>. <code>passed</code> nghĩa là mọi harness đã <code>ran</code> đều đạt ngưỡng và harness còn lại hoãn có lý do tường minh (<code>not_run:&lt;lý do&gt;</code>). <code>batch_sha_kind</code> (bắt buộc cùng <code>batch_sha</code>) ∈ <code>commit</code> | <code>tree</code>: lô mới phải <code>commit</code> (= HEAD sau review cuối); <code>tree</code> (băm cây thư mục skill) chỉ cho lô cũ không ghi SHA lô, như SPR-18.</p>
+  </article>
+</div></div>
+</main>
+<footer class="site">
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../assets/logo.svg" alt="" width="26" height="26">Agent Skill Studio</a>
+        <p class="foot-tag">Tạo, kiểm, đo và phân phối Agent Skills dùng chung cho Claude Code, Codex và Antigravity.</p>
+      </div>
+      <div class="foot-links">
+        <div class="foot-col">
+          <b>Sản phẩm</b>
+          <a href="../../../index.html">Trang chủ</a>
+          <a href="../../../about/index.html">Giới thiệu</a>
+          <a href="../../../install/index.html">Cài đặt</a>
+          <a href="../../../guide/index.html">Cách dùng</a>
+          <a href="../../../flow/index.html">Luồng &amp; quy trình</a>
+          <a href="../../../principles/index.html">Nguyên tắc</a>
+          <a href="../../../docs/index.html">Docs</a>
+        </div>
+        <div class="foot-col">
+          <b>Tài nguyên</b>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Nguyễn Quang Đức · MIT</span>
+      <span class="lic">MIT License · giữ credit tác giả</span>
+    </div>
+  </div>
+</footer>
+<script src="../../../assets/ds/site.js?v=1.0.0"></script>
+</body>
+</html>

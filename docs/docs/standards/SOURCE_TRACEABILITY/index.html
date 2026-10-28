@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="vi" data-lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15 · Docs · Agent Skill Studio</title>
+<meta name="description" content="Tài liệu standards/SOURCE_TRACEABILITY.md của Agent Skill Studio.">
+<link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/docs/standards/SOURCE_TRACEABILITY/">
+<link rel="icon" href="../../../assets/logo.svg">
+<link rel="stylesheet" href="../../../assets/ds/site.css?v=1.0.0">
+</head>
+<body>
+<canvas id="netbg" aria-hidden="true"></canvas>
+<a class="skip" href="#main">Bỏ qua điều hướng</a>
+<header class="site" id="siteHeader">
+  <div class="wrap nav">
+    <a class="brand" href="../../../index.html"><img src="../../../assets/logo.svg" alt="">Agent Skill Studio</a>
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="../../../index.html">Trang chủ</a>
+      <a href="../../../about/index.html">Giới thiệu</a>
+      <a href="../../../install/index.html">Cài đặt</a>
+      <a href="../../../guide/index.html">Cách dùng</a>
+      <a href="../../../flow/index.html">Luồng &amp; quy trình</a>
+      <a href="../../../principles/index.html">Nguyên tắc</a>
+      <a href="../../../docs/index.html" class="active" aria-current="page">Docs</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm gh" href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+    <button class="theme-btn" type="button" data-ds-theme-toggle aria-label="Giao diện"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  </div>
+</header>
+<main id="main">
+<div class="wrap"><div class="doc-layout">
+  <nav class="doc-toc" aria-label="Tài liệu">
+    <b>Tài liệu</b>
+    <ul>
+      <li><a href="../../../docs/AGENTS/index.html">Agent Skill Studio — Repository Instructions</a></li>
+      <li><a href="../../../docs/CHANGELOG/index.html">Changelog</a></li>
+      <li><a href="../../../docs/CLAUDE/index.html">Claude Code adapter for Agent Skill Studio</a></li>
+      <li><a href="../../../docs/GEMINI/index.html">Antigravity notes for Agent Skill Studio</a></li>
+      <li><a href="../../../docs/LICENSE_POLICY/index.html">License Policy</a></li>
+      <li><a href="../../../docs/README/index.html">Agent Skill Studio</a></li>
+    </ul>
+    <p class="dir">evals/</p>
+    <ul>
+      <li><a href="../../../docs/evals/RUNBOOK/index.html">Evals Runbook — kiểm định Skill bằng model thật</a></li>
+    </ul>
+    <p class="dir">evals/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../docs/evals/skill-creator-studio/rubric/index.html">Skill Creator Studio — Evaluation rubric</a></li>
+    </ul>
+    <p class="dir">examples/</p>
+    <ul>
+      <li><a href="../../../docs/examples/README/index.html">Bộ ví dụ mẫu</a></li>
+      <li><a href="../../../docs/examples/descriptions/index.html">Cặp description tốt và xấu</a></li>
+      <li><a href="../../../docs/examples/eval-cases/index.html">Mẫu case eval</a></li>
+    </ul>
+    <p class="dir">examples/data-quality-audit/</p>
+    <ul>
+      <li><a href="../../../docs/examples/data-quality-audit/SKILL/index.html">Data Quality Audit — CSV</a></li>
+    </ul>
+    <p class="dir">examples/exemplar-vi/writing-release-notes/</p>
+    <ul>
+      <li><a href="../../../docs/examples/exemplar-vi/writing-release-notes/SKILL/index.html">Writing Release Notes</a></li>
+    </ul>
+    <p class="dir">examples/exemplar/writing-commit-messages/</p>
+    <ul>
+      <li><a href="../../../docs/examples/exemplar/writing-commit-messages/SKILL/index.html">Writing Commit Messages</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../docs/skills/skill-creator-studio/SKILL/index.html">Skill Creator Studio</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/references/</p>
+    <ul>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/AUDIT_CHECKLIST/index.html">Audit Checklist — Findings before fixes</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/CORE_RULES/index.html">Core Rules</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/NEW_WORKFLOW/index.html">NEW Workflow — Design a skill with tests first</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/REFINE_WORKFLOW/index.html">REFINE Workflow — Test before deleting</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/SOURCE_NOTES/index.html">Source Notes — Source-of-truth discipline</a></li>
+    </ul>
+    <p class="dir">standards/</p>
+    <ul>
+      <li><a href="../../../docs/standards/DOC_TYPES/index.html">Doc Types — luật cho ba loại tài liệu</a></li>
+      <li><a href="../../../docs/standards/EVALUATION_STANDARD/index.html">Evaluation Standard — Cách chứng minh Skill hoạt động</a></li>
+      <li><a href="../../../docs/standards/HARNESSES/index.html">Harnesses — Claude Code, Codex, Antigravity</a></li>
+      <li><a href="../../../docs/standards/README/index.html">Standards Directory</a></li>
+      <li><a href="../../../docs/standards/SECURITY_AND_PERMISSIONS/index.html">Security &amp; Permissions Standard</a></li>
+      <li><a href="../../../docs/standards/SKILL_AUTHORING_STANDARD/index.html">Skill Authoring Standard — SK-00…SK-15</a></li>
+      <li><a href="../../../docs/standards/SOURCE_TRACEABILITY/index.html" aria-current="page">Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15</a></li>
+      <li><a href="../../../docs/standards/VIETNAMESE_SKILL_WRITING/index.html">Chuẩn viết tiếng Việt cho skill</a></li>
+    </ul>
+    <p class="dir">templates/</p>
+    <ul>
+      <li><a href="../../../docs/templates/README/index.html">Templates</a></li>
+    </ul>
+    <p class="dir">templates/starter-project/</p>
+    <ul>
+      <li><a href="../../../docs/templates/starter-project/AGENTS/index.html">Project Agent Instructions (cross-agent starting template)</a></li>
+      <li><a href="../../../docs/templates/starter-project/README/index.html">Project entrypoint template</a></li>
+    </ul>
+  </nav>
+  <article class="prose">
+    <div class="doc-meta"><a href="../../../docs/index.html">Docs</a> / <code>standards/SOURCE_TRACEABILITY.md</code></div>
+<h1>Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15</h1>
+<p><strong>Checked:</strong> 2026-10-22 (A10–A16 mở lại ngày này; A1–A9 giữ mốc 2026-10-12). Tài liệu này phân biệt <strong>nguồn chính thức / tài liệu cộng đồng / quyết định nội bộ</strong>. Không viện dẫn PDF như thể PDF là văn bản chính thức của Anthropic. <code>Official</code> trong bảng nghĩa là sự kiện hay đặc tả do nhà cung cấp công bố, không đồng nghĩa họ gắn rule đó là MUST.</p>
+<h2>Contents</h2>
+<ul><li>Nguồn đã đối chiếu</li><li>Ma trận quy tắc</li><li>Bản đồ 46 check RoboNuggets</li><li>Khác biệt cần lưu ý</li><li>Quy trình cập nhật</li></ul>
+<h2>Nguồn đã đối chiếu</h2>
+<p><strong>Primary / canonical</strong></p>
+<ul><li><a href="https://agentskills.io/specification">A1 — Agent Skills Specification</a>: <code>SKILL.md</code>, name/description, optional resources, progressive disclosure.</li><li><a href="https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices">A2 — Anthropic Skill Authoring Best Practices</a>: 500 lines, Contents &gt;100, degrees of freedom, triggers, workflow, eval.</li><li><a href="https://code.claude.com/docs/en/skills">A3 — Claude Code Skills</a>: skill paths, invocation, frontmatter extensions, lifecycle, compaction, hooks, evaluations.</li><li><a href="https://code.claude.com/docs/en/hooks">A4 — Claude Code Hooks</a>: hook semantics, matchers và event lifecycle.</li><li><a href="https://code.claude.com/docs/en/memory">A5 — Claude Code Memory</a>: <code>CLAUDE.md</code> và <code>@AGENTS.md</code> import.</li><li><a href="https://learn.chatgpt.com/docs/build-skills">A6 — OpenAI Build Skills</a>: discovery <code>.agents/skills</code>, manifest/packaging, <code>agents/openai.yaml</code> optional.</li><li><a href="https://learn.chatgpt.com/docs/agent-configuration/agents-md">A7 — OpenAI AGENTS.md</a>: instruction discovery/override.</li><li><a href="https://www.antigravity.google/docs/skills">A8 — Google Antigravity Skills</a>: <code>.agents/skills</code>, <code>~/.gemini/config/skills</code>.</li><li><a href="https://www.antigravity.google/docs/rules/">A9 — Google Antigravity Rules</a>: <code>AGENTS.md</code>, <code>GEMINI.md</code>, <code>.agents/rules</code>.</li><li><a href="https://agentskills.io/skill-creation/best-practices">A10 — Agent Skills: best practices</a>: câu hỏi &quot;agent có làm sai nếu thiếu dòng này&quot;, Gotchas, mặc định thay thực đơn.</li><li><a href="https://agentskills.io/skill-creation/evaluating-skills">A11 — Agent Skills: evaluating skills</a>: <code>evals/evals.json</code>, chạy có/không skill (định dạng cho bộ xuất eval).</li><li><a href="https://code.claude.com/docs/en/plugin-evals">A12 — Claude Code plugin evals</a>: <code>claude plugin eval</code>, case + grader, early access; định dạng khác agentskills.</li><li><a href="https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices">A13 — Claude prompting best practices</a>: ngôn ngữ ép buộc làm model gần đây phản ứng quá đà.</li><li><a href="https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5">A14 — Prompting Claude Fable 5</a>: skill viết cho model cũ thường quá cứng; không bắt chép suy luận; ranh giới làm/không làm.</li><li><a href="https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5-5">A15 — Prompting Claude Sonnet 5.5</a>: loại từ chối <code>reasoning_extraction</code>; vẫn được xin giải thích ngắn.</li></ul>
+<p><strong>Community / derivative</strong></p>
+<ul><li><a href="https://www.youtube.com/watch?v=VQyYzLJ6xos">C1 — YouTube VQyYzLJ6xos</a>, RoboNuggets/Jay E, nội dung 10 rule. Lưu ý: chúng tôi dựa vào transcript công khai và PDF kèm theo, <strong>không tự tuyên bố đã phát trực tiếp video</strong>.</li><li><strong>C2 — PDF đính kèm từ người dùng</strong> <em>The 10 SKILL Rules</em> (13 trang). Trang 3: audit prompt; trang 4–9: 10 rule; trang 10: 3 bonus; trang 11: Skill Creator Plus; trang 13: recap/source links. PDF là một bản diễn giải có dẫn link gốc, không phải official specs.</li><li><a href="https://github.com/robonuggets/skill-creator-plus">C3 — robonuggets/skill-creator-plus</a>: community skill kiểm tra 46 rule IDs và NEW/AUDIT/REFINE; MIT license; không affiliation Anthropic.</li></ul>
+<p><strong>Nội bộ / mã nguồn đo được</strong></p>
+<ul><li><strong>A16 — <code>SYS/bootstrap/measure-skill-budget.py:13-14</code></strong> <code>[codex 0.147, mã]</code>: Codex 0.147 giới hạn <code>description</code> 1 024 ký tự và thân skill 8 000 B (<code>ST3</code>, mã thêm ở SPR-33 TK9, chưa có trong validator lúc viết chuẩn). Trần nội bộ 350 ký tự / description trong cùng file là quyết định OpcOS, không phải chuẩn Studio.</li></ul>
+<h2>Ma trận quy tắc</h2>
+<table><thead><tr><th>Studio</th><th>PDF page</th><th>Official reference</th><th>Phần chính thức đã xác minh</th><th>Phần là quyết định Studio</th></tr></thead><tbody><tr><td>SK-01 Progressive disclosure</td><td>4</td><td>A1, A2</td><td><code>SKILL.md</code> làm overview, khuyến nghị &lt;500 body lines, tránh deeply nested reference</td><td><code>WARN</code> nếu &gt;=500 dòng; giữ links tới tất cả reference quan trọng</td></tr><tr><td>SK-02 Content lists và cắt gọn</td><td>5</td><td>A2, A10</td><td>Reference &gt;100 lines nên có TOC; &quot;agent có làm sai nếu thiếu&quot; là phép thử giữ/bỏ</td><td>Ba câu hỏi cắt (review); Contents chuyển sang <code>SK-15</code></td></tr><tr><td>SK-03 Freedom</td><td>5</td><td>A2</td><td>High/medium/low specificity theo fragility</td><td>Studio định nghĩa MUST phải phân loại cho workflow có rủi ro</td></tr><tr><td>SK-04 Model testing</td><td>6</td><td>A2, prompting guides</td><td>Test với model sử dụng, older scaffolding có thể quá chặt</td><td>Production-critical bắt buộc log theo model</td></tr><tr><td>SK-05 Concise description</td><td>6</td><td>A1, A2, A3</td><td>Name/description spec, what+when; third person; danh sách skill cắt ở 1 536 ký tự</td><td>Thực thi heuristic trigger; con số ~500 ký tự đầu là ngưỡng nội bộ</td></tr><tr><td>SK-06 Workflows/checklists</td><td>7</td><td>A2</td><td>Steps/checklists/go-back cho việc phức tạp</td><td>Conditional MUST, không bắt task nhỏ checklists dài</td></tr><tr><td>SK-07 Feedback loops</td><td>7</td><td>A2</td><td>Validate -&gt; fix -&gt; repeat, action-guiding errors</td><td>Set release gate theo mức rủi ro</td></tr><tr><td>SK-08 Common patterns</td><td>8</td><td>A2</td><td>Templates, examples, conditional workflow</td><td>Nêu explicit STRICT vs FLEXIBLE</td></tr><tr><td>SK-09 Shareability</td><td>8</td><td>A1, A2</td><td>Dependencies, paths, environment assumptions</td><td>Chặn máy-specific paths trong package ở mức phù hợp</td></tr><tr><td>SK-10 Hooks</td><td>9</td><td>A3, A4</td><td>Claude Code support lifecycle hooks, must-hold controls</td><td>Portable controls khác nhau theo runtime, không ép <code>hooks:</code> common</td></tr><tr><td>SK-11 Evals first</td><td>10</td><td>A2, A3, A11, A12</td><td>&gt;=3 evals recommended, baseline no-skill, fresh sessions; hai định dạng eval chính thức khác nhau</td><td><code>evals/</code> <strong>ngoài skill</strong> và bộ xuất <code>--export</code> là Studio-only policy</td></tr><tr><td>SK-12 Critical instructions first</td><td>10</td><td>A3</td><td>After compaction, giữ 5 000 token đầu mỗi skill, tổng 25 000</td><td>Keep safety + DoD near top of every Skill</td></tr><tr><td>SK-13 No reasoning echo</td><td>10</td><td>A14, A15</td><td>Một số model từ chối yêu cầu phơi suy luận nội bộ (<code>reasoning_extraction</code>); vẫn xin được giải thích ngắn</td><td>MUST tránh yêu cầu chain-of-thought trên tất cả agent</td></tr><tr><td>SK-14 Chữ ép buộc có lý do</td><td>— (mới)</td><td>A10, A13</td><td>Ngôn ngữ ép buộc làm model gần đây phản ứng quá đà; giải thích lý do hiệu quả hơn mệnh lệnh cứng</td><td><code>CT10</code> WARN; chữ trơ chỉ trong khối low-freedom hoặc khối strict</td></tr><tr><td>SK-15 Contents và điều giữ ở đầu</td><td>— (mới)</td><td>A2, A3</td><td>Reference &gt;100 dòng nên có mục lục; sau compaction giữ 5 000 token đầu</td><td>Thân &gt;100 dòng nên có Contents (<code>ST7</code>), định dạng và ≤12 mục là <code>[nội bộ]</code>; không có luật chính thức &quot;đọc N dòng đầu&quot;</td></tr></tbody></table>
+<h2>Bản đồ 46 check RoboNuggets</h2>
+<p><strong>Nguồn:</strong> <a href="https://github.com/robonuggets/skill-creator-plus">robonuggets/skill-creator-plus</a> (đọc README, <code>SKILL.md</code>, references/audit-checklist.md, references/testing.md). Đây là <strong>repo cộng đồng</strong> MIT, không phải sản phẩm chính thức của Anthropic. Mapping dưới đây là <strong>phân loại của Studio</strong>, không sao chép nội dung validator của repo.</p>
+<h3>Nguyên tắc mapping</h3>
+<ul><li><code>Portable</code>: kiểm tra theo đặc tả chung; <code>Claude</code>: tính năng đặc thù Claude Code; <code>Studio</code>: kinh nghiệm quản trị nội bộ.</li><li>Mã <code>FM1..LB2</code> xuất phát từ README của repo. Mã <code>SK-00..SK-15</code> là chuẩn thiết kế tại <code>SKILL_AUTHORING_STANDARD.md</code>.</li><li>Máy có thể tự kiểm tra syntax/paths, nhưng các vấn đề chất lượng (đúng trigger, quá chi tiết, risk) vẫn cần reviewer/agent eval.</li></ul>
+<table><thead><tr><th>Community ID</th><th>Ý chính</th><th>Studio mapping</th><th>Phạm vi</th><th>Check</th></tr></thead><tbody><tr><td>FM1</td><td>YAML parses, starts line 1</td><td>SK-00</td><td>Portable</td><td>Static</td></tr><tr><td>FM2</td><td>Valid name and folder match</td><td>SK-00</td><td>Portable</td><td>Static</td></tr><tr><td>FM3</td><td>Activity-oriented name</td><td>SK-05</td><td>Studio</td><td>Review</td></tr><tr><td>FM4</td><td>Recognized fields per runtime</td><td>SK-00</td><td>Portable/Claude</td><td>Static</td></tr><tr><td>FM5</td><td>Invocation deliberately configured</td><td>SK-03, SK-10</td><td>Claude</td><td>Review</td></tr><tr><td>DS1</td><td>Description length/format</td><td>SK-00</td><td>Portable</td><td>Static</td></tr><tr><td>DS2</td><td>Description third-person</td><td>SK-05</td><td>Best practice</td><td>Heuristic</td></tr><tr><td>DS3</td><td>What+when and user language</td><td>SK-05</td><td>Portable/Best practice</td><td>Review</td></tr><tr><td>DS4</td><td>Important use-case first, listing budget</td><td>SK-05</td><td>Claude</td><td>Static+Review</td></tr><tr><td>ST1</td><td>SKILL body &lt;500 lines</td><td>SK-01</td><td>Best practice</td><td>Static WARN</td></tr><tr><td>ST2</td><td>Important rules near top</td><td>SK-12</td><td>Claude</td><td>Review</td></tr><tr><td>ST3</td><td>Break out details, on demand</td><td>SK-01</td><td>Portable</td><td>Review</td></tr><tr><td>ST4</td><td>References directly linked from SKILL</td><td>SK-01</td><td>Best practice</td><td>Static+Review</td></tr><tr><td>ST5</td><td>TOC for reference &gt;100 lines</td><td>SK-15</td><td>Best practice</td><td>Static WARN</td></tr><tr><td>ST6</td><td>Reachable, named files, no backups</td><td>SK-01, SK-09</td><td>Studio</td><td>Static+Review</td></tr><tr><td>ST7</td><td>POSIX path slashes in docs</td><td>SK-09</td><td>Best practice</td><td>Static heuristic</td></tr><tr><td>CT1</td><td>Remove generic redundant context</td><td>SK-05</td><td>Best practice</td><td>Review</td></tr><tr><td>CT2</td><td>Freedom per risk/fragility</td><td>SK-03</td><td>Best practice</td><td>Review</td></tr><tr><td>CT3</td><td>Avoid stale time-sensitive guidance</td><td>SK-05</td><td>Best practice</td><td>Review</td></tr><tr><td>CT4</td><td>Consistent terminology</td><td>SK-05</td><td>Best practice</td><td>Review</td></tr><tr><td>CT5</td><td>Label strict/flexible templates</td><td>SK-08</td><td>Best practice</td><td>Review</td></tr><tr><td>CT6</td><td>Examples for style-sensitive output</td><td>SK-08</td><td>Best practice</td><td>Review</td></tr><tr><td>CT7</td><td>One default plus escape hatch</td><td>SK-08</td><td>Studio</td><td>Review</td></tr><tr><td>CT8</td><td>Full MCP tool names</td><td>SK-09</td><td>Best practice</td><td>Review</td></tr><tr><td>CT9</td><td>No TODO/FIXME placeholders in release</td><td>SK-07</td><td>Studio</td><td>Static WARN</td></tr><tr><td>CT10</td><td>One rule in one location</td><td>SK-05</td><td>Studio</td><td>Review</td></tr><tr><td>WF1</td><td>Checklist, checkable done, go-back</td><td>SK-06</td><td>Best practice</td><td>Review</td></tr><tr><td>WF2</td><td>Validator feedback loop</td><td>SK-07</td><td>Best practice</td><td>Review</td></tr><tr><td>WF3</td><td>Plan/validate/execute before destructive</td><td>SK-03, SK-10</td><td>Best practice</td><td>Review</td></tr><tr><td>WF4</td><td>Standing instructions vs one-time lines</td><td>SK-12</td><td>Claude</td><td>Review</td></tr><tr><td>SC1</td><td>Solve errors in script instead of defer</td><td>SK-07</td><td>Best practice</td><td>Code review</td></tr><tr><td>SC2</td><td>Explain constants</td><td>SK-09</td><td>Best practice</td><td>Code review</td></tr><tr><td>SC3</td><td>Distinguish run vs read script</td><td>SK-09</td><td>Best practice</td><td>Review</td></tr><tr><td>SC4</td><td>Actionable error output</td><td>SK-07</td><td>Best practice</td><td>Code review</td></tr><tr><td>SC5</td><td>Explicit package requirements/install</td><td>SK-09</td><td>Best practice</td><td>Static+Review</td></tr><tr><td>NM1</td><td>Remove over-prescription after testing</td><td>SK-04, SK-05</td><td>Model-specific</td><td>Eval</td></tr><tr><td>NM2</td><td>Avoid internal reasoning echo</td><td>SK-13</td><td>Model-specific</td><td>Static heuristic</td></tr><tr><td>NM3</td><td>Explain why rule exists</td><td>SK-05</td><td>Best practice</td><td>Review</td></tr><tr><td>NM4</td><td>Brief steering, capitals sparingly</td><td>SK-05</td><td>Best practice</td><td>Review</td></tr><tr><td>NM5</td><td>Explicit verification, fresh checker</td><td>SK-07, SK-11</td><td>Best practice</td><td>Review</td></tr><tr><td>HK1</td><td>Must-hold -&gt; hook/policy</td><td>SK-10</td><td>Claude-specific hook</td><td>Security test</td></tr><tr><td>TS1</td><td>&gt;=3 evals, baseline before skill</td><td>SK-11</td><td>Best practice</td><td>Static+Eval</td></tr><tr><td>TS2</td><td>Fresh session, Skill on/off</td><td>SK-11</td><td>Best practice</td><td>Eval</td></tr><tr><td>TS3</td><td>Models actually used</td><td>SK-04</td><td>Best practice</td><td>Eval</td></tr><tr><td>LB1</td><td>No competing triggers</td><td>SK-05</td><td>Studio</td><td>Library review</td></tr><tr><td>LB2</td><td>Unused skills managed/disabled</td><td>SK-05</td><td>Claude-specific tooling</td><td>Library review</td></tr></tbody></table>
+<h3>Chủ động không sao chép nguyên xi</h3>
+<ul><li>Trường frontmatter ngoài 6 fields chỉ được dùng trong <strong>target-specific</strong> Claude variant.</li><li><code>Hooks</code> là một hình thức enforcement của Claude, không được biến thành thiết kế portable duy nhất.</li><li>Script validator của cộng đồng là nguồn tham khảo kiểm tra, <strong>không</strong> được xem như thẩm quyền kỹ thuật mạnh hơn tài liệu chính thức.</li><li>Một rule thuộc nhóm &quot;Advice&quot; có thể bổ ích nhưng không được trình bày như điều kiện bắt buộc của Anthropic.</li></ul>
+<h3>Backlog review semantic (không thể kiểm tra hoàn toàn bằng regex)</h3>
+<ol><li>Skill quá chung, trùng trigger với Skill khác, hoặc quá nhiều phạm vi.</li><li>Ref quá lớn nhưng được đọc ở mọi run, làm mất lợi thế disclosure.</li><li>Cơ chế enforce nguy hiểm chỉ là một dòng prose.</li><li>Skill tạo output đẹp nhưng sai factual/harness task.</li><li>Rule có thể bỏ được trên model mới: phải chạy eval, không xóa dựa vào cảm giác.</li></ol>
+<p><strong>Tổng số community rule IDs trong ma trận: 46</strong> (FM 5 + DS 4 + ST 7 + CT 10 + WF 4 + SC 5 + NM 5 + HK 1 + TS 3 + LB 2).</p>
+<h2>Khác biệt cần lưu ý</h2>
+<ol><li><strong>Tên video nói &quot;10 NEW&quot;</strong>: không chứng minh cả mười là feature mới cùng ngày. Các hướng dẫn gốc được thu thập thành top 10; bản PDF thừa nhận những quy tắc từ nguồn chính thức.</li><li><strong>Mốc 500 lines / &gt;100 lines</strong>: Anthropic gọi là khuyến nghị chất lượng; <code>Agent Skills Specification</code> không áp đặt file không thể load khi vượt mốc.</li><li><strong>5000 tokens ở Claude Code compaction</strong>: không phải giới hạn file size của chuẩn portable; ưu tiên nội dung quan trọng đầu SKILL.md.</li><li><strong>Claude versions Fable 5, Opus/Sonnet 5.5:</strong> thông tin này được PDF và hướng dẫn model riêng đề cập; về lâu dài dùng action principle &quot;test on models actually deployed&quot;, không đóng cứng version vào rule.</li><li><strong>Claude skill hook</strong>: khi invoke, hook có scope lifecycle của Skill, không bảo vệ trước invoke hoặc runtime khác.</li><li><strong>PDF trang 11 so sánh Anthropic skill-creator (300 lines vs 100)</strong> là lời community, lẫn hai số khác nhau. (a) Thân <code>SKILL.md</code> của skill-creator chính thức đo được 485 dòng (đo cục bộ 2026-10-22), dưới mốc 500 của A2. (b) Skill-creator khuyến nghị mục lục cho reference &gt;300 dòng (<code>skill-creator/SKILL.md:98</code>; dossier SPR-33 <code>dossier-skill-docs2.md:37</code>), còn A2 nêu &gt;100 dòng. Studio chọn 100 dòng cho Contents theo A2 và 500 dòng cho thân.</li><li><strong>Antigravity migration date:</strong> các URL chính thức <code>antigravity.google</code> và <code>www.antigravity.google</code> từng có thông tin thời hạn workflow khác nhau (October 19 vs November 1 2026 trong kết quả công khai). Không đóng cứng một ngày migration thành quy tắc; cần xác minh bản docs/cấu hình runtime tại thời điểm triển khai.</li><li><strong>Không có automatic evaluation model</strong> trong bộ CLI này. Static validator và model A/B test là hai tầng khác nhau.</li><li><strong>Số ngăn nghìn bằng khoảng trắng (<code>V11</code> của <code>VIETNAMESE_SKILL_WRITING.md</code>):</strong> quyết định nội bộ theo khuyến nghị của Fable ngày 2026-10-22, không phải quy tắc của nguồn chính thức.</li></ol>
+<h2>Quy trình cập nhật</h2>
+<ul><li>Mỗi claim có source link, date checked và vị trí PDF phù hợp.</li><li>Khi vendor docs cập nhật, ghi phiên bản mới, rà lại các rule <code>MUST/SHOULD</code>, <code>HARNESSES.md</code> và test case. Đánh dấu stale nếu không thể kiểm tra.</li><li>Không ghi dữ liệu user/customer vào upstream evidence log; chỉ lưu synthetic fixtures và link nguồn công khai.</li></ul>
+<h3>Citation practice</h3>
+<p>Nguồn chính thức dùng để kiểm tra chức năng/format của vendor; README cộng đồng dùng để xác định nội dung repo RoboNuggets; PDF dùng để xác định các quy tắc mà user muốn hệ thống hóa. Không lấy số sao GitHub/stars làm evidence về độ tin cậy.</p>
+  </article>
+</div></div>
+</main>
+<footer class="site">
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../assets/logo.svg" alt="" width="26" height="26">Agent Skill Studio</a>
+        <p class="foot-tag">Tạo, kiểm, đo và phân phối Agent Skills dùng chung cho Claude Code, Codex và Antigravity.</p>
+      </div>
+      <div class="foot-links">
+        <div class="foot-col">
+          <b>Sản phẩm</b>
+          <a href="../../../index.html">Trang chủ</a>
+          <a href="../../../about/index.html">Giới thiệu</a>
+          <a href="../../../install/index.html">Cài đặt</a>
+          <a href="../../../guide/index.html">Cách dùng</a>
+          <a href="../../../flow/index.html">Luồng &amp; quy trình</a>
+          <a href="../../../principles/index.html">Nguyên tắc</a>
+          <a href="../../../docs/index.html">Docs</a>
+        </div>
+        <div class="foot-col">
+          <b>Tài nguyên</b>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Nguyễn Quang Đức · MIT</span>
+      <span class="lic">MIT License · giữ credit tác giả</span>
+    </div>
+  </div>
+</footer>
+<script src="../../../assets/ds/site.js?v=1.0.0"></script>
+</body>
+</html>

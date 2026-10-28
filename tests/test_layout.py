@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-SIX_DIRS = {"standards", "skills", "templates", "examples", "evals", "tests"}
+TOP_DIRS = {"standards", "skills", "templates", "examples", "evals", "tests", "docs"}
 README_MAX_LINES = 150  # a README must have fewer lines than this
 MIN_LETTERS = 20        # shorter lines are labels, not prose
 VIETNAMESE_SHARE = 0.9  # CQ2 (a): share of prose lines that carry a Vietnamese diacritic
@@ -24,6 +24,7 @@ DEEP_OK = (
     re.compile(r"^examples/[^/]+/"),          # so is an example skill
     re.compile(r"^evals/[^/]+/fixtures/"),    # fixtures keep the shape of the thing they imitate
     re.compile(r"^tests/fixtures/"),
+    re.compile(r"^docs/"),                    # the website: generated pages mirror the Markdown tree
 )
 
 
@@ -67,10 +68,10 @@ def accented(line):
 
 
 class LayoutTests(unittest.TestCase):
-    def test_six_top_dirs(self):
-        """SC1/FR1.1: the tracked folders directly under the root (hidden ones aside) are exactly the six."""
+    def test_seven_top_dirs(self):
+        """SC1/FR1.1: the tracked folders directly under the root (hidden ones aside) are exactly the seven (the six of the library plus `docs/` for the website)."""
         top = {x.split("/")[0] for x in tracked() if "/" in x and not x.startswith(".")}
-        self.assertEqual(top, SIX_DIRS)
+        self.assertEqual(top, TOP_DIRS)
 
     def test_no_file_deeper_than_three(self):
         """SC1/FR1.2: a file sits in at most 3 folders, outside the four whole-folder exceptions."""

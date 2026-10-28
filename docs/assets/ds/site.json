@@ -1,0 +1,83 @@
+{
+  "name": "Agent Skill Studio",
+  "tagline": "Tạo, kiểm, đo và phân phối Agent Skills dùng chung cho Claude Code, Codex và Antigravity.",
+  "repo": "https://github.com/ducnguyen221/agent-skill-studio",
+  "site": "https://ducnguyen.vn/agent-skill-studio/",
+  "logo": "assets/logo.svg",
+  "license": "MIT",
+  "year": 2026,
+  "docsSource": "..",
+  "docsInclude": [
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE_POLICY.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    "standards/README.md",
+    "standards/SKILL_AUTHORING_STANDARD.md",
+    "standards/VIETNAMESE_SKILL_WRITING.md",
+    "standards/DOC_TYPES.md",
+    "standards/HARNESSES.md",
+    "standards/EVALUATION_STANDARD.md",
+    "standards/SECURITY_AND_PERMISSIONS.md",
+    "standards/SOURCE_TRACEABILITY.md",
+    "skills/skill-creator-studio/SKILL.md",
+    "skills/skill-creator-studio/references/NEW_WORKFLOW.md",
+    "skills/skill-creator-studio/references/AUDIT_CHECKLIST.md",
+    "skills/skill-creator-studio/references/REFINE_WORKFLOW.md",
+    "skills/skill-creator-studio/references/CORE_RULES.md",
+    "skills/skill-creator-studio/references/SOURCE_NOTES.md",
+    "templates/README.md",
+    "templates/starter-project/README.md",
+    "templates/starter-project/AGENTS.md",
+    "examples/README.md",
+    "examples/descriptions.md",
+    "examples/eval-cases.md",
+    "examples/exemplar/writing-commit-messages/SKILL.md",
+    "examples/exemplar-vi/writing-release-notes/SKILL.md",
+    "examples/data-quality-audit/SKILL.md",
+    "evals/RUNBOOK.md",
+    "evals/skill-creator-studio/rubric.md"
+  ],
+  "resources": [
+    {
+      "href": "https://github.com/ducnguyen221/agent-skill-studio",
+      "label": "GitHub"
+    },
+    {
+      "href": "https://github.com/ducnguyen221/agent-skill-studio/blob/main/CHANGELOG.md",
+      "label": "Changelog"
+    }
+  ],
+  "menu": [
+    {
+      "href": "index.html",
+      "label": "Trang chủ"
+    },
+    {
+      "href": "about/index.html",
+      "label": "Giới thiệu"
+    },
+    {
+      "href": "install/index.html",
+      "label": "Cài đặt"
+    },
+    {
+      "href": "guide/index.html",
+      "label": "Cách dùng"
+    },
+    {
+      "href": "flow/index.html",
+      "label": "Luồng & quy trình"
+    },
+    {
+      "href": "principles/index.html",
+      "label": "Nguyên tắc"
+    },
+    {
+      "href": "docs/index.html",
+      "label": "Docs"
+    }
+  ]
+}

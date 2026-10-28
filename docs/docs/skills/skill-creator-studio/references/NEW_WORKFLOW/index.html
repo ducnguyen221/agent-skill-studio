@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="vi" data-lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEW Workflow — Design a skill with tests first · Docs · Agent Skill Studio</title>
+<meta name="description" content="Tài liệu skills/skill-creator-studio/references/NEW_WORKFLOW.md của Agent Skill Studio.">
+<link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/docs/skills/skill-creator-studio/references/NEW_WORKFLOW/">
+<link rel="icon" href="../../../../../assets/logo.svg">
+<link rel="stylesheet" href="../../../../../assets/ds/site.css?v=1.0.0">
+</head>
+<body>
+<canvas id="netbg" aria-hidden="true"></canvas>
+<a class="skip" href="#main">Bỏ qua điều hướng</a>
+<header class="site" id="siteHeader">
+  <div class="wrap nav">
+    <a class="brand" href="../../../../../index.html"><img src="../../../../../assets/logo.svg" alt="">Agent Skill Studio</a>
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="../../../../../index.html">Trang chủ</a>
+      <a href="../../../../../about/index.html">Giới thiệu</a>
+      <a href="../../../../../install/index.html">Cài đặt</a>
+      <a href="../../../../../guide/index.html">Cách dùng</a>
+      <a href="../../../../../flow/index.html">Luồng &amp; quy trình</a>
+      <a href="../../../../../principles/index.html">Nguyên tắc</a>
+      <a href="../../../../../docs/index.html" class="active" aria-current="page">Docs</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm gh" href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+    <button class="theme-btn" type="button" data-ds-theme-toggle aria-label="Giao diện"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  </div>
+</header>
+<main id="main">
+<div class="wrap"><div class="doc-layout">
+  <nav class="doc-toc" aria-label="Tài liệu">
+    <b>Tài liệu</b>
+    <ul>
+      <li><a href="../../../../../docs/AGENTS/index.html">Agent Skill Studio — Repository Instructions</a></li>
+      <li><a href="../../../../../docs/CHANGELOG/index.html">Changelog</a></li>
+      <li><a href="../../../../../docs/CLAUDE/index.html">Claude Code adapter for Agent Skill Studio</a></li>
+      <li><a href="../../../../../docs/GEMINI/index.html">Antigravity notes for Agent Skill Studio</a></li>
+      <li><a href="../../../../../docs/LICENSE_POLICY/index.html">License Policy</a></li>
+      <li><a href="../../../../../docs/README/index.html">Agent Skill Studio</a></li>
+    </ul>
+    <p class="dir">evals/</p>
+    <ul>
+      <li><a href="../../../../../docs/evals/RUNBOOK/index.html">Evals Runbook — kiểm định Skill bằng model thật</a></li>
+    </ul>
+    <p class="dir">evals/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../../../docs/evals/skill-creator-studio/rubric/index.html">Skill Creator Studio — Evaluation rubric</a></li>
+    </ul>
+    <p class="dir">examples/</p>
+    <ul>
+      <li><a href="../../../../../docs/examples/README/index.html">Bộ ví dụ mẫu</a></li>
+      <li><a href="../../../../../docs/examples/descriptions/index.html">Cặp description tốt và xấu</a></li>
+      <li><a href="../../../../../docs/examples/eval-cases/index.html">Mẫu case eval</a></li>
+    </ul>
+    <p class="dir">examples/data-quality-audit/</p>
+    <ul>
+      <li><a href="../../../../../docs/examples/data-quality-audit/SKILL/index.html">Data Quality Audit — CSV</a></li>
+    </ul>
+    <p class="dir">examples/exemplar-vi/writing-release-notes/</p>
+    <ul>
+      <li><a href="../../../../../docs/examples/exemplar-vi/writing-release-notes/SKILL/index.html">Writing Release Notes</a></li>
+    </ul>
+    <p class="dir">examples/exemplar/writing-commit-messages/</p>
+    <ul>
+      <li><a href="../../../../../docs/examples/exemplar/writing-commit-messages/SKILL/index.html">Writing Commit Messages</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../../../docs/skills/skill-creator-studio/SKILL/index.html">Skill Creator Studio</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/references/</p>
+    <ul>
+      <li><a href="../../../../../docs/skills/skill-creator-studio/references/AUDIT_CHECKLIST/index.html">Audit Checklist — Findings before fixes</a></li>
+      <li><a href="../../../../../docs/skills/skill-creator-studio/references/CORE_RULES/index.html">Core Rules</a></li>
+      <li><a href="../../../../../docs/skills/skill-creator-studio/references/NEW_WORKFLOW/index.html" aria-current="page">NEW Workflow — Design a skill with tests first</a></li>
+      <li><a href="../../../../../docs/skills/skill-creator-studio/references/REFINE_WORKFLOW/index.html">REFINE Workflow — Test before deleting</a></li>
+      <li><a href="../../../../../docs/skills/skill-creator-studio/references/SOURCE_NOTES/index.html">Source Notes — Source-of-truth discipline</a></li>
+    </ul>
+    <p class="dir">standards/</p>
+    <ul>
+      <li><a href="../../../../../docs/standards/DOC_TYPES/index.html">Doc Types — luật cho ba loại tài liệu</a></li>
+      <li><a href="../../../../../docs/standards/EVALUATION_STANDARD/index.html">Evaluation Standard — Cách chứng minh Skill hoạt động</a></li>
+      <li><a href="../../../../../docs/standards/HARNESSES/index.html">Harnesses — Claude Code, Codex, Antigravity</a></li>
+      <li><a href="../../../../../docs/standards/README/index.html">Standards Directory</a></li>
+      <li><a href="../../../../../docs/standards/SECURITY_AND_PERMISSIONS/index.html">Security &amp; Permissions Standard</a></li>
+      <li><a href="../../../../../docs/standards/SKILL_AUTHORING_STANDARD/index.html">Skill Authoring Standard — SK-00…SK-15</a></li>
+      <li><a href="../../../../../docs/standards/SOURCE_TRACEABILITY/index.html">Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15</a></li>
+      <li><a href="../../../../../docs/standards/VIETNAMESE_SKILL_WRITING/index.html">Chuẩn viết tiếng Việt cho skill</a></li>
+    </ul>
+    <p class="dir">templates/</p>
+    <ul>
+      <li><a href="../../../../../docs/templates/README/index.html">Templates</a></li>
+    </ul>
+    <p class="dir">templates/starter-project/</p>
+    <ul>
+      <li><a href="../../../../../docs/templates/starter-project/AGENTS/index.html">Project Agent Instructions (cross-agent starting template)</a></li>
+      <li><a href="../../../../../docs/templates/starter-project/README/index.html">Project entrypoint template</a></li>
+    </ul>
+  </nav>
+  <article class="prose">
+    <div class="doc-meta"><a href="../../../../../docs/index.html">Docs</a> / <code>skills/skill-creator-studio/references/NEW_WORKFLOW.md</code></div>
+<h1>NEW Workflow — Design a skill with tests first</h1>
+<blockquote><p><strong>Conclusion:</strong> to create a Skill, fix the need and scope first, write at least three test prompts before extensive instructions, then choose the shape, write the manifest and the workflow, add resources only when warranted, and verify before shipping.</p></blockquote>
+<h2>When to use / not</h2>
+<ul><li>Use when the NEW mode applies: a repeated job has no dedicated Skill yet.</li><li>Not for reviewing an existing Skill (use the AUDIT checklist) and not for fixing one that failed in use (use <a href="../../../../../docs/skills/skill-creator-studio/references/REFINE_WORKFLOW/index.html">REFINE_WORKFLOW.md</a>).</li></ul>
+<h2>Steps</h2>
+<h3>Step 1 — Define need and scope</h3>
+<p>Before creating a folder, obtain a concrete repeated job, users' words, expected output and a negative case. Define one primary activity and a few synonyms; avoid trying to claim everything related to &quot;analysis&quot; or &quot;code&quot;.</p>
+<ul><li>Command: ask the user for the job, their own words, the expected output and one negative case.</li><li>Expect: one primary activity with a few synonyms, a concrete input and output, and a negative case, all written down.</li><li>Stop if: no concrete repeated job can be named; create no folder.</li></ul>
+<h3>Step 2 — Write baseline and evaluations</h3>
+<p>Write at least three real prompts <strong>before</strong> extensive instruction writing. Test no-skill responses in fresh sessions when runtime is available. If the runtime is unavailable, create <code>evals/&lt;skill-name&gt;/cases.json</code> with <code>status: draft</code>, record baseline <code>not_run</code>, and be explicit.</p>
+<p>Each test identifies trigger expectation, file inputs, observed outputs and hard acceptance criteria. Include one unrelated prompt that should not invoke this Skill, one typical happy path and one edge case.</p>
+<ul><li>Command: write <code>evals/&lt;skill-name&gt;/cases.json</code> with at least three prompts, then run each prompt without the Skill in a fresh session.</li><li>Expect: every case states trigger expectation, inputs, observed outputs and acceptance criteria; one case is unrelated, one typical, one an edge case. With no runtime, the file has <code>status: draft</code> and baseline <code>not_run</code>.</li><li>Stop if: fewer than three real prompts exist; do not draft instructions yet.</li></ul>
+<h3>Step 3 — Choose shape and degree of freedom</h3>
+<ul><li><strong>Single file</strong> for short workflow, few dependencies.</li><li><strong>Bundle</strong> for references, scripts, assets used conditionally.</li><li><strong>Router</strong> when work branches into independently detailed jobs; prefer separate Skills if they have distinct triggers and ownership.</li></ul>
+<p>High freedom for varied writing, medium for templates and standard practices, low for destructive or deterministic operations. Permission control lives in the runtime, not prose alone.</p>
+<p><code>studio.py new</code> scaffolds the minimal template by default: one <code>SKILL.md</code> with a <code>## Gotchas</code> section, enough for a single file. <code>--lang {en,vi}</code> picks the language of the body (default <code>en</code>; the frontmatter stays English). <code>--full</code> scaffolds the full template (<code>references/</code>, <code>scripts/</code>, <code>assets/</code>, <code>agents/</code>) for a bundle and also follows <code>--lang</code>: <code>--full --lang vi</code> writes the Vietnamese <code>SKILL.md</code> and leaves no <code>SKILL.vi.md</code> in the new Skill. <code>--output</code> sets the parent folder and <code>--eval-root</code> the external evals folder.</p>
+<ul><li>Command: <code>python3 scripts/studio.py new &lt;name&gt; --description &quot;&lt;what&gt;. Use when &lt;trigger&gt;.&quot; --output &lt;target&gt;</code>, adding <code>--lang vi</code> and <code>--full</code> as the shape needs.</li><li>Expect: the scaffold exists, <code>evals/&lt;name&gt;</code> is separate from it, and name and description match.</li><li>Stop if: the work splits into jobs with distinct triggers and owners; make separate Skills instead of a router.</li></ul>
+<h3>Step 4 — Write portable manifest</h3>
+<p>Six Agent Skills fields are recognized: <code>name</code>, <code>description</code>, <code>license</code>, <code>compatibility</code>, <code>metadata</code>, <code>allowed-tools</code>; the first two are required. Place version under <code>metadata</code>, not top-level. <code>description</code>: first state job, then &quot;Use when ...&quot; with real trigger vocabulary.</p>
+<ul><li>Command: edit the frontmatter of the new <code>SKILL.md</code>, then run <code>python3 scripts/studio.py validate &lt;path&gt;</code>.</li><li>Expect: no frontmatter finding; the description names the job first and then &quot;Use when ...&quot; with real trigger words.</li><li>Stop if: a field outside the six is needed; move it to a runtime-specific adapter instead of the portable header.</li></ul>
+<h3>Step 5 — Write the main workflow</h3>
+<p>Critical rules → purpose → when/when not → numbered steps with done-when and if-fail return → resource routing → acceptance. Keep references linked directly; make reference &gt;100 lines start with Contents. <code>SKILL.md</code> should ideally be under 500 body lines.</p>
+<ul><li>Command: write the body of <code>SKILL.md</code> in that order, linking each reference directly from it.</li><li>Expect: every step has a done-when and an if-fail return; each reference over 100 lines starts with Contents; the body is ideally under 500 lines.</li><li>Stop if: the body grows past the limit; move detail into a reference or a separate Skill.</li></ul>
+<h3>Step 6 — Add resources only when warranted</h3>
+<ul><li>Domain knowledge -&gt; <code>references/</code>.</li><li>Deterministic repeatable operations -&gt; <code>scripts/</code> with usage, inputs, errors and dependencies.</li><li>Templates/data/images/config -&gt; <code>assets/</code>.</li><li>Test prompts/fixtures/baselines -&gt; <strong>repo external</strong> <code>evals/&lt;name&gt;/</code>.</li></ul>
+<ul><li>Command: add a file only for a need from the list above, and link it from <code>SKILL.md</code>.</li><li>Expect: each script documents usage, inputs, errors and dependencies; no eval fixture or baseline sits inside the Skill folder.</li><li>Stop if: a resource has no step that needs it; leave it out.</li></ul>
+<h3>Step 7 — Verify and ship</h3>
+<p>Run static validation, semantic review, model A/B test and packaging. If <code>STUDIO-DRAFT</code> remains or evals still empty, release is blocked. Review permissions for high-risk scripts. Never invent a pass status.</p>
+<ul><li>Command: <code>python3 scripts/studio.py validate &lt;path&gt; --require-evals --eval-root &lt;evals folder&gt;</code>, then <code>python3 scripts/studio.py evals --all --eval-root &lt;evals folder&gt;</code> (inside the Studio repository <code>--eval-root</code> may be left out), then the model A/B test from the external evals runbook, then <code>python3 scripts/studio.py package &lt;path&gt;</code>.</li><li>Expect: validation and the evals check exit 0, the A/B result is recorded with its evidence, and the package is built.</li><li>Stop if: <code>STUDIO-DRAFT</code> remains, the evals are still empty, or a high-risk script has not been reviewed for permissions; return to Step 5.</li></ul>
+<h2>Gotchas</h2>
+<ul><li>A fresh scaffold still carries the <code>STUDIO-DRAFT</code> marker and three draft eval cases; <code>package</code> refuses the Skill until the marker is deleted, and the cases need real prompts before release.</li><li><code>SKILL.vi.md</code> is only the source of the Vietnamese body: <code>new</code> writes it as <code>SKILL.md</code> and never copies it into the new Skill.</li><li>Static checks are not model tests: without a runtime, record the model evaluation as <code>not_run</code>.</li></ul>
+<h2>Done when</h2>
+<ul><li>The Skill folder and the separate <code>evals/&lt;name&gt;</code> folder exist with matching name and description.</li><li><code>validate --require-evals</code> and the evals check exit 0, and no <code>STUDIO-DRAFT</code> remains.</li><li>Every claim of model testing has real evidence; anything not run is recorded as <code>not_run</code>.</li></ul>
+  </article>
+</div></div>
+</main>
+<footer class="site">
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="../../../../../index.html"><img src="../../../../../assets/logo.svg" alt="" width="26" height="26">Agent Skill Studio</a>
+        <p class="foot-tag">Tạo, kiểm, đo và phân phối Agent Skills dùng chung cho Claude Code, Codex và Antigravity.</p>
+      </div>
+      <div class="foot-links">
+        <div class="foot-col">
+          <b>Sản phẩm</b>
+          <a href="../../../../../index.html">Trang chủ</a>
+          <a href="../../../../../about/index.html">Giới thiệu</a>
+          <a href="../../../../../install/index.html">Cài đặt</a>
+          <a href="../../../../../guide/index.html">Cách dùng</a>
+          <a href="../../../../../flow/index.html">Luồng &amp; quy trình</a>
+          <a href="../../../../../principles/index.html">Nguyên tắc</a>
+          <a href="../../../../../docs/index.html">Docs</a>
+        </div>
+        <div class="foot-col">
+          <b>Tài nguyên</b>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Nguyễn Quang Đức · MIT</span>
+      <span class="lic">MIT License · giữ credit tác giả</span>
+    </div>
+  </div>
+</footer>
+<script src="../../../../../assets/ds/site.js?v=1.0.0"></script>
+</body>
+</html>

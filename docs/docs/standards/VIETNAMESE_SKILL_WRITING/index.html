@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="vi" data-lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chuẩn viết tiếng Việt cho skill · Docs · Agent Skill Studio</title>
+<meta name="description" content="Tài liệu standards/VIETNAMESE_SKILL_WRITING.md của Agent Skill Studio.">
+<link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/docs/standards/VIETNAMESE_SKILL_WRITING/">
+<link rel="icon" href="../../../assets/logo.svg">
+<link rel="stylesheet" href="../../../assets/ds/site.css?v=1.0.0">
+</head>
+<body>
+<canvas id="netbg" aria-hidden="true"></canvas>
+<a class="skip" href="#main">Bỏ qua điều hướng</a>
+<header class="site" id="siteHeader">
+  <div class="wrap nav">
+    <a class="brand" href="../../../index.html"><img src="../../../assets/logo.svg" alt="">Agent Skill Studio</a>
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="../../../index.html">Trang chủ</a>
+      <a href="../../../about/index.html">Giới thiệu</a>
+      <a href="../../../install/index.html">Cài đặt</a>
+      <a href="../../../guide/index.html">Cách dùng</a>
+      <a href="../../../flow/index.html">Luồng &amp; quy trình</a>
+      <a href="../../../principles/index.html">Nguyên tắc</a>
+      <a href="../../../docs/index.html" class="active" aria-current="page">Docs</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm gh" href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+    <button class="theme-btn" type="button" data-ds-theme-toggle aria-label="Giao diện"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  </div>
+</header>
+<main id="main">
+<div class="wrap"><div class="doc-layout">
+  <nav class="doc-toc" aria-label="Tài liệu">
+    <b>Tài liệu</b>
+    <ul>
+      <li><a href="../../../docs/AGENTS/index.html">Agent Skill Studio — Repository Instructions</a></li>
+      <li><a href="../../../docs/CHANGELOG/index.html">Changelog</a></li>
+      <li><a href="../../../docs/CLAUDE/index.html">Claude Code adapter for Agent Skill Studio</a></li>
+      <li><a href="../../../docs/GEMINI/index.html">Antigravity notes for Agent Skill Studio</a></li>
+      <li><a href="../../../docs/LICENSE_POLICY/index.html">License Policy</a></li>
+      <li><a href="../../../docs/README/index.html">Agent Skill Studio</a></li>
+    </ul>
+    <p class="dir">evals/</p>
+    <ul>
+      <li><a href="../../../docs/evals/RUNBOOK/index.html">Evals Runbook — kiểm định Skill bằng model thật</a></li>
+    </ul>
+    <p class="dir">evals/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../docs/evals/skill-creator-studio/rubric/index.html">Skill Creator Studio — Evaluation rubric</a></li>
+    </ul>
+    <p class="dir">examples/</p>
+    <ul>
+      <li><a href="../../../docs/examples/README/index.html">Bộ ví dụ mẫu</a></li>
+      <li><a href="../../../docs/examples/descriptions/index.html">Cặp description tốt và xấu</a></li>
+      <li><a href="../../../docs/examples/eval-cases/index.html">Mẫu case eval</a></li>
+    </ul>
+    <p class="dir">examples/data-quality-audit/</p>
+    <ul>
+      <li><a href="../../../docs/examples/data-quality-audit/SKILL/index.html">Data Quality Audit — CSV</a></li>
+    </ul>
+    <p class="dir">examples/exemplar-vi/writing-release-notes/</p>
+    <ul>
+      <li><a href="../../../docs/examples/exemplar-vi/writing-release-notes/SKILL/index.html">Writing Release Notes</a></li>
+    </ul>
+    <p class="dir">examples/exemplar/writing-commit-messages/</p>
+    <ul>
+      <li><a href="../../../docs/examples/exemplar/writing-commit-messages/SKILL/index.html">Writing Commit Messages</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../docs/skills/skill-creator-studio/SKILL/index.html">Skill Creator Studio</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/references/</p>
+    <ul>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/AUDIT_CHECKLIST/index.html">Audit Checklist — Findings before fixes</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/CORE_RULES/index.html">Core Rules</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/NEW_WORKFLOW/index.html">NEW Workflow — Design a skill with tests first</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/REFINE_WORKFLOW/index.html">REFINE Workflow — Test before deleting</a></li>
+      <li><a href="../../../docs/skills/skill-creator-studio/references/SOURCE_NOTES/index.html">Source Notes — Source-of-truth discipline</a></li>
+    </ul>
+    <p class="dir">standards/</p>
+    <ul>
+      <li><a href="../../../docs/standards/DOC_TYPES/index.html">Doc Types — luật cho ba loại tài liệu</a></li>
+      <li><a href="../../../docs/standards/EVALUATION_STANDARD/index.html">Evaluation Standard — Cách chứng minh Skill hoạt động</a></li>
+      <li><a href="../../../docs/standards/HARNESSES/index.html">Harnesses — Claude Code, Codex, Antigravity</a></li>
+      <li><a href="../../../docs/standards/README/index.html">Standards Directory</a></li>
+      <li><a href="../../../docs/standards/SECURITY_AND_PERMISSIONS/index.html">Security &amp; Permissions Standard</a></li>
+      <li><a href="../../../docs/standards/SKILL_AUTHORING_STANDARD/index.html">Skill Authoring Standard — SK-00…SK-15</a></li>
+      <li><a href="../../../docs/standards/SOURCE_TRACEABILITY/index.html">Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15</a></li>
+      <li><a href="../../../docs/standards/VIETNAMESE_SKILL_WRITING/index.html" aria-current="page">Chuẩn viết tiếng Việt cho skill</a></li>
+    </ul>
+    <p class="dir">templates/</p>
+    <ul>
+      <li><a href="../../../docs/templates/README/index.html">Templates</a></li>
+    </ul>
+    <p class="dir">templates/starter-project/</p>
+    <ul>
+      <li><a href="../../../docs/templates/starter-project/AGENTS/index.html">Project Agent Instructions (cross-agent starting template)</a></li>
+      <li><a href="../../../docs/templates/starter-project/README/index.html">Project entrypoint template</a></li>
+    </ul>
+  </nav>
+  <article class="prose">
+    <div class="doc-meta"><a href="../../../docs/index.html">Docs</a> / <code>standards/VIETNAMESE_SKILL_WRITING.md</code></div>
+<h1>Chuẩn viết tiếng Việt cho skill</h1>
+<blockquote><p><strong>Kết luận:</strong> thân <code>SKILL.md</code> dùng đúng một ngôn ngữ, Việt hoặc Anh; frontmatter luôn tiếng Anh. Chuẩn này thêm 14 quy tắc cho thân Việt, trên nền <a href="../../../docs/standards/SKILL_AUTHORING_STANDARD/index.html">SKILL_AUTHORING_STANDARD.md</a>.</p></blockquote>
+<p><strong>Phiên bản:</strong> 0.1.0 · <strong>Ngày:</strong> 2026-10-22 · Áp cho skill mới và skill sprint đụng. Skill cũ chỉ báo qua <code>doctor</code>.</p>
+<h2>Cách dùng</h2>
+<ul><li>Lint <code>VI1</code>–<code>VI5</code> chỉ chạy khi thân có ít nhất 3 % chữ cái có dấu. Thân tiếng Anh không bị báo mã <code>VI*</code>.</li><li>Mọi mã <code>VI*</code> là cảnh báo (WARN). Dòng có <code>&lt;!-- studio:vi-ok --&gt;</code> được miễn.</li><li>Nhãn <code>[máy: VIn]</code> là mã lint kiểm quy tắc. Nhãn <code>[review]</code> cần người hoặc agent đọc.</li><li>Nguồn <code>[nội bộ]</code> là quy ước của Studio, không phải yêu cầu của nhà cung cấp.</li><li>Tiếng Việt tốn token hơn tiếng Anh (×2,14 theo cl100k, ×1,19 theo o200k, trên 3 đoạn mẫu). Tokenizer Claude chưa đo (<code>not_run</code>).</li></ul>
+<h2>Quy tắc</h2>
+<ul><li><strong>V01</strong> Đặt kết luận trước, tối đa hai câu, ở đầu file. Vì sao: agent bị cắt ngữ cảnh vẫn giữ ý chính. [review] [nội bộ]</li><li><strong>V02</strong> Mỗi mục một việc, mỗi bước bắt đầu bằng động từ mệnh lệnh (&quot;Chạy lệnh kiểm&quot;, không &quot;Việc kiểm tra&quot;). Vì sao: danh từ hoá làm mờ ai làm gì. [review] [nội bộ]</li><li><strong>V03</strong> Câu tối đa 25 từ, ô bảng tối đa 20 từ; lint chỉ báo khi câu vượt 40 từ. Từ là chuỗi tách bằng khoảng trắng. Vì sao: câu dài làm agent đoán sai chủ ngữ. [máy: VI3] [nội bộ]</li><li><strong>V04</strong> Viết mệnh lệnh trực tiếp, có chủ ngữ rõ cho mọi điều cấm và bắt buộc (&quot;Cấm sửa…&quot;, &quot;Phải chạy…&quot;). Vì sao: câu bị động khó thành hành động. [review] [nội bộ]</li><li><strong>V05</strong> Lặp danh từ thay cho đại từ khi cách xa hơn một câu (&quot;bộ test&quot;, không &quot;nó&quot;). Vì sao: đại từ xa danh từ làm agent gán nhầm đối tượng. [review] [nội bộ]</li><li><strong>V06</strong> Một khái niệm một từ, theo bảng thuật ngữ bên dưới. Vì sao: đổi từ giữa chừng khiến agent tưởng là hai khái niệm. [review] [nội bộ]</li><li><strong>V07</strong> Nhãn và trạng thái lấy từ một tập đóng, ví dụ đạt, không đạt, chưa chạy, không áp dụng. Vì sao: mỗi nơi một kiểu thì so khớp chuỗi bị lệch. [review] [nội bộ]</li><li><strong>V08</strong> Tối giản ngữ cảnh: không lịch sử, không lý do dài, không lặp luật đã ở file khác; chỉ link. Vì sao: mỗi dòng thừa tốn token mỗi lần nạp skill. [review] [nội bộ]</li><li><strong>V09</strong> Dùng đủ dấu, chữ dựng sẵn NFC; cấm tiếng Việt không dấu và gõ Telex hoặc VNI thô (ngoại lệ: tên file, ID, URL). Vì sao: không dấu gây đồng âm. Máy chỉ kiểm NFC. [máy: VI1] [nguồn: <code>platform.claude.com/docs/en/build-with-claude/multilingual-support</code>]</li><li><strong>V10</strong> Giữ thuật ngữ kỹ thuật tiếng Anh đã quen, đặt trong backtick nếu là mã; lần đầu ghi &quot;Việt (Anh)&quot; một lần mỗi file. Cấm kiểu &quot;deliver kết quả&quot;. Vì sao: Anh hoá câu Việt làm mờ nghĩa. [review] [nội bộ]</li><li><strong>V11</strong> Ngày theo ISO <code>2026-10-22</code>, không <code>22/10/2026</code>; số ngăn nghìn bằng khoảng trắng (<code>5 000</code>); đơn vị cách số một khoảng trắng (<code>25 KB</code>). Vì sao: ngày d/m và m/d dễ lẫn. Máy chỉ kiểm ngày. [máy: VI2] [nội bộ]</li><li><strong>V12</strong> Một dấu một nghĩa: &quot;·&quot; chỉ để liệt kê ngang hàng, &quot;—&quot; tối đa một cặp mỗi câu, số thứ tự cho trình tự. Vì sao: ký hiệu đa nghĩa làm agent đọc nhầm thứ tự. [review] [nội bộ]</li><li><strong>V13</strong> Frontmatter (<code>name</code>, <code>description</code>, khoá YAML) viết tiếng Anh; thân và lý do viết tiếng Việt; lệnh, đường dẫn, mã định danh giữ nguyên. <code>description</code> có chữ Việt phải còn cụm <code>Use when</code>. Vì sao: harness định tuyến skill bằng frontmatter. [máy: VI4] [nguồn: <code>ngon-ngu-tai-lieu.md</code> của kpim-skills]</li><li><strong>V14</strong> Mỗi skill chọn một ngôn ngữ cho thân, không trộn theo mục; ví dụ xấu hoặc tốt là ngoại lệ. Vì sao: luật OpcOS chỉ cho tiếng Việt hoặc tiếng Anh. [máy: VI5] [nguồn: <code>ngon-ngu-tai-lieu.md</code> của kpim-skills]</li></ul>
+<h2>Thuật ngữ</h2>
+<table><thead><tr><th>Thuật ngữ</th><th>Nghĩa</th></tr></thead><tbody><tr><td>cỡ</td><td>sprint size</td></tr><tr><td>tier</td><td>nhóm model (giữ tiếng Anh)</td></tr><tr><td>cổng</td><td>gate</td></tr><tr><td>mục</td><td>section</td></tr><tr><td>bước</td><td>step</td></tr><tr><td>việc</td><td>task (<code>TK</code>)</td></tr><tr><td>kiểm</td><td>check</td></tr><tr><td>đạt / không đạt / chưa chạy / không áp dụng</td><td>pass / fail / <code>not_run</code> / not applicable</td></tr></tbody></table>
+  </article>
+</div></div>
+</main>
+<footer class="site">
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="../../../index.html"><img src="../../../assets/logo.svg" alt="" width="26" height="26">Agent Skill Studio</a>
+        <p class="foot-tag">Tạo, kiểm, đo và phân phối Agent Skills dùng chung cho Claude Code, Codex và Antigravity.</p>
+      </div>
+      <div class="foot-links">
+        <div class="foot-col">
+          <b>Sản phẩm</b>
+          <a href="../../../index.html">Trang chủ</a>
+          <a href="../../../about/index.html">Giới thiệu</a>
+          <a href="../../../install/index.html">Cài đặt</a>
+          <a href="../../../guide/index.html">Cách dùng</a>
+          <a href="../../../flow/index.html">Luồng &amp; quy trình</a>
+          <a href="../../../principles/index.html">Nguyên tắc</a>
+          <a href="../../../docs/index.html">Docs</a>
+        </div>
+        <div class="foot-col">
+          <b>Tài nguyên</b>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Nguyễn Quang Đức · MIT</span>
+      <span class="lic">MIT License · giữ credit tác giả</span>
+    </div>
+  </div>
+</footer>
+<script src="../../../assets/ds/site.js?v=1.0.0"></script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="vi" data-lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luồng &amp; quy trình · Agent Skill Studio</title>
+<meta name="description" content="Vòng đời một skill, luồng dữ liệu eval và cổng model_evaluated, cấu trúc repo và CI mỗi lần push.">
+<link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/flow/">
+<link rel="icon" href="../assets/logo.svg">
+<link rel="stylesheet" href="../assets/ds/site.css?v=1.0.0">
+</head>
+<body>
+<canvas id="netbg" aria-hidden="true"></canvas>
+<!-- biểu tượng cho infographic (.ig-*): <svg class="ig-ico"><use href="#i-..."/></svg> -->
+<svg class="ig-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11.5a8 8 0 0 1-11.7 7.1L4 20l1.1-4A8 8 0 1 1 20 11.5Z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/><path d="M9 7h7M9 11h5"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.3 2.9 7.8 7 9.5 4.1-1.7 7-5.2 7-9.5V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-evidence" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/><path d="m9 15 2 2 4-4"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16 9.5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><path d="M12 15v2"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/></symbol>
+</svg>
+<a class="skip" href="#main">Bỏ qua điều hướng</a>
+<header class="site" id="siteHeader">
+  <div class="wrap nav">
+    <a class="brand" href="../index.html"><img src="../assets/logo.svg" alt="">Agent Skill Studio</a>
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="../index.html">Trang chủ</a>
+      <a href="../about/index.html">Giới thiệu</a>
+      <a href="../install/index.html">Cài đặt</a>
+      <a href="../guide/index.html">Cách dùng</a>
+      <a href="../flow/index.html" class="active" aria-current="page">Luồng &amp; quy trình</a>
+      <a href="../principles/index.html">Nguyên tắc</a>
+      <a href="../docs/index.html">Docs</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm gh" href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+    <button class="theme-btn" type="button" data-ds-theme-toggle aria-label="Giao diện"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  </div>
+</header>
+<main id="main">
+<section class="page-hero"><div class="wrap">
+  <span class="eyebrow"><span class="dot"></span>Luồng &amp; quy trình</span>
+  <h1>Việc chạy qua những bước nào</h1>
+  <p class="lead">Bốn luồng: vòng đời một skill, dữ liệu eval và cổng <code>model_evaluated</code>, cấu trúc repo, và CI mỗi lần push.</p>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>Luồng 1 — Vòng đời một skill</h2></div>
+  <div class="ig c-acc reveal">
+    <p class="ig-title">Tám bước, từ Refine quay về Viết</p>
+    <ol class="ig-track">
+      <li class="ig-step" style="--i:0"><div class="ig-node"><svg class="ig-ico"><use href="#i-chat"/></svg><span class="ig-num">1</span></div><div class="ig-body"><h3>Ý tưởng</h3><p>Một việc lặp lại, có từ người dùng hay nói và một ca không nên gọi.</p></div></li>
+      <li class="ig-step" style="--i:1"><div class="ig-node"><svg class="ig-ico"><use href="#i-book"/></svg><span class="ig-num">2</span></div><div class="ig-body"><h3>Eval trước</h3><p>Viết ≥3 ca thật (thường, biên, âm) và kế hoạch đo không skill, trước khi viết dài.</p></div></li>
+      <li class="ig-step" style="--i:2"><div class="ig-node"><svg class="ig-ico"><use href="#i-tool"/></svg><span class="ig-num">3</span></div><div class="ig-body"><h3>Viết</h3><p><code>new</code> dựng khung; viết thân theo thứ tự luật quan trọng → mục đích → khi nào dùng/không → các bước có «xong khi» → chỉ tới reference.</p></div></li>
+      <li class="ig-step" style="--i:3"><div class="ig-node"><svg class="ig-ico"><use href="#i-shield"/></svg><span class="ig-num">4</span></div><div class="ig-body"><h3>Check / validate</h3><p>Kiểm tĩnh; lỗi thì sửa rồi kiểm lại.</p><p class="ig-gate"><svg class="ig-ico"><use href="#i-shield"/></svg><span><b>Cổng</b> · lên Candidate</span></p></div></li>
+      <li class="ig-step" style="--i:4"><div class="ig-node"><svg class="ig-ico"><use href="#i-evidence"/></svg><span class="ig-num">5</span></div><div class="ig-body"><h3>Đo model thật</h3><p>Cùng ca, phiên mới, có và không skill, so A/B; chưa chạy thì <code>not_run</code>.</p><p class="ig-gate"><svg class="ig-ico"><use href="#i-shield"/></svg><span><b>Cổng</b> · lên Production</span></p></div></li>
+      <li class="ig-step" style="--i:5"><div class="ig-node"><svg class="ig-ico"><use href="#i-archive"/></svg><span class="ig-num">6</span></div><div class="ig-body"><h3>Đóng gói</h3><p><code>package</code> từ chối khi còn dấu nháp; thử <code>install</code>.</p></div></li>
+      <li class="ig-step" style="--i:6"><div class="ig-node"><svg class="ig-ico"><use href="#i-check"/></svg><span class="ig-num">7</span></div><div class="ig-body"><h3>Phát hành</h3><p>Ghi CHANGELOG, tăng phiên bản, owner duyệt.</p></div></li>
+      <li class="ig-step" style="--i:7"><div class="ig-node"><svg class="ig-ico"><use href="#i-tool"/></svg><span class="ig-num">8</span></div><div class="ig-body"><h3>Refine</h3><p>Dùng thật thấy lỗi → ghi bằng chứng → sửa nhỏ nhất → kiểm hồi quy; quay về Viết.</p><p class="ig-exit"><svg class="ig-ico"><use href="#i-lock"/></svg><span><b>Lỗi</b> · quay lại Viết</span></p></div></li>
+    </ol>
+  </div>
+  <h3 style="margin:28px 0 12px">Bốn trạng thái</h3>
+  <ol class="timeline"><li><span class="tnum">01</span><h3>Draft</h3><p>Đang viết, còn dấu nháp.</p></li><li><span class="tnum">02</span><h3>Candidate</h3><p><code>check</code> sạch, ≥3 tình huống, đã review nội dung.</p></li><li><span class="tnum">03</span><h3>Production</h3><p>Đo trên agent đích, owner duyệt, không lỗi an toàn.</p></li><li><span class="tnum">04</span><h3>Deprecated</h3><p>Dừng gọi, ghi đường chuyển, không xoá đột ngột.</p></li></ol>
+  <p class="note"><b>Đánh phiên bản:</b> PATCH sửa chữ, link; MINOR thêm quy trình, reference, eval; MAJOR đổi trigger, hợp đồng đầu ra, quyền thực thi.</p>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>Luồng 2 — Dữ liệu eval và cổng model_evaluated</h2></div>
+  <div class="ig c-acc reveal">
+    <p class="ig-title">Từ ca thử tới cổng EV20</p>
+    <ol class="ig-track ig-h">
+      <li class="ig-step" style="--i:0"><div class="ig-node"><svg class="ig-ico"><use href="#i-book"/></svg><span class="ig-num">1</span></div><div class="ig-body"><h3>cases.json + rubric</h3><p>Bộ ca: câu lệnh, có nên gọi không, hành vi kỳ vọng.</p></div></li>
+      <li class="ig-step" style="--i:1"><div class="ig-node"><svg class="ig-ico"><use href="#i-archive"/></svg><span class="ig-num">2</span></div><div class="ig-body"><h3>Ledger thô</h3><p>Ngoài repo, không public: log từng phiên, transcript đã che.</p></div></li>
+      <li class="ig-step" style="--i:2"><div class="ig-node"><svg class="ig-ico"><use href="#i-evidence"/></svg><span class="ig-num">3</span></div><div class="ig-body"><h3>evidence/&lt;lô&gt;.json</h3><p>Trong repo: sinh bằng <code>compact</code>, kiểm bằng <code>compact --verify</code>.</p></div></li>
+      <li class="ig-step" style="--i:3"><div class="ig-node"><svg class="ig-ico"><use href="#i-shield"/></svg><span class="ig-num">4</span></div><div class="ig-body"><h3>Cổng EV20</h3><p>Đếm lại, tính lại <code>result</code>, so với khối khai.</p><p class="ig-gate"><svg class="ig-ico"><use href="#i-shield"/></svg><span><b>Khớp</b> · thoát 0</span></p><p class="ig-exit"><svg class="ig-ico"><use href="#i-lock"/></svg><span><b>Lệch</b> · ERROR EV20, thoát 1</span></p></div></li>
+    </ol>
+  </div>
+  <div class="ig-notes">
+    <p class="ig-note"><svg class="ig-ico"><use href="#i-book"/></svg><span><b><code>evals/catalog.json</code></b> mỗi skill một mục (đường, phiên bản, agent đích, <code>model_evaluated</code>), có thể mang khối <code>evaluated</code>; mũi tên khai vào cổng.</span></p>
+    <p class="ig-note"><svg class="ig-ico"><use href="#i-archive"/></svg><span><b>Ledger thô</b> nằm ở sổ OpcOS <code>system/ledger/agent-skill-studio/evidence/&lt;lô&gt;/&lt;skill&gt;/</code>.</span></p>
+    <p class="ig-note"><svg class="ig-ico"><use href="#i-shield"/></svg><span><b>Ngưỡng mỗi agent đã chạy</b> kích hoạt đúng ≥4, kích hoạt sai 0, 5 cặp A/B có <code>better</code> ≥3 và <code>worse</code> 0. Không bao giờ sửa ngưỡng cho vừa số.</span></p>
+  </div>
+  <p style="margin-top:16px"><code>result</code> nhận một trong bốn giá trị: <code>not_run</code> (không agent nào chạy), <code>below-threshold</code>, <code>partial</code> (đạt nhưng còn agent hoãn có lý do), <code>passed</code>. <code>model_evaluated: true</code> chỉ hợp lệ khi <code>passed</code>.</p>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>Luồng 3 — Cấu trúc repo</h2></div>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Thư mục</th><th scope="col">Vai</th><th scope="col">Vào gói cài?</th></tr></thead>
+  <tbody><tr><td class="lbl"><code>standards/</code></td><td>8 file chuẩn cho tác giả skill</td><td>Không</td></tr>
+<tr><td class="lbl"><code>skills/</code></td><td>chỉ skill phát hành: <code>skill-creator-studio</code> (<code>SKILL.md</code>, <code>references/</code>, <code>scripts/</code> chứa engine, <code>assets/</code> chứa 2 khuôn)</td><td><b>Có</b> (chỉ thư mục này)</td></tr>
+<tr><td class="lbl"><code>templates/</code></td><td><code>starter-project/</code>: mẫu file luật cho dự án khác</td><td>Không</td></tr>
+<tr><td class="lbl"><code>examples/</code></td><td>mẫu để chép: <code>descriptions.md</code>, <code>eval-cases.md</code>, 2 skill mẫu ngắn, skill CSV <code>data-quality-audit</code></td><td>Không</td></tr>
+<tr><td class="lbl"><code>evals/</code></td><td><code>catalog.json</code>, <code>RUNBOOK.md</code>, <code>tools/</code>, bộ eval từng skill</td><td>Không</td></tr>
+<tr><td class="lbl"><code>tests/</code></td><td>test ngoại tuyến và 96 ca hợp đồng CLI</td><td>Không</td></tr>
+<tr><td class="lbl"><code>docs/</code></td><td>website này (trang HTML, bản chép Design System, công cụ dựng). Không phải skill</td><td>Không</td></tr></tbody></table></div>
+  <p class="note"><b>Ngoài các thư mục:</b> <code>README.md</code>, <code>CHANGELOG.md</code>, <code>LICENSE</code>, <code>LICENSE_POLICY.md</code>, <code>AGENTS.md</code>/<code>CLAUDE.md</code>/<code>GEMINI.md</code> (luật của repo cho ba agent), <code>studio.py</code> (vỏ mỏng gọi engine), manifest <code>.claude-plugin/</code>, <code>.codex-plugin/</code>, CI <code>.github/workflows/ci.yml</code>.</p>
+  <p class="note ok"><b>Vào gói:</b> ZIP của <code>package</code> cho <code>skill-creator-studio</code> có 25 file: <code>SKILL.md</code>, 5 reference, 10 file engine Python, 9 file khuôn. Bị loại: <code>evals/</code>, <code>tests/</code>, thư mục cache; gặp tên giống secret thì dừng hẳn. Plugin chỉ phát hành <code>skills/</code>; <code>standards/</code> là tài liệu tác giả, không chèn vào lúc agent chạy (bản rút gọn của 16 luật đi theo skill dưới dạng <code>references/CORE_RULES.md</code>, sinh tự động, test canh khớp).</p>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>Luồng 4 — CI mỗi lần push</h2></div>
+  <p>Trên Ubuntu và Windows, Python 3.9 và 3.12, theo thứ tự:</p>
+  <ol class="timeline"><li><span class="tnum">01</span><h3>validate</h3><p><code>validate --all --require-evals</code></p></li><li><span class="tnum">02</span><h3>evals</h3><p><code>evals --all</code> (đỏ nếu cổng <code>model_evaluated</code> bị bỏ qua)</p></li><li><span class="tnum">03</span><h3>unittest</h3><p>Toàn bộ bộ test ngoại tuyến.</p></li><li><span class="tnum">04</span><h3>package</h3><p>Đóng gói skill phát hành.</p></li><li><span class="tnum">05</span><h3>ví dụ</h3><p><code>validate examples/data-quality-audit --require-evals</code>, rồi in dòng nhắc «CI tĩnh không chạy eval phụ thuộc model».</p></li></ol>
+</div></section>
+</main>
+<footer class="site">
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="../index.html"><img src="../assets/logo.svg" alt="" width="26" height="26">Agent Skill Studio</a>
+        <p class="foot-tag">Tạo, kiểm, đo và phân phối Agent Skills dùng chung cho Claude Code, Codex và Antigravity.</p>
+      </div>
+      <div class="foot-links">
+        <div class="foot-col">
+          <b>Sản phẩm</b>
+          <a href="../index.html">Trang chủ</a>
+          <a href="../about/index.html">Giới thiệu</a>
+          <a href="../install/index.html">Cài đặt</a>
+          <a href="../guide/index.html">Cách dùng</a>
+          <a href="../flow/index.html">Luồng &amp; quy trình</a>
+          <a href="../principles/index.html">Nguyên tắc</a>
+          <a href="../docs/index.html">Docs</a>
+        </div>
+        <div class="foot-col">
+          <b>Tài nguyên</b>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Nguyễn Quang Đức · MIT</span>
+      <span class="lic">MIT License · giữ credit tác giả</span>
+    </div>
+  </div>
+</footer>
+<script src="../assets/ds/site.js?v=1.0.0"></script>
+</body>
+</html>

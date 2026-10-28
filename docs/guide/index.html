@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="vi" data-lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cách dùng · Agent Skill Studio</title>
+<meta name="description" content="Ba chế độ NEW, AUDIT, REFINE của skill-creator-studio, bảng 9 lệnh studio.py và ba ví dụ đầu-cuối.">
+<link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/guide/">
+<link rel="icon" href="../assets/logo.svg">
+<link rel="stylesheet" href="../assets/ds/site.css?v=1.0.0">
+</head>
+<body>
+<canvas id="netbg" aria-hidden="true"></canvas>
+<!-- biểu tượng cho infographic (.ig-*): <svg class="ig-ico"><use href="#i-..."/></svg> -->
+<svg class="ig-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11.5a8 8 0 0 1-11.7 7.1L4 20l1.1-4A8 8 0 1 1 20 11.5Z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/><path d="M9 7h7M9 11h5"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.3 2.9 7.8 7 9.5 4.1-1.7 7-5.2 7-9.5V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-evidence" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/><path d="m9 15 2 2 4-4"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16 9.5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><path d="M12 15v2"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/></symbol>
+</svg>
+<a class="skip" href="#main">Bỏ qua điều hướng</a>
+<header class="site" id="siteHeader">
+  <div class="wrap nav">
+    <a class="brand" href="../index.html"><img src="../assets/logo.svg" alt="">Agent Skill Studio</a>
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="../index.html">Trang chủ</a>
+      <a href="../about/index.html">Giới thiệu</a>
+      <a href="../install/index.html">Cài đặt</a>
+      <a href="../guide/index.html" class="active" aria-current="page">Cách dùng</a>
+      <a href="../flow/index.html">Luồng &amp; quy trình</a>
+      <a href="../principles/index.html">Nguyên tắc</a>
+      <a href="../docs/index.html">Docs</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm gh" href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+    <button class="theme-btn" type="button" data-ds-theme-toggle aria-label="Giao diện"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  </div>
+</header>
+<main id="main">
+<section class="page-hero"><div class="wrap">
+  <span class="eyebrow"><span class="dot"></span>Cách dùng</span>
+  <h1>Ba chế độ, chín lệnh, ba ví dụ</h1>
+  <p class="lead">Khi được gọi, skill <code>skill-creator-studio</code> chọn một trong ba nhánh NEW, AUDIT, REFINE. Bảy luật luôn giữ ở mọi lượt: AUDIT báo trước khi sửa; mặc định portable; hướng dẫn tối thiểu đủ dùng; rủi ro quyết mức tự do; eval nằm ngoài gói chạy; không bịa kết quả test; xin kết luận và bằng chứng, không xin suy luận nội bộ.</p>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>NEW — tạo skill mới</h2></div>
+  <p><b>Khi nào:</b> có một việc lặp lại mà chưa có skill riêng. <b>Câu nói mẫu:</b> «Create a portable Skill for weekly sales reconciliation with a checklist and separate evaluation tests.»</p>
+  <div class="step"><div class="num">1</div><div class="body"><h3>Xác định</h3><p>Một việc, câu nên gọi, câu không nên gọi, đầu vào/ra, tác dụng phụ. Xong khi giải thích được trong hai câu.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="body"><h3>Viết ca thử trước</h3><p>Ít nhất 3 ca thử thật và kế hoạch đo không skill, trước khi viết dài.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="body"><h3>Dựng khung</h3>  <div class="code-card"><div class="code-top"><span class="fn">Terminal</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
+  <div class="code-scroll"><pre><code>python3 studio.py new &lt;tên&gt; --description &quot;&lt;việc&gt;. Use when &lt;khi nào&gt;.&quot; --output &lt;đích&gt;</code></pre></div></div><p>Thêm <code>--lang vi</code> hoặc <code>--full</code> khi cần.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="body"><h3>Viết thân thật</h3><p>Thay chữ nháp; thêm <code>references/</code>, <code>scripts/</code>, <code>assets/</code> chỉ khi cần. Không phát hành khi còn dấu <code>STUDIO-DRAFT</code>.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="body"><h3>Kiểm</h3><p><code>validate &lt;đường&gt; --require-evals</code>, rồi <code>evals</code>. Lỗi thì quay lại bước 4.</p></div></div>
+  <div class="step"><div class="num">6</div><div class="body"><h3>Đóng gói</h3><p>Ghi rõ đã đo trên agent nào, rồi đóng gói khi qua cổng phát hành.</p></div></div>
+  <p class="note ok"><b>Đầu ra:</b> thư mục skill mới, thư mục <code>evals/&lt;tên&gt;</code> tách riêng, kết quả kiểm chạy được.</p>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>AUDIT — kiểm, không sửa</h2></div>
+  <p><b>Khi nào:</b> cần chấm, rà, review một skill hay cả thư viện. <b>Câu nói mẫu:</b> «Audit the skill in the attached broken-skill folder and report failures without making changes.»</p>
+  <div class="step"><div class="num">1</div><div class="body"><h3>Chạy kiểm tĩnh</h3><p><code>audit &lt;thư mục skill&gt;</code> hoặc <code>audit --all</code>; nhiều thư mục skill thì <code>doctor --roots &quot;&lt;dir1&gt;;&lt;dir2&gt;&quot;</code>.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="body"><h3>Rà tay</h3><p>Theo <code>references/AUDIT_CHECKLIST.md</code> (map 16 luật sang điều quan sát được).</p></div></div>
+  <div class="step"><div class="num">3</div><div class="body"><h3>Tra nguồn</h3><p>Cần nguồn của một luật thì đọc <code>references/SOURCE_NOTES.md</code>.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="body"><h3>Viết báo cáo</h3><p>Dạng <code>Đường:dòng | Luật | Mức | Bằng chứng | Cách sửa | Rủi ro</code>, tách phần máy kiểm và phần người kiểm.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="body"><h3>Dừng trước khi sửa</h3><p>Hỏi người dùng sửa mục số mấy.</p></div></div>
+  <p class="note ok"><b>Đầu ra:</b> báo cáo có bằng chứng; không file nào bị sửa.</p>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>REFINE — sửa theo bằng chứng</h2></div>
+  <p><b>Khi nào:</b> skill hỏng khi dùng thật, hoặc có bằng chứng mới. <b>Câu nói mẫu:</b> «Our reporting skill skips its validation step. Propose a minimal fix and an A/B test before removing old instructions.»</p>
+  <div class="step"><div class="num">1</div><div class="body"><h3>Ghi lại lỗi</h3><p>Câu lệnh, model/agent, kỳ vọng và thực tế; xếp loại lỗi (kích hoạt, thiếu reference, thực thi, chất lượng đầu ra).</p></div></div>
+  <div class="step"><div class="num">2</div><div class="body"><h3>Tìm luật nhỏ nhất gây lỗi</h3><p>Đề xuất diff và ca thử bị ảnh hưởng.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="body"><h3>Chỉ áp phần được duyệt</h3><p>Xoá luật cũ bị thay trong cùng lượt.</p></div></div>
+  <div class="step"><div class="num">4</div><div class="body"><h3>Kiểm lại</h3><p>Kiểm tĩnh và eval nhắm đích; sửa liên quan an toàn thì thử cả ca cho phép và ca chặn ở phiên mới.</p></div></div>
+  <div class="step"><div class="num">5</div><div class="body"><h3>Báo</h3><p>Danh sách thay đổi, file chạm, kiểm đã chạy, phần chưa đo bằng model, cách hoàn tác.</p></div></div>
+  <p class="note ok"><b>Đầu ra:</b> thay đổi nhỏ có kiểm hồi quy và ghi chú phát hành.</p>
+  <p class="note"><b>Câu không gọi skill</b> (ca âm trong bộ eval): «Write a Python function that sorts a list of integers…», «Explain how a person installs a plugin from a marketplace…», «List the names of the skill folders…».</p>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>Bảng 9 lệnh studio.py</h2></div>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Lệnh</th><th scope="col">Việc</th><th scope="col">Cờ chính</th><th scope="col">Ví dụ</th></tr></thead>
+  <tbody><tr><td class="lbl"><code>new</code></td><td>dựng skill mới + bộ eval rỗng tách riêng</td><td><code>--description</code> (bắt buộc), <code>--output</code>, <code>--eval-root</code>, <code>--lang {en,vi}</code>, <code>--full</code></td><td><code>python3 studio.py new my-skill --output skills --description &quot;Does X. Use when Y.&quot;</code></td></tr>
+<tr><td class="lbl"><code>check</code></td><td>kiểm tĩnh một skill (thư mục hoặc <code>SKILL.md</code>); không sửa file</td><td><code>--all</code>, <code>--require-evals</code>, <code>--eval-root</code>, <code>--target {portable,claude-code}</code>, <code>--json</code></td><td><code>python3 studio.py check skills/skill-creator-studio</code></td></tr>
+<tr><td class="lbl"><code>validate</code></td><td>bí danh của <code>check</code> (cùng cờ, mã thoát, JSON)</td><td>như <code>check</code></td><td><code>python3 studio.py validate --all --require-evals</code></td></tr>
+<tr><td class="lbl"><code>audit</code></td><td>bí danh của <code>check</code>; đối số chỉ nhận thư mục skill</td><td>như <code>check</code></td><td><code>python3 studio.py audit skills/skill-creator-studio</code></td></tr>
+<tr><td class="lbl"><code>evals</code></td><td>kiểm schema bộ eval (không gọi model); <code>--all</code> thêm cổng <code>model_evaluated</code></td><td><code>--all</code>, <code>--eval-root</code>, <code>--export agentskills</code>, <code>--out</code>, <code>--force</code>, <code>--json</code></td><td><code>python3 studio.py evals --all</code></td></tr>
+<tr><td class="lbl"><code>package</code></td><td>đóng ZIP chỉ gồm file chạy</td><td><code>--out</code>, <code>--force</code></td><td><code>python3 studio.py package skills/skill-creator-studio --out dist</code></td></tr>
+<tr><td class="lbl"><code>install</code></td><td>chép skill vào thư mục khám phá của agent</td><td><code>--agent {claude,codex,antigravity}</code> (bắt buộc), <code>--workspace</code> hoặc <code>--user</code>, <code>--force</code>, <code>--allow-root-link</code></td><td><code>python3 studio.py install skills/skill-creator-studio --agent codex --workspace .</code></td></tr>
+<tr><td class="lbl"><code>doctor</code></td><td>quét nhiều gốc skill, chỉ báo cáo</td><td><code>--roots</code>, <code>--roots-file</code>, <code>--profile {portable,opcos}</code>, <code>--target</code>, <code>--include-cache</code>, <code>--skip-marker</code>, <code>--baseline</code>, <code>--json</code>, <code>--out</code>, <code>--fail-on {error,warn,new}</code></td><td><code>python3 studio.py doctor --roots &quot;~/.claude/skills;.agents/skills&quot;</code></td></tr>
+<tr><td class="lbl"><code>fmt</code></td><td>kiểm (mặc định) hoặc sửa kiểu trình bày Markdown; không đổi chữ của thân</td><td><code>--all</code>, <code>--check</code>/<code>--fix</code>, <code>--no-backup</code>, <code>--profile</code>, <code>--json</code></td><td><code>python3 studio.py fmt --check --all</code></td></tr></tbody></table></div>
+  <p>Cờ lấy từ <code>python studio.py &lt;lệnh&gt; --help</code> (chạy thật ngày 2026-10-28). Cờ chung: <code>--version</code> in phiên bản; <code>--help</code> cho mọi lệnh.</p>
+  <p class="note warn"><b>Mã lỗi hay gặp:</b> <code>INPUT</code> (file ở vùng cloud/secret, placeholder cloud, hoặc là link), <code>EV20</code> (catalog hỏng hoặc lệch bằng chứng), <code>PACK</code> (gói gặp link, placeholder, cây quá lớn, file trên 25 MB…), <code>SEC</code> (tên file giống secret như <code>.env*</code>, <code>*.pem</code>), <code>EX1</code>–<code>EX13</code> (xuất eval bị từ chối). Mỗi lần từ chối in mã ra stderr và trong <code>--json</code>.</p>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>Ba ví dụ đầu-cuối</h2></div>
+  <h3>Ví dụ 1 — Tạo skill mới tiếng Việt, đến lúc đóng gói</h3>
+  <div class="code-card"><div class="code-top"><span class="fn">Terminal</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
+  <div class="code-scroll"><pre><code>python3 studio.py new writing-weekly-notes --output skills --lang vi \
+  --description &quot;Writes weekly team notes from a task list. Use when asked for weekly notes.&quot;
+<span class="cm"># sinh skills/writing-weekly-notes/SKILL.md và evals/writing-weekly-notes/{cases.json, rubric.md, baselines/BASELINE.md}</span>
+python3 studio.py check skills/writing-weekly-notes      # còn cảnh báo CT9: dấu nháp chưa xoá
+<span class="cm"># viết thân thật, xoá dấu STUDIO-DRAFT, thay 3 ca nháp bằng ca thật (có ca âm), thêm mục vào evals/catalog.json</span>
+python3 studio.py validate skills/writing-weekly-notes --require-evals
+python3 studio.py evals writing-weekly-notes
+python3 studio.py package skills/writing-weekly-notes --out dist</code></pre></div></div>
+  <p class="note"><b>Kết quả chạy thử 2026-10-28</b> (với <code>--full --lang vi</code> ở thư mục tạm): <code>new</code> thoát 0; <code>check</code> thoát 0 với 1 cảnh báo <code>CT9</code>; <code>package</code> thoát 1 với lỗi <code>PACK</code> «cannot package an unfinished template» cho tới khi xoá dấu nháp. Đây là chủ đích: khung chưa viết thì không phát hành được.</p>
+  <h3 style="margin-top:28px">Ví dụ 2 — Kiểm cả thư viện skill trên máy, không sửa gì</h3>
+  <div class="code-card"><div class="code-top"><span class="fn">Terminal</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
+  <div class="code-scroll"><pre><code>python3 studio.py doctor --roots &quot;~/.claude/skills;~/.agents/skills&quot; --json --out report.json
+python3 studio.py doctor --roots &quot;~/.claude/skills;~/.agents/skills&quot; --baseline report.json --fail-on new</code></pre></div></div>
+  <p>Lần đầu ghi báo cáo JSON; lần sau so với mốc và chỉ báo đỏ khi có cặp (skill, mã lỗi) mới mọc thêm. <code>doctor</code> không mở vùng secret, cloud hay link. Ví dụ dựng từ <code>--help</code>, chưa chạy thử trên thư viện skill của máy.</p>
+  <h3 style="margin-top:28px">Ví dụ 3 — Kiểm phát hành rồi cài skill cho Codex</h3>
+  <div class="code-card"><div class="code-top"><span class="fn">Terminal</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
+  <div class="code-scroll"><pre><code>python3 studio.py doctor
+python3 studio.py fmt --check --all
+python3 studio.py validate --all --require-evals
+python3 studio.py evals --all
+python3 -m unittest discover -s tests
+python3 studio.py install skills/skill-creator-studio --agent codex --workspace .</code></pre></div></div>
+  <p>Năm lệnh đầu là bộ kiểm trước phát hành, đều phải thoát 0. Lệnh cuối chép skill vào <code>.agents/skills/skill-creator-studio</code>; trong Codex gõ <code>$skill-creator-studio</code> để thử.</p>
+</div></section>
+</main>
+<footer class="site">
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="../index.html"><img src="../assets/logo.svg" alt="" width="26" height="26">Agent Skill Studio</a>
+        <p class="foot-tag">Tạo, kiểm, đo và phân phối Agent Skills dùng chung cho Claude Code, Codex và Antigravity.</p>
+      </div>
+      <div class="foot-links">
+        <div class="foot-col">
+          <b>Sản phẩm</b>
+          <a href="../index.html">Trang chủ</a>
+          <a href="../about/index.html">Giới thiệu</a>
+          <a href="../install/index.html">Cài đặt</a>
+          <a href="../guide/index.html">Cách dùng</a>
+          <a href="../flow/index.html">Luồng &amp; quy trình</a>
+          <a href="../principles/index.html">Nguyên tắc</a>
+          <a href="../docs/index.html">Docs</a>
+        </div>
+        <div class="foot-col">
+          <b>Tài nguyên</b>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Nguyễn Quang Đức · MIT</span>
+      <span class="lic">MIT License · giữ credit tác giả</span>
+    </div>
+  </div>
+</footer>
+<script src="../assets/ds/site.js?v=1.0.0"></script>
+</body>
+</html>
