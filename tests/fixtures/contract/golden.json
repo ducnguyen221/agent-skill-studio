@@ -2283,6 +2283,30 @@
     },
     "L-package-skill-creator-studio": {
       "exit": 0
+    },
+    "new-output-no-eval-root": {
+      "exit": 0,
+      "stdout_text": "Created draft Skill: <TMP>/out/skills/demo-skill\nExternal evals: <TMP>/out/evals/demo-skill\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate.\n",
+      "stderr": "",
+      "tree": {
+        "<TMP>/out": {
+          "evals": "<dir>",
+          "evals/demo-skill": "<dir>",
+          "evals/demo-skill/baselines": "<dir>",
+          "evals/demo-skill/baselines/BASELINE.md": "4ab2f268b6eac844d715431e5e7a4d650a3dd571bd6c42056a6353a5877783d7",
+          "evals/demo-skill/cases.json": "a26166d7edb0acaf659ef014a7236823a79f1a063e632c881ee27c0c5eeb2aae",
+          "evals/demo-skill/fixtures": "<dir>",
+          "evals/demo-skill/rubric.md": "dae02becfd410cc1cb0ac5cf030e80d42d40d3b7f01398680ffba5b142d5df6e",
+          "skills": "<dir>",
+          "skills/demo-skill": "<dir>",
+          "skills/demo-skill/SKILL.md": "6e4ac2c5b53c15a27571e09948821b28442439263de06e56750bfd04e6890b4f"
+        }
+      }
+    },
+    "evals-all-broken-catalog": {
+      "exit": 1,
+      "stdout_text": "<REPO>/evals/data-quality-audit: 0 errors; 0 warnings\n<REPO>/evals/skill-creator-studio: 0 errors; 0 warnings\n<REPO>/evals/catalog.json: 1 errors; 0 warnings\n  ERROR EV20 <REPO>/evals/catalog.json — evals/catalog.json or its evidence cannot be read: TypeError: list indices must be integers or slices, not str\nSchema-only evaluation: NO model sessions were executed.\n",
+      "stderr": ""
     }
   }
 }

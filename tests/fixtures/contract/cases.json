@@ -1548,6 +1548,44 @@
    "compare": [
     "exit"
    ]
+  },
+  {
+   "id": "new-output-no-eval-root",
+   "via": "R",
+   "args": [
+    "new",
+    "demo-skill",
+    "--description",
+    "Demo skill for contract tests",
+    "--output",
+    "{OUT}/skills"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr",
+    "tree"
+   ],
+   "trees": [
+    "{OUT}"
+   ]
+  },
+  {
+   "id": "evals-all-broken-catalog",
+   "via": "R",
+   "args": [
+    "evals",
+    "--all"
+   ],
+   "compare": [
+    "exit",
+    "stdout_text",
+    "stderr"
+   ],
+   "fresh": true,
+   "files": {
+    "{REPO}/evals/catalog.json": "[]"
+   }
   }
  ]
 }

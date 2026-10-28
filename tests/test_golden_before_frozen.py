@@ -2,7 +2,9 @@
 is `contract_runner.py --record-after <case-id> --by <task>`, which writes `after` and nothing else.
 
 `BEFORE_DIGEST` is the SHA-256 of `json.dumps({case id: before}, sort_keys=True, ensure_ascii=False)` over the 96 golden answers of 3cc1bd3, where
-`before` of a flat entry is the entry itself (measured at TK0, evidence/tk0-baseline.txt of SPR-03).
+`before` of a flat entry is the entry itself (measured at TK0, evidence/tk0-baseline.txt of SPR-03). It is taken over ORIGINAL_IDS, the 96 ids of that
+suite, so a case added later (SPR-04 RQ-024: `--add-case`) does not move it. `STRICT_BEFORE_DIGEST` locks the same way the strict answers of those
+96 cases (strict.json, recorded at 53c2d76).
 """
 from __future__ import annotations
 
@@ -22,10 +24,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import contract_runner as runner  # noqa: E402
 
 BEFORE_DIGEST = "4b3c6d47713289adfaa1a0e20c374b30c57c7e587f966a6cf2dcc2f16c1b7c0d"
+STRICT_BEFORE_DIGEST = "4715153c1ef0e740af5e96cad7c24566dfbadd9bf08c3828af5904793bcaa5bb"
+ORIGINAL_IDS = (
+    "C-audit-dqa-json", "C-audit-dqa-text", "C-audit-frozen-json", "C-audit-live-json", "C-doctor-fixture-json", "C-evals-all-json",
+    "C-fmt-check-dqa-json", "C-fmt-check-live-json", "C-install-dqa-claude", "C-new-en", "C-new-full", "C-new-full-vi", "C-new-vi", "C-package-dqa",
+    "C-sync-template-check", "C-validate-all-require-evals-json", "C-validate-broken-json", "C-validate-dqa-require-evals-json",
+    "C-validate-frozen-require-evals-json", "C-validate-missing-path", "C-validate-no-argument", "C-version", "E-audit-dqa-json", "E-audit-dqa-text",
+    "E-audit-frozen-json", "E-audit-live-json", "E-doctor-fixture-json", "E-evals-all-json", "E-fmt-check-dqa-json", "E-fmt-check-live-json",
+    "E-install-dqa-claude", "E-new-default-output", "E-new-en", "E-new-full", "E-new-full-vi", "E-new-vi", "E-package-dqa", "E-sync-template-check",
+    "E-validate-all-require-evals-json", "E-validate-broken-json", "E-validate-dqa-require-evals-json", "E-validate-frozen-require-evals-json",
+    "E-validate-missing-path", "E-validate-no-argument", "E-version", "L-evals-all", "L-package-skill-creator-studio", "L-validate-all-require-evals",
+    "R-audit-dqa-json", "R-audit-dqa-text", "R-audit-frozen-json", "R-audit-live-json", "R-doctor-fixture-json", "R-evals-all-json",
+    "R-fmt-check-dqa-json", "R-fmt-check-live-json", "R-install-dqa-claude", "R-new-en", "R-new-full", "R-new-full-vi", "R-new-vi", "R-package-dqa",
+    "R-sync-template-check", "R-validate-all-require-evals-json", "R-validate-broken-json", "R-validate-dqa-require-evals-json",
+    "R-validate-frozen-require-evals-json", "R-validate-missing-path", "R-validate-no-argument", "R-version", "S-doctor-fixture-json",
+    "S-doctor-self-parent-json", "S-evals-all-outside-repo", "S-fmt-check-dqa-json", "S-fmt-check-self-json", "S-new-en", "S-new-full", "S-new-vi",
+    "S-validate-all-outside-repo", "S-validate-dqa-json", "S-validate-frozen-json", "S-validate-self-json", "S-version", "Z-doctor-fixture-json",
+    "Z-doctor-self-parent-json", "Z-evals-all-outside-repo", "Z-fmt-check-dqa-json", "Z-fmt-check-self-json", "Z-new-en", "Z-new-full", "Z-new-vi",
+    "Z-validate-all-outside-repo", "Z-validate-dqa-json", "Z-validate-frozen-json", "Z-validate-self-json", "Z-version"
+)
 
 
-def before_digest(cases: dict) -> str:
-    before = {cid: (entry["before"] if "changed_by" in entry else entry) for cid, entry in cases.items()}
+def before_digest(cases: dict, only: tuple | None = None) -> str:
+    """Digest of the `before` of every entry (of the ids in `only`, when given); a flat entry is its own `before`."""
+    before = {cid: (entry["before"] if "changed_by" in entry else entry) for cid, entry in cases.items() if only is None or cid in only}
     return hashlib.sha256(json.dumps(before, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
@@ -33,8 +55,16 @@ class GoldenBeforeFrozenTests(unittest.TestCase):
     def test_golden_before_frozen(self):
         """tương-đương: SC6 the `before` of every golden answer (flat entries count as their own `before`) is the one measured at 3cc1bd3."""
         golden = json.loads(runner.GOLDEN_FILE.read_text(encoding="utf-8"))["cases"]
-        self.assertEqual(96, len(golden))
-        self.assertEqual(BEFORE_DIGEST, before_digest(golden))
+        self.assertEqual(96, len(ORIGINAL_IDS))
+        self.assertTrue(set(ORIGINAL_IDS) <= set(golden), "an original case left golden.json")
+        self.assertEqual(BEFORE_DIGEST, before_digest(golden, ORIGINAL_IDS))
+
+    def test_strict_before_frozen(self):
+        """tương-đương: RQ-024 the strict answers (full stderr, line ends) of the 96 original cases are the ones recorded at 53c2d76; a deliberate change lives in `after`."""
+        strict = json.loads(runner.STRICT_FILE.read_text(encoding="utf-8"))
+        self.assertEqual("53c2d76", strict["recorded_at_commit"])
+        self.assertTrue(set(ORIGINAL_IDS) <= set(strict["cases"]), "an original case left strict.json")
+        self.assertEqual(STRICT_BEFORE_DIGEST, before_digest(strict["cases"], ORIGINAL_IDS))
 
     def test_a_changed_answer_has_exactly_changed_by_before_after(self):
         """tương-đương: SC6 a wrapped golden entry carries `changed_by`, `before` and `after` and no other key."""
