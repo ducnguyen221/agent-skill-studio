@@ -15,6 +15,7 @@ from pathlib import Path
 import studio_const as C
 import studio_fs as fs
 import studio_lint as lint
+import studio_roots as roots_mod
 import studio_validate as validate
 
 
@@ -280,37 +281,44 @@ def _baseline_problem(obj) -> str | None:
     return None
 
 
-def _out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), include_cache: bool = False, skip_markers: tuple = ()) -> str | None:
+OUT_KINDS = ("doctor", "catalog-json", "catalog-md")
+
+
+def out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), include_cache: bool = False, skip_markers: tuple = (), kind: str = "doctor") -> str | None:
     """Why `out` may not be written, else None. The report may not land in what the scan reads: not in a zone, not under skills/, not in a
     scanned skill, and not in a scanned root unless the folder in between (.tmp, .worktrees, a cache...) is one the scan leaves out.
-    It may not carry a secret-looking name or an NTFS stream, and an existing file is overwritten only when it is empty or already a doctor
-    report (a .json file that starts with {"schema"). Order matters: every decision by name, zone or cloud attributes on the spelling given
+    It may not carry a secret-looking name or an NTFS stream, and an existing file is overwritten only when it is empty or already what `kind` writes:
+    `doctor` and `catalog-json` a .json file that starts with {"schema"; `catalog-md` a .md file whose first line is <!-- studio catalog --> (its messages
+    say --md, the others --out). Order matters: every decision by name, zone or cloud attributes on the spelling given
     and on the real folder comes first; the file itself is stat-ed and its first bytes read last, only once it is known to be a plain
     local path (so a link into ~/.secret or a cloud folder is refused without one call on the file, and with the same message whatever it holds)."""
+    if kind not in OUT_KINDS:
+        raise ValueError("unknown out kind: %s" % kind)
+    flag = "--md" if kind == "catalog-md" else "--out"
     markers = C.CLOUD_MARKERS + tuple(skip_markers)
     reason = fs.zone_reason(out, markers)
     if reason:
-        return "--out is inside a %s zone" % reason
+        return "%s is inside a %s zone" % (flag, reason)
     if os.name == "nt" and ":" in os.path.splitdrive(os.fspath(out))[1]:
-        return "--out names an NTFS data stream: %s" % out.name
+        return "%s names an NTFS data stream: %s" % (flag, out.name)
     if fs.secret_file_name(out.name):
-        return "--out has a secret-looking file name: %s" % out.name
+        return "%s has a secret-looking file name: %s" % (flag, out.name)
     try:
         real_parent = out.parent.resolve()
     except (OSError, RuntimeError):
-        return "--out cannot be resolved: %s" % out
+        return "%s cannot be resolved: %s" % (flag, out)
     real = real_parent / out.name
     reason = fs.zone_reason(real, markers)
     if reason:
-        return "--out is inside a %s zone (through a link)" % reason
+        return "%s is inside a %s zone (through a link)" % (flag, reason)
     if fs.path_is_cloud(real_parent) or fs.path_is_cloud(out.parent):
-        return "--out is inside a cloud placeholder folder: %s" % out.parent
+        return "%s is inside a cloud placeholder folder: %s" % (flag, out.parent)
     if fs.path_is_cloud(real) or fs.path_is_cloud(out):
-        return "--out is a cloud placeholder: %s" % out
+        return "%s is a cloud placeholder: %s" % (flag, out)
     if any(part.lower() == "skills" for part in out.parts[:-1]) or (repo is not None and fs.valid_resolved_under(real, repo / "skills")):
-        return "--out must not be under a skills/ folder: %s" % out
+        return "%s must not be under a skills/ folder: %s" % (flag, out)
     if any(fs.valid_resolved_under(real, skill) for skill in skills):
-        return "--out must not be inside a scanned skill folder: %s" % out
+        return "%s must not be inside a scanned skill folder: %s" % (flag, out)
     for root in roots:
         if fs.zone_reason(root, markers):
             continue
@@ -319,22 +327,43 @@ def _out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), i
         except (ValueError, OSError, RuntimeError):
             continue
         if not any(_is_excluded(below[:n], include_cache) for n in range(1, len(below) + 1)):
-            return "--out must not be inside a scanned root (a folder the scan skips, such as .tmp, is fine): %s" % out
+            return "%s must not be inside a scanned root (a folder the scan skips, such as .tmp, is fine): %s" % (flag, out)
     if not real_parent.is_dir():
-        return "folder of --out does not exist: %s (doctor never creates folders)" % out.parent
+        return "folder of %s does not exist: %s (doctor never creates folders)" % (flag, out.parent)
     if out.is_dir() or fs.is_link(out):
-        return "--out must be a plain file path: %s" % out
+        return "%s must be a plain file path: %s" % (flag, out)
     if out.exists():
-        if out.suffix.lower() != ".json":
-            return "--out would overwrite an existing file that is not a .json report: %s" % out
+        if out.suffix.lower() != (".md" if kind == "catalog-md" else ".json"):
+            return "%s would overwrite an existing file that is not a %s: %s" % (flag, ".md catalog" if kind == "catalog-md" else ".json report", out)
         try:
             with open(out, "rb") as handle:
                 head = handle.read(64)
         except OSError:
-            return "--out exists and cannot be checked: %s" % out
-        if head.strip() and not C.DOCTOR_REPORT_HEAD.match(head):
-            return "--out would overwrite an existing file that is not a doctor report (it must start with {\"schema\"): %s" % out
+            return "%s exists and cannot be checked: %s" % (flag, out)
+        if kind == "catalog-md":
+            if head.strip() and not C.CATALOG_MD_HEAD.match(head):
+                return "%s would overwrite an existing file that is not a catalog (its first line must be <!-- studio catalog -->): %s" % (flag, out)
+        elif head.strip() and not C.DOCTOR_REPORT_HEAD.match(head):
+            return "%s would overwrite an existing file that is not a %s (it must start with {\"schema\"): %s" % (flag, "doctor report" if kind == "doctor" else "catalog report", out)
     return None
+
+
+_out_problem = out_problem  # the name this function had before it was public (SPR-04 TK5)
+
+
+def _opcos_roots(markers: tuple) -> list:
+    """The Root records of `--roots-from opcos`: paths.json from OPCOS_ROOT or up from the working folder, its areas turned into roots. ValueError (the
+    message is printed, exit 2) when there is no paths.json, it cannot be used, or no root is usable (FR1.3)."""
+    try:
+        found = roots_mod.find_paths_json(Path.cwd(), os.environ, markers)
+        if found is None:
+            raise ValueError("paths.json not found (looked in $OPCOS_ROOT and up to %d folders above %s)" % (C.PATHS_JSON_UP, Path.cwd()))
+        listed = roots_mod.opcos_roots(found, True, markers)
+    except roots_mod.RootError as exc:
+        raise ValueError("paths.json cannot be used: %s" % exc)
+    if all(r["status"] == "error" for r in listed):
+        raise ValueError("no usable root in %s: %s" % (found, "; ".join("%s %s" % (r["area"], "/".join(r["reasons"])) for r in listed)))
+    return listed
 
 
 def cmd_doctor(args) -> int:
@@ -345,11 +374,23 @@ def cmd_doctor(args) -> int:
         print("ERROR: --skip-marker needs non-empty text", file=sys.stderr)
         return 2
     markers = C.CLOUD_MARKERS + skip_markers
-    try:
-        roots = parse_roots(args.roots, args.roots_file, repo, skip_markers)
-    except ValueError as exc:
-        print("ERROR: %s" % exc, file=sys.stderr)
-        return 2
+    opcos = None  # --roots-from opcos: the Root records of paths.json (SPR-04 FR1); the scan itself is below, after the checks that need no scan
+    if getattr(args, "roots_from", None):
+        if args.roots or args.roots_file:
+            print("ERROR: --roots-from cannot be combined with --roots or --roots-file", file=sys.stderr)
+            return 2
+        try:
+            opcos = _opcos_roots(markers)
+        except ValueError as exc:
+            print("ERROR: %s" % exc, file=sys.stderr)
+            return 2
+        roots = [Path(r["path"]) for r in opcos if r["status"] != "error"]
+    else:
+        try:
+            roots = parse_roots(args.roots, args.roots_file, repo, skip_markers)
+        except ValueError as exc:
+            print("ERROR: %s" % exc, file=sys.stderr)
+            return 2
     baseline = None
     if args.fail_on == "new" and not args.baseline:
         print("ERROR: --fail-on new needs --baseline <earlier doctor --json report>", file=sys.stderr)
@@ -374,17 +415,23 @@ def cmd_doctor(args) -> int:
     out = None
     if args.out:  # decided by name and by what the file holds before any root is walked; the scanned skills are added after the scan
         out = Path(os.path.abspath(os.path.expanduser(args.out)))
-        problem = _out_problem(out, roots, repo, [], args.include_cache, skip_markers)
+        problem = out_problem(out, roots, repo, [], args.include_cache, skip_markers)
         if problem:
             print("ERROR: %s" % problem, file=sys.stderr)
             return 2
-    scanned = iter_skill_dirs(roots, args.include_cache, skip_markers)
+    if opcos is not None:
+        found, listed = roots_mod.collect_skills(opcos, markers)
+        scanned = ([s["path"] for s in found], listed)
+    else:
+        scanned = iter_skill_dirs(roots, args.include_cache, skip_markers)
     if out is not None:
-        problem = _out_problem(out, roots, repo, scanned[0], args.include_cache, skip_markers)
+        problem = out_problem(out, roots, repo, scanned[0], args.include_cache, skip_markers)
         if problem:
             print("ERROR: %s" % problem, file=sys.stderr)
             return 2
     report = doctor_run(roots, args.profile, args.target, args.include_cache, baseline, skip_markers, scanned)
+    if opcos is not None:
+        report["roots_status"] = opcos
     if out is not None:
         try:
             with open(out, "w", encoding="utf-8", newline="\n") as handle:
@@ -404,6 +451,9 @@ def cmd_doctor(args) -> int:
         for skill in report["skills"]:
             if skill["errors"] or skill["warnings"]:
                 print("  %s: %d errors, %d warnings" % (skill["path"], skill["errors"], skill["warnings"]))
+        for item in report.get("roots_status", []):
+            if item["status"] != "ok":
+                print("  root %s: %s (%s)" % (item["area"], item["status"], ", ".join(item["reasons"])))
         for item in report["skipped"]:
             print("  skipped (%s): %s" % (item["reason"], item["path"]))
         for item in report["new_vs_baseline"]:

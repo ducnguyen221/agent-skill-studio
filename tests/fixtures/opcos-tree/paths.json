@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "root_env": "OPCOS_ROOT",
+  "areas": [
+    {"id": "root", "rel_path": "."},
+    {"id": "system", "rel_path": "system"},
+    {"id": "opcos-plugin", "rel_path": "system/opcos-plugin"},
+    {"id": "plugins", "rel_path": "plugins"}
+  ]
+}

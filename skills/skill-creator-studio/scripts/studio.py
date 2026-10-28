@@ -194,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("doctor", help="report-only scan of many skill roots (not Claude Code's /skill-doctor); exit 0 clean, 1 findings, 2 cannot scan")
     p.add_argument("--roots", help="skill roots separated by ';' (default: the repo's skills/; outside the repo --roots or --roots-file is required)")
     p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment (at the line start or after whitespace)")
+    p.add_argument("--roots-from", choices=("opcos",), help="take the roots from an OpcOS tree: paths.json (found from $OPCOS_ROOT, else up from the working folder) names the plugin folders, and each plugin's manifest names its skill folders; not with --roots or --roots-file")
     p.add_argument("--profile", choices=C.PROFILES, default="portable", help="opcos: a link inside the scanned root is a WARN, provenance keys are WARN, missing metadata.opcos_* is a NOTE")
     p.add_argument("--target", choices=C.TARGETS, default="portable")
     p.add_argument("--include-cache", action="store_true", help="also scan folders whose name contains 'cache'")
