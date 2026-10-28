@@ -13,6 +13,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python: ['3.9', '3.12']
+        include:
+          - os: macos-latest
+            python: '3.12'
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUTF8: '1'
@@ -44,3 +47,12 @@ jobs:
         run: python studio.py validate examples/data-quality-audit --require-evals
       - name: Explicit model-evaluation disclaimer
         run: echo 'Static CI does NOT execute model-dependent evaluations; use evals/RUNBOOK.md.'
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint workflows (actionlint 1.7.7, pinned by digest)
+        uses: docker://rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9
+        with:
+          args: -color
