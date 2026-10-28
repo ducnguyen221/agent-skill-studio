@@ -562,8 +562,8 @@ class CollectSkillsTests(TmpCase):
             self.assertEqual(R.collect_skills([root]), ([], []))
 
     def test_skipped_reasons_follow_the_table(self):
-        """bắt-lỗi: FR2.2 the by-rule reasons are vendor, excluded, cloud-name, non-semver, other-version; every other reason makes a root partial."""
-        self.assertEqual(R.SKIPPED_BY_RULE, frozenset({"vendor", "excluded", "cloud-name", "non-semver", "other-version"}))
+        """bắt-lỗi: FR2.2 the by-rule reasons are vendor, excluded, cloud-name, non-semver, other-version, no-manifest; every other reason makes a root partial."""
+        self.assertEqual(R.SKIPPED_BY_RULE, frozenset({"vendor", "excluded", "cloud-name", "non-semver", "other-version", "no-manifest"}))
         root = {"path": "x", "kind": "plugin", "area": "a", "status": "ok", "reasons": [], "skipped_by_rule": []}
         for reason in ("cloud", "link", "secret-zone", "manifest-escape", "install-path-escape", "limit", "unreadable"):
             fresh = dict(root, reasons=[], skipped_by_rule=[])
@@ -694,6 +694,96 @@ class TreeShaTests(TmpCase):
         skill = self.skill()
         with mock.patch.object(_engine.fs, "read_capped", side_effect=AssertionError("read_capped")):
             self.assertIsNotNone(R.tree_sha256(skill, C.CLOUD_MARKERS))
+
+
+class TreeDigestSemanticTests(TmpCase):
+    """RF-10.1/10.3: the byte hash stays, `.git` leaves it, and a second digest folds what an adapter rewrites."""
+
+    BARE = b"---\nname: s\ndescription: D. Use when x.\n---\n\nBody\n"
+
+    def pair(self, one_text: bytes, two_text: bytes):
+        a, b = make_skill(self.tmp / "a" / "s"), make_skill(self.tmp / "b" / "s")
+        (a / "SKILL.md").write_bytes(one_text)
+        (b / "SKILL.md").write_bytes(two_text)
+        return a, b
+
+    def same(self, a, b) -> bool:
+        return R.tree_digest_semantic(a, C.CLOUD_MARKERS) == R.tree_digest_semantic(b, C.CLOUD_MARKERS)
+
+    def test_git_folder_is_not_part_of_the_hashes(self):
+        """bắt-lỗi: RF-10.3 a `.git` folder in the source checkout changes neither tree_sha256 nor the semantic digest."""
+        a, b = self.pair(self.BARE, self.BARE)
+        before = R.tree_sha256(a, C.CLOUD_MARKERS)
+        (a / ".git").mkdir()
+        (a / ".git" / "HEAD").write_bytes(b"ref: x")
+        self.assertEqual(R.tree_sha256(a, C.CLOUD_MARKERS), before)
+        self.assertEqual(R.tree_sha256(a, C.CLOUD_MARKERS), R.tree_sha256(b, C.CLOUD_MARKERS))
+        self.assertTrue(self.same(a, b))
+
+    def test_quoted_frontmatter_value_is_the_same(self):
+        """bắt-lỗi: a `description` wrapped in quotes, or with a unicode escape for the apostrophe, digests like the bare one."""
+        a, b = self.pair(b"---\nname: s\ndescription: It's fine. Use when x.\n---\n\nBody\n",
+                         b'---\nname: s\ndescription: "It\\u0027s fine. Use when x."\n---\n\nBody\n')
+        self.assertNotEqual(R.tree_sha256(a, C.CLOUD_MARKERS), R.tree_sha256(b, C.CLOUD_MARKERS))
+        self.assertTrue(self.same(a, b))
+
+    def test_crlf_and_lf_are_the_same_in_text_files_only(self):
+        """bắt-lỗi: CRLF vs LF is folded in SKILL.md and in text files, but not in a file of another kind."""
+        a, b = self.pair(self.BARE.replace(b"\n", b"\r\n"), self.BARE)
+        (a / "n.md").write_bytes(b"x\r\ny\r\n")
+        (b / "n.md").write_bytes(b"x\ny\n")
+        self.assertTrue(self.same(a, b))
+        (a / "d.bin").write_bytes(b"x\r\ny")
+        (b / "d.bin").write_bytes(b"x\ny")
+        self.assertFalse(self.same(a, b))
+
+    def test_a_changed_word_or_a_missing_file_still_differs(self):
+        """bắt-lỗi: the body, a frontmatter value, a missing file and an extra file give a different semantic digest; .gitkeep and .pyc do not."""
+        a, b = self.pair(self.BARE, self.BARE)
+        self.assertTrue(self.same(a, b))
+        (b / "SKILL.md").write_bytes(self.BARE.replace(b"Body", b"Bodies"))
+        self.assertFalse(self.same(a, b))
+        (b / "SKILL.md").write_bytes(self.BARE.replace(b"D. Use", b"E. Use"))
+        self.assertFalse(self.same(a, b))
+        (b / "SKILL.md").write_bytes(self.BARE)
+        (a / "extra.md").write_bytes(b"1")
+        self.assertFalse(self.same(a, b))
+        (a / "extra.md").unlink()
+        (a / ".gitkeep").write_bytes(b"")
+        (a / "m.pyc").write_bytes(b"junk")
+        self.assertTrue(self.same(a, b))
+
+    def test_same_refusals_as_the_byte_hash(self):
+        """bắt-lỗi: None for a missing folder, a link, a secret-looking file and a file above the limit, like tree_sha256."""
+        a, _ = self.pair(self.BARE, self.BARE)
+        self.assertIsNotNone(R.tree_digest_semantic(a, C.CLOUD_MARKERS))
+        self.assertIsNone(R.tree_digest_semantic(self.tmp / "nope", C.CLOUD_MARKERS))
+        (a / "bulk.bin").write_bytes(b"0123456789")
+        with mock.patch.object(R, "TREE_FILE_MAX", 5):
+            self.assertIsNone(R.tree_digest_semantic(a, C.CLOUD_MARKERS))
+        (a / "bulk.bin").unlink()
+        (a / ".env").write_bytes(b"A=1")
+        with mock.patch.object(_engine.fs, "open_nofollow_read", side_effect=AssertionError("opened")):
+            self.assertIsNone(R.tree_digest_semantic(a, C.CLOUD_MARKERS))
+        (a / ".env").unlink()
+        other = self.tmp / "other"
+        other.mkdir()
+        make_link(self, a / "door", other)
+        self.assertIsNone(R.tree_digest_semantic(a, C.CLOUD_MARKERS))
+
+    def test_a_warned_frontmatter_scalar_still_folds(self):
+        """bắt-lỗi: the parser warns (FM1) about a value it cannot read, as in 35 real skills; the quoted and the bare spelling of it must still digest alike."""
+        a, b = self.pair(b"---\nname: s\ndescription: Use when x.\nsource: a [b] c\n---\n\nBody\n",
+                         b'---\nname: s\ndescription: "Use when x."\nsource: a [b] c\n---\n\nBody\n')
+        self.assertTrue(self.same(a, b))
+
+    def test_unparsable_frontmatter_falls_back_to_folded_text(self):
+        """bắt-lỗi: a SKILL.md without frontmatter, or not UTF-8, still digests (CRLF folded) and does not raise."""
+        a, b = self.pair(b"no frontmatter\r\nhere\r\n", b"no frontmatter\nhere\n")
+        self.assertTrue(self.same(a, b))
+        (a / "SKILL.md").write_bytes(b"\xff\xfe\r\n")
+        (b / "SKILL.md").write_bytes(b"\xff\xfe\n")
+        self.assertTrue(self.same(a, b))
 
 
 class DoctorRootsFromTests(TmpCase):

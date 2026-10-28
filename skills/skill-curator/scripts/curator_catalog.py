@@ -144,6 +144,23 @@ def _display_root(root: dict) -> dict:
     return out
 
 
+def same_content(a_item: dict, b_item: dict, markers: tuple = C.CLOUD_MARKERS) -> tuple:
+    """(equal, how) for two skill folders given as records with a `path` (a source skill, an Installed copy): (True, "byte") when the trees hash the same byte
+    for byte, (True, "semantic") when they only agree after folding what an adapter rewrites (tree_digest_semantic), else (False, None); also (False, None) when
+    either tree cannot be hashed whole. The one comparison of `match` (FR3.2) and of the pairs (FR4)."""
+    a, b = Path(a_item["path"]), Path(b_item["path"])
+    return _same_trees(a, roots_mod.tree_sha256(a, markers), b, markers)
+
+
+def _same_trees(a: Path, a_digest, b: Path, markers: tuple) -> tuple:
+    """`same_content` with the byte digest of `a` already in hand."""
+    b_digest = roots_mod.tree_sha256(b, markers)
+    if a_digest is not None and a_digest == b_digest:
+        return True, "byte"
+    left, right = roots_mod.tree_digest_semantic(a, markers), roots_mod.tree_digest_semantic(b, markers)
+    return (True, "semantic") if left is not None and left == right else (False, None)
+
+
 def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tuple | None = None, skip_markers: tuple = (),
           notes: list | None = None) -> dict:
     """The catalog report, schema 1. `roots` are Root records (collect_skills updates them in place) and `installed` the Installed records of the
@@ -173,11 +190,11 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
         entry = by_path.get(os.path.normcase(doctor._posix(folder)), {})
         rel = folder.relative_to(plugin).as_posix() if plugin is not None else ""
         flag = _evals_entries(plugin, catalogs, notes).get(rel)
-        state = {h: {"state": "absent", "version": None} for h in HARNESSES}
+        state = {h: {"state": "absent", "version": None, "compare": None} for h in HARNESSES}
         for item in by_key.get((skill["plugin"], folder.name), []):  # one harness may hold several copies (two scopes): `match` wins over `differ`
             if item["harness"] in state and state[item["harness"]]["state"] != "match":
-                theirs = roots_mod.tree_sha256(Path(item["path"]), markers)
-                state[item["harness"]] = {"state": "match" if digest is not None and theirs == digest else "differ", "version": item.get("version")}
+                same, how = _same_trees(folder, digest, Path(item["path"]), markers)
+                state[item["harness"]] = {"state": "match" if same else "differ", "version": item.get("version"), "compare": how}
                 used.add((item["harness"], item["plugin"], item["skill"]))
         rows.append({"name": name, "description_short": short_description(desc), "repo": skill["repo"], "path": home_path(folder),
                      "plugin_version": _plugin_version(plugin, markers, versions), "tree_sha256": digest, "installed": state,

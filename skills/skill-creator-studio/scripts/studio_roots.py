@@ -19,9 +19,10 @@ import studio_const as C
 import studio_doctor as doctor
 import studio_fs as fs
 
+SEMANTIC_TEXT_SUFFIXES = frozenset({".md", ".txt", ".py", ".json", ".yaml", ".yml", ".csv", ".toml", ".ps1", ".sh", ".js", ".ts", ".html", ".css"})  # CRLF is folded to LF in these by tree_digest_semantic
 TREE_FILE_MAX = 25 * 1024 * 1024  # a file above this is not hashed: the tree has no hash (tree_sha256 returns None)
 # Why a path was left out *by a rule* (FR2.2): the root stays ok. Any other reason (cloud, link, secret-zone, manifest-escape, install-path-escape, limit, unreadable) makes it partial.
-SKIPPED_BY_RULE = frozenset({"vendor", "excluded", "cloud-name", "non-semver", "other-version"})
+SKIPPED_BY_RULE = frozenset({"vendor", "excluded", "cloud-name", "non-semver", "other-version", "no-manifest"})
 # Folders below a skill that hold its material, never another skill (05-forensics/05a-reading is a skill, 05-forensics/assets/skill-template is a template).
 _NOT_NESTED = frozenset(name.casefold() for name in C.ST8_ALLOWED_DIRS | C.SKIP_DIRS) | {"examples", "fixtures", "templates", "docs", "node_modules", "dist", "build"}
 _EXCLUDED_NAMES = frozenset(part for part in C.DOCTOR_EXCLUDE_PARTS if "/" not in part)  # .worktrees, .tmp, node_modules...
@@ -440,11 +441,42 @@ def _file_sha256(path: Path) -> str | None:
         return None
 
 
-def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
-    """SHA-256 of the lines "<posix path below the skill>\\t<sha256 of the file>\\n", sorted by path, over every regular file of the skill folder (not
-    __pycache__, not *.pyc), bytes as they are. None when the tree cannot be hashed whole: the folder is a link, in a zone or a cloud placeholder; it holds a
-    link, a cloud placeholder, a folder named like a zone, a secret-looking file (never opened), more than DOCTOR_MAX_FILES_PER_SKILL entries or a file above
-    TREE_FILE_MAX; or a file cannot be opened without following a link."""
+def _file_bytes(path: Path) -> bytes | None:
+    """The bytes of a regular file, read through open_nofollow_read; None above TREE_FILE_MAX or when it cannot be opened safely (the rules of _file_sha256)."""
+    try:
+        info = os.lstat(path)
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_size > TREE_FILE_MAX:
+            return None
+        with fs.open_nofollow_read(path, expect_stat=info, single_link=False) as handle:
+            data = handle.read(TREE_FILE_MAX + 1)
+        return data if len(data) <= TREE_FILE_MAX else None
+    except OSError:  # UnsafeOpen is one
+        return None
+
+
+def _semantic_file_sha256(path: Path, rel: str) -> str | None:
+    """SHA-256 of a file as the semantic tree sees it: SKILL.md = its parsed frontmatter (sorted keys) + its body, CRLF folded to LF; another text file
+    (SEMANTIC_TEXT_SUFFIXES) with CRLF folded to LF; any other file as its bytes. A SKILL.md that is not UTF-8 or has no parsable frontmatter counts as text."""
+    data = _file_bytes(path)
+    if data is None:
+        return None
+    if rel == "SKILL.md":
+        try:
+            text = data.decode("utf-8").replace("\r\n", "\n")
+        except UnicodeDecodeError:
+            return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+        parsed, _, end = fs.parse_frontmatter(text, path)
+        if not end:  # no frontmatter at all; findings alone (a scalar the offline parser warns about) leave a usable dict
+            return hashlib.sha256(text.encode("utf-8")).hexdigest()
+        body = "".join(text.splitlines(keepends=True)[end:])
+        return hashlib.sha256((json.dumps(parsed, sort_keys=True, ensure_ascii=True) + "\n" + body).encode("utf-8")).hexdigest()
+    if path.suffix.lower() in SEMANTIC_TEXT_SUFFIXES:
+        data = data.replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
+
+def _tree_digest(skill: Path, markers: tuple, semantic: bool) -> str | None:
+    """The walk behind tree_sha256 and tree_digest_semantic: one line per file, hashed byte for byte or by `_semantic_file_sha256`."""
     skill = Path(os.path.abspath(os.fspath(skill)))
     if fs.zone_reason(skill, markers) or fs.is_link(skill) or fs.path_is_cloud(skill) or not fs._is_dir_quiet(skill):
         return None
@@ -453,7 +485,7 @@ def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
             pass
     except OSError:
         return None
-    found, links, dirs, cloud, cut = fs.walk_files(skill, markers, skip_names=("__pycache__",))
+    found, links, dirs, cloud, cut = fs.walk_files(skill, markers, skip_names=("__pycache__", ".git"))
     if links or cloud or cut:
         return None
     lines = []
@@ -467,13 +499,29 @@ def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
             except OSError:
                 return None
             continue
-        if path.suffix.lower() == ".pyc":
+        if path.suffix.lower() == ".pyc" or (semantic and path.name == ".gitkeep"):
             continue
         if fs.secret_file_name(path.name):
             return None
-        digest = _file_sha256(path)
+        rel = path.relative_to(skill).as_posix()
+        digest = _semantic_file_sha256(path, rel) if semantic else _file_sha256(path)
         if digest is None:
             return None
-        lines.append((path.relative_to(skill).as_posix(), digest))
+        lines.append((rel, digest))
     lines.sort()
     return hashlib.sha256("".join("%s\t%s\n" % item for item in lines).encode("utf-8", "surrogatepass")).hexdigest()
+
+
+def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
+    """SHA-256 of the lines "<posix path below the skill>\\t<sha256 of the file>\\n", sorted by path, over every regular file of the skill folder (not
+    __pycache__, not .git, not *.pyc), bytes as they are. None when the tree cannot be hashed whole: the folder is a link, in a zone or a cloud placeholder; it holds a
+    link, a cloud placeholder, a folder named like a zone, a secret-looking file (never opened), more than DOCTOR_MAX_FILES_PER_SKILL entries or a file above
+    TREE_FILE_MAX; or a file cannot be opened without following a link."""
+    return _tree_digest(skill, markers, False)
+
+
+def tree_digest_semantic(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
+    """Like tree_sha256 (same walk, same limits, same None cases) over what a file says, not its bytes (FR3.2 `compare: semantic`): SKILL.md by its parsed
+    frontmatter and its body, text files with CRLF folded to LF, other files by bytes; `.gitkeep` is left out too. A copy that a harness adapter rewrote (quoted
+    description, LF for CRLF) digests like its source; a changed word, a missing file or an extra file still digests differently."""
+    return _tree_digest(skill, markers, True)

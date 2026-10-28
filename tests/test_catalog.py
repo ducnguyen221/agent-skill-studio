@@ -187,8 +187,8 @@ class RowsTests(TmpCase):
                    {"harness": "antigravity", "plugin": "elsewhere", "skill": "lonely", "path": lone.as_posix(), "version": None, "scope": None}]
         report = module.build(roots, records, False, "portable")
         row = {r["name"]: r for r in report["skills"]}["two"]
-        self.assertEqual(row["installed"]["claude"], {"state": "match", "version": "0.1.0"})
-        self.assertEqual(row["installed"]["codex"], {"state": "differ", "version": "0.2.0"})
+        self.assertEqual(row["installed"]["claude"], {"state": "match", "version": "0.1.0", "compare": "byte"})
+        self.assertEqual(row["installed"]["codex"], {"state": "differ", "version": "0.2.0", "compare": None})
         self.assertEqual(row["installed"]["antigravity"]["state"], "absent")
         self.assertEqual([(i["harness"], i["skill"]) for i in report["installed_only"]], [("antigravity", "lonely")])
         text = module.render_md(report)

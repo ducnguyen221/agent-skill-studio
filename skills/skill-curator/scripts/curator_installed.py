@@ -96,6 +96,9 @@ def _default_skills(plugin: Path, root: dict, markers: tuple) -> list:
 def _plugin_skills(plugin: Path, manifest_dir: str, root: dict, markers: tuple, budget: dict) -> list:
     """The skill folders of an installed plugin: those its own manifest declares; with no manifest at all, the `skills/` folder."""
     if not os.path.lexists(plugin / manifest_dir / "plugin.json"):
+        if not os.path.lexists(plugin / "skills"):  # nothing this harness could read: say so, or the plugin looks like it is not installed at all
+            roots_mod.note_skip(root, _posix(plugin), "no-manifest")
+            return []
         return _default_skills(plugin, root, markers)
     _, skills, skipped = roots_mod._plugin_scan(plugin, markers, budget, manifest_dir)
     for item in skipped:
@@ -143,6 +146,8 @@ def _claude(base: Path, root: dict, markers: tuple, items: list) -> None:
         if name is None or not isinstance(entries, list):
             roots_mod.note_skip(root, _posix(index), _ESCAPE)
             continue
+        if len(entries) > C.MANIFEST_SKILLS_MAX:  # the entries past the limit are not read: said, not silent
+            roots_mod.note_skip(root, _posix(index), "limit")
         for entry in entries[:C.MANIFEST_SKILLS_MAX]:
             where = entry.get("installPath") if isinstance(entry, dict) else None
             if _entry_problem(where, base, markers):

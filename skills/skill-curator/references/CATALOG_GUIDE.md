@@ -21,15 +21,15 @@
 | Skill | the `name` of the skill (folder name when the manifest cannot be read) |
 | Việc | description, one line, at most 160 characters |
 | Bản | version in the plugin manifest of the repo |
-| Claude, Codex, Antigravity | installed copy: `khớp` same tree hash, `khác (version)` different, `—` none, or the harness was not asked for with `--installed` |
+| Claude, Codex, Antigravity | installed copy: `khớp` same tree hash, or the same after folding what an adapter rewrites (the JSON `compare` says `byte` or `semantic`), `khác (version)` different, `—` none, or the harness was not asked for with `--installed` |
 | Lỗi | `doctor` ERROR / WARN count for the skill |
 | Đã đo | `model_evaluated` from the repo's `evals/catalog.json`; `—` when the repo has none |
 
-The JSON adds the tree hash (SHA-256 over every file of the skill, bytes as they are) and the `metadata.opcos_*` keys (values cut to 160 characters; a list or mapping value is left out with a NOTE on stderr).
+The JSON adds the tree hash (SHA-256 over every file of the skill, bytes as they are, `.git` left out) and the `metadata.opcos_*` keys (values cut to 160 characters; a list or mapping value is left out with a NOTE on stderr).
 
 ## Root states
 
-- `ok`: everything the rules ask for was read. Folders left out **by rule** (`vendor-*`, worktrees, `.agents/skills` copies, fixtures) are listed in `skipped_by_rule` and do not change the state.
+- `ok`: everything the rules ask for was read. Folders left out **by rule** (`vendor-*`, an install with no manifest of the harness and no `skills/` (`no-manifest`), worktrees, `.agents/skills` copies, fixtures) are listed in `skipped_by_rule` and do not change the state.
 - `partial`: something was not read that no rule excuses: a cloud placeholder, a link, a secret zone, a manifest pointing outside its plugin, a size limit.
 - `error`: the root cannot be used at all (missing, too broad, a link, in a zone).
 
@@ -45,6 +45,8 @@ The JSON adds the tree hash (SHA-256 over every file of the skill, bytes as they
 
 - The output file may not sit inside a scanned root, a skill, a harness folder or a secret zone; point it at a scratch folder.
 - A `Chỉ có bản cài` entry is an installed copy with no source in the scanned roots, usually a third-party plugin.
+- `semantic` folds quoted frontmatter values, CRLF vs LF in text files and `.gitkeep`; a file an adapter dropped or added (a Dockerfile, a `.tsx`, a nested skill split flat) still makes the copy `khác`.
+- For Antigravity the locator also reads `config/plugins/<plugin>/plugin.json`, only for the version (size-capped, refused behind a link, zone or cloud placeholder).
 
 ## Done when
 

@@ -497,7 +497,167 @@ class MatchTests(HomeCase):
         self.index_with(home, {"demo@mk": [{"scope": "project", "installPath": other.as_posix(), "version": "0.9.0"},
                                            {"scope": "user", "installPath": (home / ".claude" / "plugins" / "cache" / "mk" / "demo" / "1.0.0").as_posix(), "version": "1.0.0"}]})
         code, report, text = self.catalog(home, "claude")
-        self.assertEqual({r["name"]: r["installed"]["claude"] for r in report["skills"]}["alpha"], {"state": "match", "version": "1.0.0"})
+        self.assertEqual({r["name"]: r["installed"]["claude"] for r in report["skills"]}["alpha"], {"state": "match", "version": "1.0.0", "compare": "byte"})
+
+
+class SemanticMatchTests(HomeCase):
+    """FR3.2 (as of 29/10): `match` is equal bytes OR equal after folding what an adapter rewrites; the JSON says which (`compare`)."""
+
+    catalog = MatchTests.catalog
+
+    def rewrite_alpha(self, home: Path, harness_dir=".gemini/config/plugins/demo/skills/alpha") -> Path:
+        """The installed alpha as an adapter would write it: CRLF line ends and a quoted description."""
+        skill = home / harness_dir
+        text = (skill / "SKILL.md").read_bytes().decode("utf-8").replace("\r\n", "\n")
+        text = text.replace("description: Fixture skill alpha. Use when testing installed copies.", 'description: "Fixture skill alpha. Use when testing installed copies."')
+        (skill / "SKILL.md").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+        return skill
+
+    def states(self, report, name="alpha"):
+        return {h: (v["state"], v["compare"]) for h, v in {r["name"]: r for r in report["skills"]}[name]["installed"].items()}
+
+    def test_adapter_rewrite_is_a_semantic_match(self):
+        """bắt-lỗi: RF-10.1 an Antigravity copy with a quoted description and CRLF is `match` with compare `semantic`; byte-equal copies say `byte`."""
+        home = self.home()
+        self.rewrite_alpha(home)
+        code, report, text = self.catalog(home)
+        self.assertEqual(self.states(report), {"claude": ("match", "byte"), "codex": ("match", "byte"), "antigravity": ("match", "semantic")})
+        self.assertEqual(self.states(report, "beta"), {"claude": ("differ", None), "codex": ("differ", None), "antigravity": ("differ", None)})
+
+    def test_absent_has_no_compare(self):
+        code, report, text = self.catalog(self.home(), "codex")
+        self.assertEqual(self.states(report), {"claude": ("absent", None), "codex": ("match", "byte"), "antigravity": ("absent", None)})
+
+    def test_a_missing_or_extra_file_in_the_copy_still_differs(self):
+        """bắt-lỗi: RF-10.1 a file the adapter dropped, or one it added, is `differ` even when SKILL.md says the same."""
+        home = self.home()
+        skill = self.rewrite_alpha(home)
+        (skill / "extra.md").write_bytes(b"added")
+        self.assertEqual(self.states(self.catalog(home)[1])["antigravity"], ("differ", None))
+        (skill / "extra.md").unlink()
+        tree = source_tree(self)
+        (tree / "skills" / "alpha" / "references").mkdir()
+        (tree / "skills" / "alpha" / "references" / "r.md").write_bytes(b"only at the source")
+        self.assertEqual(self.states(self.catalog(home, tree=tree)[1])["antigravity"], ("differ", None))
+
+    def test_a_changed_word_in_the_copy_still_differs(self):
+        home = self.home()
+        skill = self.rewrite_alpha(home)
+        (skill / "SKILL.md").write_bytes((skill / "SKILL.md").read_bytes().replace(b"Body.", b"Bodies."))
+        self.assertEqual(self.states(self.catalog(home)[1])["antigravity"], ("differ", None))
+
+    def test_catalog_md_shows_a_semantic_match_as_khop(self):
+        """bắt-lỗi: CATALOG.md has one word for both kinds of match."""
+        home = self.home()
+        self.rewrite_alpha(home)
+        report = self.catalog(home)[1]
+        line = [x for x in TC.load_catalog_module().render_md(report).splitlines() if x.startswith("| alpha ")][0]
+        self.assertEqual([c.strip() for c in line.split("|")[4:7]], ["khớp", "khớp", "khớp"])
+
+    def test_same_content_for_two_items(self):
+        """bắt-lỗi: TK11's shared comparison returns (equal, how): byte, semantic, or (False, None) when different or unreadable."""
+        mod = TC.load_catalog_module()
+        home = self.home()
+        self.rewrite_alpha(home)
+        src = source_tree(self) / "skills" / "alpha"
+        claude = home / ".claude" / "plugins" / "cache" / "mk" / "demo" / "1.0.0" / "skills" / "alpha"
+        gem = home / ".gemini" / "config" / "plugins" / "demo" / "skills" / "alpha"
+        beta = home / ".gemini" / "config" / "plugins" / "demo" / "skills" / "beta"
+        self.assertEqual(mod.same_content({"path": src}, {"path": claude}), (True, "byte"))
+        self.assertEqual(mod.same_content({"path": src.as_posix()}, {"path": gem.as_posix()}), (True, "semantic"))
+        self.assertEqual(mod.same_content({"path": src}, {"path": src.parent / "beta"}), (False, None))
+        self.assertEqual(mod.same_content({"path": gem}, {"path": beta}), (False, None))
+        self.assertEqual(mod.same_content({"path": src}, {"path": self.tmp / "nope"}), (False, None))
+
+
+class NoManifestTests(HomeCase):
+    """RF-10.2: an install with no manifest of its own harness and no `skills/` is reported, not silently absent."""
+
+    def test_codex_install_with_nothing_to_read_is_noted_by_rule(self):
+        home = self.home()
+        bare = home / ".codex" / "plugins" / "cache" / "mk" / "solo" / "2.2.3"
+        (bare / ".claude-plugin").mkdir(parents=True)
+        (bare / "SKILL.md").write_bytes(b"---\nname: solo\ndescription: D. Use when x.\n---\n")
+        items, root = self.locate("codex", home)
+        self.assertNotIn("solo", [i["plugin"] for i in items])
+        self.assertIn(("2.2.3", "no-manifest"), {(x["path"].rsplit("/", 1)[-1], x["reason"]) for x in root["skipped_by_rule"]})
+        self.assertEqual((root["status"], root["reasons"]), ("ok", []))
+
+    def test_claude_install_with_nothing_to_read_is_noted_by_rule(self):
+        home = self.home()
+        bare = home / ".claude" / "plugins" / "cache" / "mk" / "bare" / "1.0.0"
+        bare.mkdir(parents=True)
+        self.index_with(home, {"bare@mk": [{"scope": "user", "installPath": bare.as_posix(), "version": "1.0.0"}]})
+        items, root = self.locate("claude", home)
+        self.assertEqual(items, [])
+        self.assertEqual([x["reason"] for x in root["skipped_by_rule"]], ["no-manifest"])
+        self.assertEqual(root["status"], "ok")
+
+    def test_a_plugin_with_skills_but_no_manifest_is_still_read(self):
+        home = self.home()
+        shutil.rmtree(home / ".codex" / "plugins" / "cache" / "mk" / "demo" / "1.10.0" / ".codex-plugin")
+        items, root = self.locate("codex", home)
+        self.assertEqual(self.skills(items), [("demo", "alpha", "1.10.0"), ("demo", "beta", "1.10.0")])
+        self.assertEqual([x for x in root["skipped_by_rule"] if x["reason"] == "no-manifest"], [])
+
+
+@unittest.skipUnless(os.name == "nt", "Windows spellings of a path")
+class WindowsInstallPathTests(HomeCase):
+    """RF-10.4: spellings a Windows index may use for a place outside ~/.claude are refused by name, before any probe (a UNC path would reach the network)."""
+
+    def spellings(self, home: Path) -> list:
+        good = home / ".claude" / "plugins" / "cache" / "mk" / "demo" / "1.0.0"
+        out = [r"\\localhost\c$\Users\x\.claude\plugins\evil", r"\\?\UNC\server\share\evil", r"\\?\C:\Users\x\evil", r"\\.\C:\Users\x\evil",
+               "\\\\?\\" + str(good), "\\\\.\\" + str(good), r"D:\evil" if str(home)[:2].upper() != "D:" else r"E:\evil"]
+        try:
+            import ctypes
+            buffer = ctypes.create_unicode_buffer(1024)
+            if ctypes.windll.kernel32.GetShortPathNameW(str(good), buffer, 1024) and buffer.value.lower() != str(good).lower():
+                out.append(buffer.value)  # the 8.3 spelling of a real folder: another spelling, so refused
+        except (AttributeError, OSError):
+            pass
+        return out
+
+    def test_windows_spellings_are_refused_before_any_probe(self):
+        home = self.home()
+        top = os.path.normcase(os.path.abspath(home / ".claude"))
+        fs = _engine.fs
+        probed = []
+
+        def guard(real):
+            def probe(path, *a, **k):
+                where = os.path.normcase(os.path.abspath(os.fspath(path)))
+                if not (where == top or where.startswith(top + os.sep)):
+                    probed.append(where)
+                return real(path, *a, **k)
+            return probe
+        good = home / ".claude" / "plugins" / "cache" / "mk" / "demo" / "1.0.0"
+        for spelling in self.spellings(home):
+            with self.subTest(spelling=spelling):
+                self.index_with(home, {"demo@mk": [{"scope": "user", "installPath": good.as_posix(), "version": "1.0.0"}],
+                                       "evil@mk": [{"scope": "user", "installPath": spelling, "version": "9"}]})
+                del probed[:]
+                with mock.patch.object(fs, "link_in_chain", guard(fs.link_in_chain)), mock.patch.object(fs, "is_link", guard(fs.is_link)), \
+                        mock.patch.object(fs, "path_is_cloud", guard(fs.path_is_cloud)), mock.patch.object(fs, "valid_resolved_under", guard(fs.valid_resolved_under)):
+                    items, root = self.locate("claude", home)
+                self.assertEqual(probed, [])
+                self.assertEqual(self.skills(items), [("demo", "alpha", "1.0.0"), ("demo", "beta", "1.0.0")])
+                self.assertEqual((root["status"], root["reasons"]), ("partial", ["install-path-escape"]))
+
+
+class IndexLimitTests(HomeCase):
+    def test_entries_beyond_the_per_plugin_limit_are_reported(self):
+        """bắt-lỗi: RF-10.9 entries of one plugin beyond MANIFEST_SKILLS_MAX are not read, and the root says `limit` (partial), not silence."""
+        home = self.home()
+        good = (home / ".claude" / "plugins" / "cache" / "mk" / "demo" / "1.0.0").as_posix()
+        entries = [{"scope": "user", "installPath": good, "version": "1.0.0"}] * 3
+        self.index_with(home, {"demo@mk": entries})
+        with mock.patch.object(_engine.const, "MANIFEST_SKILLS_MAX", 2):
+            items, root = self.locate("claude", home)
+        self.assertEqual((root["status"], root["reasons"]), ("partial", ["limit"]))
+        with mock.patch.object(_engine.const, "MANIFEST_SKILLS_MAX", 3):
+            items, root = self.locate("claude", home)
+        self.assertEqual((root["status"], root["reasons"]), ("ok", []))
 
 
 class EvalsCatalogRecursionTests(TC.TmpCase):
