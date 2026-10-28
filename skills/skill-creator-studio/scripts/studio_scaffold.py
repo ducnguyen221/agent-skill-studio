@@ -34,6 +34,8 @@ def user_skill_root(agent: str) -> Path:
 
 
 def is_drive_root(path: Path) -> bool:
+    """True for a drive root, also when a `..` leads there: the test runs on the normalised path, the caller keeps the raw one for the link probe."""
+    path = Path(os.path.normpath(path))
     return path.parent == path
 
 

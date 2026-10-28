@@ -148,6 +148,7 @@ class NewOutputTests(unittest.TestCase):
 
     def test_new_output_drive_root_refused(self):
         """FR12.2: `--output` that is a drive root, or `<root>skills` (whose evals would sit under the root), exits 2 and writes nothing.
+        A `..` that leads back to the root (`<root>x/..`, `<root>x/../skills`) is the same refusal (RF-B1).
 
         Run in this process with every way of writing or making a folder replaced by one that fails the test, so a `new` that does not refuse
         stops at its first write and leaves nothing on the drive."""
@@ -168,7 +169,8 @@ class NewOutputTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             for guard in guards:
                 stack.enter_context(guard)
-            for output in (anchor, anchor + "skills"):
+            dotted = os.path.join(anchor, "x", "..")
+            for output in (anchor, anchor + "skills", dotted, os.path.join(dotted, "skills")):
                 err, out = io.StringIO(), io.StringIO()
                 with contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
                     code = E.scaffold.cmd_new(new_args(name, output))
