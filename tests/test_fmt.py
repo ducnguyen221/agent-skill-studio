@@ -425,7 +425,7 @@ class FmtMoreTests(unittest.TestCase):
         self.assertEqual(studio_fmt.classify_md(base / "examples" / "exemplar" / "A.md", base), "other")
         self.assertEqual(studio_fmt.classify_md(base / "content" / "A.md", base), "other", "content/ moved to examples/ (SPR-03 TK2)")
         self.assertEqual(studio_fmt.classify_md(base / "templates" / "README.md", base), "studio-doc")
-        self.assertEqual(studio_fmt.classify_md(base / "templates" / "project" / "README.md", base), "other")
+        self.assertEqual(studio_fmt.classify_md(base / "templates" / "starter-project" / "README.md", base), "other")
         self.assertEqual(studio_fmt.classify_md(base / "references" / "PROCESS_TEMPLATE.md", base), "process")
         self.assertEqual(studio_fmt.classify_md(base / "references" / "AUDIT_WORKFLOW.md", base), "process")
         self.assertEqual(studio_fmt.classify_md(base / "standards" / "A.md", None), "other")

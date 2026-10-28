@@ -33,7 +33,7 @@ Không cấu hình `CLAUDE.md`/`GEMINI.md` chỉ là tên file giả cho Codex: 
 
 ## Áp dụng mẫu dự án mới
 
-1. Copy `templates/project/` hoặc dùng root entrypoints làm căn cứ.
+1. Copy `templates/starter-project/` hoặc dùng root entrypoints làm căn cứ.
 2. Chỉ đưa các nguyên tắc thường trực, dài tối đa đủ đọc; gửi các quy trình phức tạp vào Skill.
 3. Cài Skill vào thư mục runtime tương ứng bằng `studio.py install`.
 4. Test với agent câu: "Which repo instruction files and Skill names are active?" và xác minh thực tế.
