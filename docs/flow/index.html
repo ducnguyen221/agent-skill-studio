@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Luồng &amp; quy trình · Agent Skill Studio</title>
-<meta name="description" content="Vòng đời một skill, luồng dữ liệu eval và cổng model_evaluated, cấu trúc repo và CI mỗi lần push.">
+<meta name="description" content="Vòng đời một skill, luồng dữ liệu eval và cổng model_evaluated, cấu trúc repo.">
 <link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/flow/">
 <link rel="icon" href="../assets/logo.svg">
-<link rel="stylesheet" href="../assets/ds/site.css?v=1.0.1">
+<link rel="stylesheet" href="../assets/ds/site.css?v=1.1.0">
 </head>
 <body>
 <canvas id="netbg" aria-hidden="true"></canvas>
@@ -28,7 +28,6 @@
     <a class="brand" href="../index.html"><img src="../assets/logo.svg" alt="">Agent Skill Studio</a>
     <nav class="nav-links" aria-label="Điều hướng chính">
       <a href="../index.html">Trang chủ</a>
-      <a href="../about/index.html">Giới thiệu</a>
       <a href="../install/index.html">Cài đặt</a>
       <a href="../guide/index.html">Cách dùng</a>
       <a href="../flow/index.html" class="active" aria-current="page">Luồng &amp; quy trình</a>
@@ -43,7 +42,7 @@
 <section class="page-hero"><div class="wrap">
   <span class="eyebrow"><span class="dot"></span>Luồng &amp; quy trình</span>
   <h1>Việc chạy qua những bước nào</h1>
-  <p class="lead">Bốn luồng: vòng đời một skill, dữ liệu eval và cổng <code>model_evaluated</code>, cấu trúc repo, và CI mỗi lần push.</p>
+  <p class="lead">Ba luồng: vòng đời một skill, dữ liệu eval và cổng <code>model_evaluated</code>, và cấu trúc repo.</p>
 </div></section>
 <section><div class="wrap">
   <div class="sec-head"><h2>Luồng 1 — Vòng đời một skill</h2></div>
@@ -70,35 +69,27 @@
     <p class="ig-title">Từ ca thử tới cổng EV20</p>
     <ol class="ig-track ig-h">
       <li class="ig-step" style="--i:0"><div class="ig-node"><svg class="ig-ico"><use href="#i-book"/></svg><span class="ig-num">1</span></div><div class="ig-body"><h3>cases.json + rubric</h3><p>Bộ ca: câu lệnh, có nên gọi không, hành vi kỳ vọng.</p></div></li>
-      <li class="ig-step" style="--i:1"><div class="ig-node"><svg class="ig-ico"><use href="#i-archive"/></svg><span class="ig-num">2</span></div><div class="ig-body"><h3>Ledger thô</h3><p>Ngoài repo, không public: log từng phiên, transcript đã che.</p></div></li>
+      <li class="ig-step" style="--i:1"><div class="ig-node"><svg class="ig-ico"><use href="#i-archive"/></svg><span class="ig-num">2</span></div><div class="ig-body"><h3>Log từng lượt đo</h3><p>Giữ ngoài repo: log từng phiên, transcript đã che.</p></div></li>
       <li class="ig-step" style="--i:2"><div class="ig-node"><svg class="ig-ico"><use href="#i-evidence"/></svg><span class="ig-num">3</span></div><div class="ig-body"><h3>evidence/&lt;lô&gt;.json</h3><p>Trong repo: sinh bằng <code>compact</code>, kiểm bằng <code>compact --verify</code>.</p></div></li>
       <li class="ig-step" style="--i:3"><div class="ig-node"><svg class="ig-ico"><use href="#i-shield"/></svg><span class="ig-num">4</span></div><div class="ig-body"><h3>Cổng EV20</h3><p>Đếm lại, tính lại <code>result</code>, so với khối khai.</p><p class="ig-gate"><svg class="ig-ico"><use href="#i-shield"/></svg><span><b>Khớp</b> · thoát 0</span></p><p class="ig-exit"><svg class="ig-ico"><use href="#i-lock"/></svg><span><b>Lệch</b> · ERROR EV20, thoát 1</span></p></div></li>
     </ol>
   </div>
   <div class="ig-notes">
     <p class="ig-note"><svg class="ig-ico"><use href="#i-book"/></svg><span><b><code>evals/catalog.json</code></b> mỗi skill một mục (đường, phiên bản, agent đích, <code>model_evaluated</code>), có thể mang khối <code>evaluated</code>; mũi tên khai vào cổng.</span></p>
-    <p class="ig-note"><svg class="ig-ico"><use href="#i-archive"/></svg><span><b>Ledger thô</b> nằm ở sổ OpcOS <code>system/ledger/agent-skill-studio/evidence/&lt;lô&gt;/&lt;skill&gt;/</code>.</span></p>
-    <p class="ig-note"><svg class="ig-ico"><use href="#i-shield"/></svg><span><b>Ngưỡng mỗi agent đã chạy</b> kích hoạt đúng ≥4, kích hoạt sai 0, 5 cặp A/B có <code>better</code> ≥3 và <code>worse</code> 0. Không bao giờ sửa ngưỡng cho vừa số.</span></p>
+    <p class="ig-note"><svg class="ig-ico"><use href="#i-shield"/></svg><span><b>Ngưỡng cố định</b> mỗi agent đã chạy phải đạt ngưỡng kích hoạt đúng, không kích hoạt sai, và A/B tốt hơn bản không skill. Không bao giờ sửa ngưỡng cho vừa số.</span></p>
   </div>
   <p style="margin-top:16px"><code>result</code> nhận một trong bốn giá trị: <code>not_run</code> (không agent nào chạy), <code>below-threshold</code>, <code>partial</code> (đạt nhưng còn agent hoãn có lý do), <code>passed</code>. <code>model_evaluated: true</code> chỉ hợp lệ khi <code>passed</code>.</p>
 </div></section>
 <section><div class="wrap">
   <div class="sec-head"><h2>Luồng 3 — Cấu trúc repo</h2></div>
   <div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Thư mục</th><th scope="col">Vai</th><th scope="col">Vào gói cài?</th></tr></thead>
-  <tbody><tr><td class="lbl"><code>standards/</code></td><td>8 file chuẩn cho tác giả skill</td><td>Không</td></tr>
+  <tbody><tr><td class="lbl"><code>standards/</code></td><td>các file chuẩn cho tác giả skill</td><td>Không</td></tr>
 <tr><td class="lbl"><code>skills/</code></td><td>chỉ skill phát hành: <code>skill-creator-studio</code> (<code>SKILL.md</code>, <code>references/</code>, <code>scripts/</code> chứa engine, <code>assets/</code> chứa 2 khuôn)</td><td><b>Có</b> (chỉ thư mục này)</td></tr>
 <tr><td class="lbl"><code>templates/</code></td><td><code>starter-project/</code>: mẫu file luật cho dự án khác</td><td>Không</td></tr>
 <tr><td class="lbl"><code>examples/</code></td><td>mẫu để chép: <code>descriptions.md</code>, <code>eval-cases.md</code>, 2 skill mẫu ngắn, skill CSV <code>data-quality-audit</code></td><td>Không</td></tr>
 <tr><td class="lbl"><code>evals/</code></td><td><code>catalog.json</code>, <code>RUNBOOK.md</code>, <code>tools/</code>, bộ eval từng skill</td><td>Không</td></tr>
-<tr><td class="lbl"><code>tests/</code></td><td>test ngoại tuyến và 96 ca hợp đồng CLI</td><td>Không</td></tr>
-<tr><td class="lbl"><code>docs/</code></td><td>website này (trang HTML, bản chép Design System, công cụ dựng). Không phải skill</td><td>Không</td></tr></tbody></table></div>
-  <p class="note"><b>Ngoài các thư mục:</b> <code>README.md</code>, <code>CHANGELOG.md</code>, <code>LICENSE</code>, <code>LICENSE_POLICY.md</code>, <code>AGENTS.md</code>/<code>CLAUDE.md</code>/<code>GEMINI.md</code> (luật của repo cho ba agent), <code>studio.py</code> (vỏ mỏng gọi engine), manifest <code>.claude-plugin/</code>, <code>.codex-plugin/</code>, CI <code>.github/workflows/ci.yml</code>.</p>
-  <p class="note ok"><b>Vào gói:</b> ZIP của <code>package</code> cho <code>skill-creator-studio</code> có 25 file: <code>SKILL.md</code>, 5 reference, 10 file engine Python, 9 file khuôn. Bị loại: <code>evals/</code>, <code>tests/</code>, thư mục cache; gặp tên giống secret thì dừng hẳn. Plugin chỉ phát hành <code>skills/</code>; <code>standards/</code> là tài liệu tác giả, không chèn vào lúc agent chạy (bản rút gọn của 16 luật đi theo skill dưới dạng <code>references/CORE_RULES.md</code>, sinh tự động, test canh khớp).</p>
-</div></section>
-<section><div class="wrap">
-  <div class="sec-head"><h2>Luồng 4 — CI mỗi lần push</h2></div>
-  <p>Trên Ubuntu và Windows, Python 3.9 và 3.12, theo thứ tự:</p>
-  <ol class="timeline"><li><span class="tnum">01</span><h3>validate</h3><p><code>validate --all --require-evals</code></p></li><li><span class="tnum">02</span><h3>evals</h3><p><code>evals --all</code> (đỏ nếu cổng <code>model_evaluated</code> bị bỏ qua)</p></li><li><span class="tnum">03</span><h3>unittest</h3><p>Toàn bộ bộ test ngoại tuyến.</p></li><li><span class="tnum">04</span><h3>package</h3><p>Đóng gói skill phát hành.</p></li><li><span class="tnum">05</span><h3>ví dụ</h3><p><code>validate examples/data-quality-audit --require-evals</code>, rồi in dòng nhắc «CI tĩnh không chạy eval phụ thuộc model».</p></li></ol>
+<tr><td class="lbl"><code>tests/</code></td><td>test ngoại tuyến và ca hợp đồng của dòng lệnh</td><td>Không</td></tr>
+<tr><td class="lbl"><code>docs/</code></td><td>website này</td><td>Không</td></tr></tbody></table></div>
 </div></section>
 </main>
 <footer class="site">
@@ -112,7 +103,6 @@
         <div class="foot-col">
           <b>Sản phẩm</b>
           <a href="../index.html">Trang chủ</a>
-          <a href="../about/index.html">Giới thiệu</a>
           <a href="../install/index.html">Cài đặt</a>
           <a href="../guide/index.html">Cách dùng</a>
           <a href="../flow/index.html">Luồng &amp; quy trình</a>
@@ -132,6 +122,6 @@
     </div>
   </div>
 </footer>
-<script src="../assets/ds/site.js?v=1.0.1"></script>
+<script src="../assets/ds/site.js?v=1.1.0"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@
 <meta name="description" content="16 luật viết skill SK-00…SK-15, thứ tự ưu tiên, ba loại tài liệu, chuẩn tiếng Việt, an toàn và nguyên tắc không pass giả.">
 <link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/principles/">
 <link rel="icon" href="../assets/logo.svg">
-<link rel="stylesheet" href="../assets/ds/site.css?v=1.0.1">
+<link rel="stylesheet" href="../assets/ds/site.css?v=1.1.0">
 </head>
 <body>
 <canvas id="netbg" aria-hidden="true"></canvas>
@@ -28,7 +28,6 @@
     <a class="brand" href="../index.html"><img src="../assets/logo.svg" alt="">Agent Skill Studio</a>
     <nav class="nav-links" aria-label="Điều hướng chính">
       <a href="../index.html">Trang chủ</a>
-      <a href="../about/index.html">Giới thiệu</a>
       <a href="../install/index.html">Cài đặt</a>
       <a href="../guide/index.html">Cách dùng</a>
       <a href="../flow/index.html">Luồng &amp; quy trình</a>
@@ -76,7 +75,7 @@
   <tbody><tr><td class="lbl"><b>Skill</b></td><td>tên file <code>SKILL.md</code></td><td><code>name</code>, <code>description</code> đúng <code>SK-00</code>; việc làm, khi nào dùng, khi nào không</td><td>khoá frontmatter lạ (<code>version:</code>, <code>triggers:</code>), secret, đường cứng, lệnh tắt sandbox, fixture trong gói</td><td>thân &lt;500 dòng, &lt;5 000 token</td></tr>
 <tr><td class="lbl"><b>Workflow / quy trình</b></td><td><code>type: workflow</code> hoặc nằm trong <code>workflows/</code></td><td>câu Kết luận đầu file; Bước đánh số kiểm được; mục «Xong khi»</td><td>bước không kiểm được, nhật ký, chép luật nơi khác, bước nguy hiểm không cổng</td><td>≤300 dòng</td></tr>
 <tr><td class="lbl"><b>File luật agent</b></td><td><code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>GEMINI.md</code> hoặc <code>type: rules</code></td><td>chỉ luật đang hiệu lực; <code>AGENTS.md</code> là nguồn, hai file kia trỏ về</td><td>lịch sử đổi luật, mã commit, khối lệnh chạy ngay (trừ một mục lệnh kiểm trước khi báo xong)</td><td>≤200 dòng</td></tr></tbody></table></div>
-  <p>Không nhận ra loại thì <code>check</code> thoát 2, không đoán. Máy kiểm theo ba loại này thuộc chặng 3; hiện người soạn và reviewer tự kiểm.</p>
+  <p>Không nhận ra loại thì <code>check</code> thoát 2, không đoán.</p>
 </div></section>
 <section><div class="wrap">
   <div class="sec-head"><h2>Chuẩn tiếng Việt (tóm tắt)</h2></div>
@@ -84,7 +83,6 @@
     <li>Thân <code>SKILL.md</code> dùng <b>một</b> ngôn ngữ, Việt hoặc Anh; frontmatter luôn tiếng Anh và <code>description</code> phải còn cụm <code>Use when</code>.</li>
     <li>14 quy tắc <code>V01</code>–<code>V14</code>: kết luận lên đầu; mỗi bước bắt đầu bằng động từ; câu ≤25 từ; lặp danh từ thay đại từ xa; một khái niệm một từ; đủ dấu, chuẩn NFC; ngày ISO <code>2026-10-22</code>; giữ thuật ngữ kỹ thuật tiếng Anh đã quen, lần đầu ghi «Việt (Anh)».</li>
     <li>Lint <code>VI1</code>–<code>VI5</code> đều là cảnh báo, chỉ chạy khi thân có ≥3 % chữ có dấu; dòng có <code>&lt;!-- studio:vi-ok --&gt;</code> được miễn.</li>
-    <li>Tiếng Việt tốn token hơn tiếng Anh (×2,14 theo cl100k, ×1,19 theo o200k trên 3 đoạn mẫu); tokenizer của Claude chưa đo (<code>not_run</code>).</li>
   </ul>
 </div></section>
 <section><div class="wrap">
@@ -129,7 +127,6 @@
         <div class="foot-col">
           <b>Sản phẩm</b>
           <a href="../index.html">Trang chủ</a>
-          <a href="../about/index.html">Giới thiệu</a>
           <a href="../install/index.html">Cài đặt</a>
           <a href="../guide/index.html">Cách dùng</a>
           <a href="../flow/index.html">Luồng &amp; quy trình</a>
@@ -149,6 +146,6 @@
     </div>
   </div>
 </footer>
-<script src="../assets/ds/site.js?v=1.0.1"></script>
+<script src="../assets/ds/site.js?v=1.1.0"></script>
 </body>
 </html>

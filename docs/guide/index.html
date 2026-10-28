@@ -7,7 +7,7 @@
 <meta name="description" content="Ba chế độ NEW, AUDIT, REFINE của skill-creator-studio, bảng 9 lệnh studio.py và ba ví dụ đầu-cuối.">
 <link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/guide/">
 <link rel="icon" href="../assets/logo.svg">
-<link rel="stylesheet" href="../assets/ds/site.css?v=1.0.1">
+<link rel="stylesheet" href="../assets/ds/site.css?v=1.1.0">
 </head>
 <body>
 <canvas id="netbg" aria-hidden="true"></canvas>
@@ -28,7 +28,6 @@
     <a class="brand" href="../index.html"><img src="../assets/logo.svg" alt="">Agent Skill Studio</a>
     <nav class="nav-links" aria-label="Điều hướng chính">
       <a href="../index.html">Trang chủ</a>
-      <a href="../about/index.html">Giới thiệu</a>
       <a href="../install/index.html">Cài đặt</a>
       <a href="../guide/index.html" class="active" aria-current="page">Cách dùng</a>
       <a href="../flow/index.html">Luồng &amp; quy trình</a>
@@ -90,7 +89,7 @@
 <tr><td class="lbl"><code>install</code></td><td>chép skill vào thư mục khám phá của agent</td><td><code>--agent {claude,codex,antigravity}</code> (bắt buộc), <code>--workspace</code> hoặc <code>--user</code>, <code>--force</code>, <code>--allow-root-link</code></td><td><code>python3 studio.py install skills/skill-creator-studio --agent codex --workspace .</code></td></tr>
 <tr><td class="lbl"><code>doctor</code></td><td>quét nhiều gốc skill, chỉ báo cáo</td><td><code>--roots</code>, <code>--roots-file</code>, <code>--profile {portable,opcos}</code>, <code>--target</code>, <code>--include-cache</code>, <code>--skip-marker</code>, <code>--baseline</code>, <code>--json</code>, <code>--out</code>, <code>--fail-on {error,warn,new}</code></td><td><code>python3 studio.py doctor --roots &quot;~/.claude/skills;.agents/skills&quot;</code></td></tr>
 <tr><td class="lbl"><code>fmt</code></td><td>kiểm (mặc định) hoặc sửa kiểu trình bày Markdown; không đổi chữ của thân</td><td><code>--all</code>, <code>--check</code>/<code>--fix</code>, <code>--no-backup</code>, <code>--profile</code>, <code>--json</code></td><td><code>python3 studio.py fmt --check --all</code></td></tr></tbody></table></div>
-  <p>Cờ lấy từ <code>python studio.py &lt;lệnh&gt; --help</code> (chạy thật ngày 2026-10-28). Cờ chung: <code>--version</code> in phiên bản; <code>--help</code> cho mọi lệnh.</p>
+  <p>Cờ đầy đủ: <code>python studio.py &lt;lệnh&gt; --help</code>. Cờ chung: <code>--version</code> in phiên bản; <code>--help</code> cho mọi lệnh.</p>
   <p class="note warn"><b>Mã lỗi hay gặp:</b> <code>INPUT</code> (file ở vùng cloud/secret, placeholder cloud, hoặc là link), <code>EV20</code> (catalog hỏng hoặc lệch bằng chứng), <code>PACK</code> (gói gặp link, placeholder, cây quá lớn, file trên 25 MB…), <code>SEC</code> (tên file giống secret như <code>.env*</code>, <code>*.pem</code>), <code>EX1</code>–<code>EX13</code> (xuất eval bị từ chối). Mỗi lần từ chối in mã ra stderr và trong <code>--json</code>.</p>
 </div></section>
 <section><div class="wrap">
@@ -105,12 +104,12 @@ python3 studio.py check skills/writing-weekly-notes      # còn cảnh báo CT9:
 python3 studio.py validate skills/writing-weekly-notes --require-evals
 python3 studio.py evals writing-weekly-notes
 python3 studio.py package skills/writing-weekly-notes --out dist</code></pre></div></div>
-  <p class="note"><b>Kết quả chạy thử 2026-10-28</b> (với <code>--full --lang vi</code> ở thư mục tạm): <code>new</code> thoát 0; <code>check</code> thoát 0 với 1 cảnh báo <code>CT9</code>; <code>package</code> thoát 1 với lỗi <code>PACK</code> «cannot package an unfinished template» cho tới khi xoá dấu nháp. Đây là chủ đích: khung chưa viết thì không phát hành được.</p>
+  <p class="note"><b>Lưu ý:</b> <code>package</code> từ chối khung còn dấu nháp («cannot package an unfinished template»): khung chưa viết thì không phát hành được.</p>
   <h3 style="margin-top:28px">Ví dụ 2 — Kiểm cả thư viện skill trên máy, không sửa gì</h3>
   <div class="code-card"><div class="code-top"><span class="fn">Terminal</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
   <div class="code-scroll"><pre><code>python3 studio.py doctor --roots &quot;~/.claude/skills;~/.agents/skills&quot; --json --out report.json
 python3 studio.py doctor --roots &quot;~/.claude/skills;~/.agents/skills&quot; --baseline report.json --fail-on new</code></pre></div></div>
-  <p>Lần đầu ghi báo cáo JSON; lần sau so với mốc và chỉ báo đỏ khi có cặp (skill, mã lỗi) mới mọc thêm. <code>doctor</code> không mở vùng secret, cloud hay link. Ví dụ dựng từ <code>--help</code>, chưa chạy thử trên thư viện skill của máy.</p>
+  <p>Lần đầu ghi báo cáo JSON; lần sau so với mốc và chỉ báo đỏ khi có cặp (skill, mã lỗi) mới mọc thêm. <code>doctor</code> không mở vùng secret, cloud hay link.</p>
   <h3 style="margin-top:28px">Ví dụ 3 — Kiểm phát hành rồi cài skill cho Codex</h3>
   <div class="code-card"><div class="code-top"><span class="fn">Terminal</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
   <div class="code-scroll"><pre><code>python3 studio.py doctor
@@ -133,7 +132,6 @@ python3 studio.py install skills/skill-creator-studio --agent codex --workspace 
         <div class="foot-col">
           <b>Sản phẩm</b>
           <a href="../index.html">Trang chủ</a>
-          <a href="../about/index.html">Giới thiệu</a>
           <a href="../install/index.html">Cài đặt</a>
           <a href="../guide/index.html">Cách dùng</a>
           <a href="../flow/index.html">Luồng &amp; quy trình</a>
@@ -153,6 +151,6 @@ python3 studio.py install skills/skill-creator-studio --agent codex --workspace 
     </div>
   </div>
 </footer>
-<script src="../assets/ds/site.js?v=1.0.1"></script>
+<script src="../assets/ds/site.js?v=1.1.0"></script>
 </body>
 </html>

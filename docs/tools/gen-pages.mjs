@@ -68,9 +68,16 @@ const add = (path, active, title, description, main) => { pages[path] = { path, 
 // ---- Trang chủ ----------------------------------------------------------
 add('index.html', 'index.html', 'Agent Skill Studio · Trang chủ',
   'Bộ chuẩn và công cụ để tạo, kiểm, đo và phân phối Agent Skills cho Claude Code, Codex và Antigravity.',
-  `${hero('Phiên bản 0.2.0', 'Tạo Agent Skill chạy được trên cả ba agent, có bằng chứng', 'Agent Skill Studio là bộ chuẩn và công cụ để tạo, kiểm, cải tiến, đo và phân phối Agent Skills dùng chung cho Claude Code, OpenAI Codex và Google Antigravity. Gồm một skill có sẵn, một công cụ dòng lệnh Python không cần cài thêm gì, và tám file chuẩn viết skill.')}
-<div class="wrap"><div class="hero-cta" style="margin-top:-8px"><a class="btn btn-primary" href="install/index.html">Cài đặt</a><a class="btn btn-ghost" href="about/index.html">Tìm hiểu thêm</a></div>
-<div class="tech-badges"><span class="tb local"><span class="g"></span>Kiểm ngoại tuyến</span><span class="tb"><span class="g"></span>Python 3.9+, không cần pip install</span><span class="tb gold"><span class="g"></span>MIT</span></div></div>
+  `<section class="page-hero split"><div class="wrap">
+  <div>
+    <span class="eyebrow"><span class="dot"></span>Xưởng skill cho ba agent</span>
+    <h1>Tạo Agent Skill chạy được trên cả ba agent, có bằng chứng</h1>
+    <p class="lead">Agent Skill Studio là bộ chuẩn và công cụ để tạo, kiểm, cải tiến, đo và phân phối Agent Skills dùng chung cho Claude Code, OpenAI Codex và Google Antigravity, luôn theo bộ quy tắc viết skill tốt mới nhất.</p>
+    <div class="hero-cta"><a class="btn btn-primary" href="install/index.html">Cài đặt</a><a class="btn btn-ghost" href="guide/index.html">Xem cách dùng</a></div>
+    <div class="tech-badges"><span class="tb local"><span class="g"></span>Kiểm ngoại tuyến</span><span class="tb"><span class="g"></span>Python, không cần pip install</span><span class="tb gold"><span class="g"></span>Mã nguồn mở MIT</span></div>
+  </div>
+  <figure class="hero-media"><img src="assets/hero.webp" width="1200" height="800" alt="Minh hoạ dây chuyền dựng skill: khối và thẻ skill được đo, đối chiếu với phiếu chuẩn rồi gửi tới ba agent"></figure>
+</div></section>
 ${sec('Vấn đề nó giải quyết', `  <p>Viết vài file Markdown chưa đủ làm nên một skill tốt. Skill hay hỏng ở năm chỗ, và Studio xử lý từng chỗ.</p>
   <div class="grid-3">
     ${card('Gọi sai lúc', 'Agent không gọi skill khi cần, hoặc gọi nhầm khi không cần, vì phần mô tả (`description`) mơ hồ. Studio có luật viết mô tả.', 'chat')}
@@ -81,9 +88,9 @@ ${sec('Vấn đề nó giải quyết', `  <p>Viết vài file Markdown chưa đ
   </div>`)}
 ${sec('Điểm nổi bật', `  <div class="grid-2">
     ${card('1. Kiểm hoàn toàn ngoại tuyến', 'Lệnh `check` đọc cấu trúc skill, báo lỗi theo mã, không gọi model nào và không sửa file.', 'shield')}
-    ${card('2. Một bộ luật, ba agent', '16 luật `SK-00`…`SK-15` theo chuẩn mở Agent Skills; khác biệt riêng từng agent tách sang `HARNESSES.md`.', 'book', 'gold')}
-    ${card('3. Không pass giả', 'Chưa đo bằng model thật thì ghi `not_run`. Cổng `model_evaluated` tự đếm lại bằng chứng, không tin con số khai.', 'evidence', 'ok')}
-    ${card('4. Gói phát hành sạch', '`package` chỉ đóng file chạy (25 file cho skill phát hành), bỏ bài test, đáp án, cache; gặp tên giống secret thì dừng.', 'archive')}
+    ${card('2. Một bộ luật, ba agent', 'Một bộ luật viết skill theo chuẩn mở Agent Skills; khác biệt riêng từng agent được tách riêng, không trộn vào skill.', 'book', 'gold')}
+    ${card('3. Không pass giả', 'Chưa đo bằng model thật thì ghi `not_run`. Cổng kiểm tự đếm lại bằng chứng, không tin con số khai.', 'evidence', 'ok')}
+    ${card('4. Gói phát hành sạch', '`package` chỉ đóng file chạy, bỏ bài test, đáp án, cache; gặp tên giống secret thì dừng.', 'archive')}
   </div>`)}
 ${sec('Ai dùng', `  <div class="grid-2">
     ${card('Người viết skill', 'Cho đội hoặc cộng đồng, muốn skill chạy được trên cả ba agent.')}
@@ -99,7 +106,7 @@ ${sec('Từ ý tưởng tới skill phát hành', `${ig('Năm bước, lỗi th�
   igStep(4, 'archive', '`package` / `install`', 'Phát hành.'),
 ])}`)}
 ${sec('Một nguồn, ba agent', `  <div class="grid-3">
-    ${card('Chuẩn chung', '16 luật SK + `HARNESSES.md`, đi cùng bản gốc `skills/skill-creator-studio`.', 'book', 'gold')}
+    ${card('Chuẩn chung', 'Một bộ luật viết skill, đi cùng bản gốc `skills/skill-creator-studio`.', 'book', 'gold')}
   </div>
   <p class="lead" style="margin:16px 0;text-align:center"><code>studio.py install</code> ↓</p>
   <div class="grid-3">
@@ -109,63 +116,19 @@ ${sec('Một nguồn, ba agent', `  <div class="grid-3">
   </div>`)}
 ${sec('Bắt đầu từ đâu', `${step(1, 'Cài', p('Cài plugin vào Claude Code hoặc Codex (trang Cài đặt). Cần Python 3.9 trở lên, không cần `pip install`.'))}
 ${step(2, 'Thử kiểm một skill có sẵn', code('Terminal', 'python3 studio.py check skills/skill-creator-studio'))}
-${step(3, 'Đọc file lõi', p('Đọc `standards/SKILL_AUTHORING_STANDARD.md` (70 dòng) để hiểu 16 luật.'))}
+${step(3, 'Đọc file lõi', p('Đọc `standards/SKILL_AUTHORING_STANDARD.md` để hiểu bộ luật viết skill (có ở trang Docs).'))}
 ${step(4, 'Tạo skill đầu tiên', p('Nói với agent «Create a portable Skill for …», hoặc tự chạy `studio.py new`.'))}
 ${step(5, 'Viết ít nhất 3 ca thử', p('Có ca nên gọi và ca không nên gọi, trước khi viết dài; rồi `check` lại.'))}`)}
+${sec('Tác giả và giấy phép', `  <div class="grid-2">
+    <div class="card author" id="tac-gia"><div class="avatar" aria-hidden="true">QĐ</div><div><h3>Nguyễn Quang Đức (Tobi)</h3><p>Sáng lập và CEO KPIM, đồng sáng lập COMPA Class; làm và giảng dạy Data/AI tại Việt Nam. <a href="https://ducnguyen.vn" target="_blank" rel="noopener">ducnguyen.vn</a> · GitHub <a href="https://github.com/ducnguyen221" target="_blank" rel="noopener">@ducnguyen221</a>.</p></div></div>
+    ${card('Giấy phép MIT', 'Được dùng, sửa, phân phối lại, kể cả thương mại, miễn giữ thông báo bản quyền của Nguyễn Quang Đức. Skill do Studio sinh ra cho dự án khác thuộc về chủ dự án đó.', 'shield', 'ok')}
+  </div>
+${note('', 'Nguồn tham khảo:', 'Studio có tham khảo cấu trúc công khai của `robonuggets/skill-creator-plus` (MIT) nhưng không chép mã của repo đó.')}`)}
 <section class="final"><div class="wrap">
   <h2>Bắt đầu trong vài phút</h2>
   <p>Cài, thử <code>check</code> một skill có sẵn, rồi tạo skill đầu tiên.</p>
   <div class="hero-cta"><a class="btn btn-primary" href="install/index.html">Cài đặt</a><a class="btn btn-ghost" href="guide/index.html">Xem cách dùng</a></div>
 </div></section>`);
-
-// ---- Giới thiệu ---------------------------------------------------------
-add('about/index.html', 'about/index.html', 'Giới thiệu · Agent Skill Studio',
-  'Mục tiêu, định vị, con số đếm từ mã, trạng thái 0.2.0, tác giả và giấy phép của Agent Skill Studio.',
-  `${hero('Giới thiệu', 'Repo chuẩn mực để tạo skill', 'Mục tiêu: trở thành repo chuẩn mực để tạo skill cho Claude bản mới nhất và cho nhiều agent dùng chung.')}
-${sec('Mục tiêu', `  <p>Lộ trình đặt năm năng lực: luật nạp được cho ba agent; bộ dò, kiểm, \`doctor\` cho skill, quy trình và file luật; học từ hoạt động (đã chuyển sang OpcOS); phát hiện skill trùng để gộp, bỏ, đồng bộ; danh mục toàn hệ.`.replace(/\\`/g, '`') + `</p>`)}
-${sec('Định vị', `  <div class="grid-2">
-    ${card('Skill Factory của OpcOS', 'Cấp chuẩn viết, kiểm định và đóng gói skill cho các plugin khác. Sổ đăng ký OpcOS xếp Studio vào nhóm `engineering`, loại plugin, cài tuỳ chọn.')}
-    ${card('Ba harness', 'Claude Code, OpenAI Codex, Google Antigravity. Phần chung theo Agent Skills Specification; phần riêng ở `standards/HARNESSES.md`.')}
-    ${card('Ranh giới', 'Studio chỉ đề xuất. Báo cáo AUDIT không sửa skill; repo sở hữu skill tự cài và tự phát hành.')}
-    ${card('Engine ngoại tuyến', 'Không gọi Claude, Codex hay Antigravity. Đo bằng model thật chạy riêng theo `evals/RUNBOOK.md`.')}
-  </div>`)}
-${sec('Con số đếm từ mã', `  <div class="stat-row"><div class="stat"><b>16</b><span>luật SK-00…SK-15</span></div><div class="stat"><b>692</b><span>test ngoại tuyến</span></div><div class="stat"><b>25</b><span>file trong gói phát hành</span></div><div class="stat"><b class="sm">MIT</b><span>giấy phép</span></div></div>
-${table(['Con số', 'Giá trị', 'Lệnh đếm'], [
-  ['Luật viết skill `SK-*`', '**16** (`SK-00`…`SK-15`)', "`grep -cE '^### SK-[0-9]{2} ' standards/SKILL_AUTHORING_STANDARD.md`"],
-  ['Tên lệnh của `studio.py`', '**9** (`new`, `check`, `validate`, `audit`, `evals`, `package`, `install`, `doctor`, `fmt`); `validate` và `audit` là bí danh của `check`, nên **7 việc khác nhau**', '`python studio.py --help`'],
-  ['File chuẩn', '**8**', "`git ls-files 'standards/*.md' | wc -l`"],
-  ['Test ngoại tuyến', '**692** test (12 bỏ qua có điều kiện), trong **36** file `tests/test_*.py`; chạy hết 122,6 s, kết quả `OK`', "`python -m unittest discover -s tests`; `git ls-files 'tests/test_*.py' | wc -l`"],
-  ['Ca hợp đồng CLI', '**96** ca khoá đầu ra của dòng lệnh', '`tests/fixtures/contract/golden.json`, khoá `cases`'],
-  ['Mô-đun engine', '**9** file `studio_*.py` + CLI `studio.py`', "`git ls-files 'skills/skill-creator-studio/scripts/studio_*.py' | wc -l`"],
-  ['Skill phát hành', '**1** (`skill-creator-studio`); `data-quality-audit` là ví dụ, không phát hành', '`evals/catalog.json` (khoá `shipped: false`)'],
-  ['Ca eval mỗi skill', '**8** (5 nên gọi, 3 không nên gọi)', 'đếm `cases` trong `evals/<skill>/cases.json`'],
-  ['File trong gói phát hành', '**25**', '`python studio.py package skills/skill-creator-studio --out <thư mục tạm>`'],
-  ['File theo dõi bởi git', '**239**', '`git ls-files | wc -l`'],
-])}
-${note('', 'Mốc đếm:', 'số đếm hoặc chạy lại ngày 2026-10-28 trên `main` tại `b1e83ab`. Lượt kiểm cùng ngày: `validate --all --require-evals` thoát 0 (0 lỗi, 0 cảnh báo); `evals --all` thoát 0; `doctor` thoát 0 (1 skill, 0 lỗi); `fmt --check --all` thoát 0 (43 file).')}`)}
-${sec('Trạng thái 0.2.0 (phát hành 2026-10-28)', `  <div class="sw-grid">
-    <div class="sw plus"><h3><span class="sic">${ico('check')}</span>Đã có</h3><ul>
-      <li>Repo gọn còn 6 thư mục (nay thêm \`docs/\` cho site).</li>
-      <li>Chuẩn từ 11 file gộp còn 8; thêm luật cho 3 loại tài liệu (\`DOC_TYPES.md\`).</li>
-      <li>\`CORE_RULES.md\` sinh tự động từ chuẩn, có test canh khớp.</li>
-      <li>Bằng chứng đo dời ra sổ riêng mà cổng vẫn đếm lại được.</li>
-      <li>Vá 5 lỗ an toàn nhỏ: không đọc file trong vùng cloud hay secret, không đi xuyên đường tắt, không ghi đè file eval.</li>
-    </ul></div>
-    <div class="sw minus"><h3><span class="sic">${ico('lock')}</span>Giới hạn</h3><ul>
-      <li><b>SC5 không đạt theo số:</b> đo kích hoạt trên bản cài thật, bản mới 4/10 ca nên gọi, bản cũ đối chứng 5/10, cả hai 0/6 ca gọi nhầm.</li>
-      <li><b>\`model_evaluated: false\`</b> cho \`skill-creator-studio\`; chưa có khối kết quả đo trong catalog.</li>
-      <li><b>\`data-quality-audit\`</b> đo lô SPR-18 cho \`below-threshold\` (Claude Code và Codex đã chạy; Antigravity \`not_run\`).</li>
-      <li><b>Antigravity</b> chưa đo được kích hoạt vì chế độ headless không sinh transcript.</li>
-    </ul></div>
-  </div>
-${note('warn', 'Nghiệm thu: Đạt có điều kiện.', 'Đức quyết phát hành và ghi «SC5 Đạt có điều kiện do Đức quyết»: dòng `description` của skill không đổi giữa hai bản, chỉ lệch 1 ca, lượt 2 hai bản bằng nhau. Điều kiện: chặng 3 làm thước đo nhạy hơn rồi đo lại.')}
-${note('', 'Đổi hợp đồng so với 0.1.0:', 'catalog dời sang `evals/catalog.json`; bằng chứng thành một file gọn mỗi lô; plugin chỉ phát hành 1 skill thay vì 2; `new` không ghi đè file eval đã có. Bảng đầy đủ ở `CHANGELOG.md`.')}
-${note('ok', 'Mốc tiếp:', '`0.3.0` sau chặng 3 (doctor toàn hệ, danh mục, phát hiện trùng); `1.0.0` khi chặng 4 đo hiệu quả thật đạt ngưỡng.')}`)}
-${sec('Tác giả và giấy phép', `  <div class="grid-2">
-    ${card('Tác giả', 'Nguyễn Quang Đức (Tobi), sáng lập và CEO KPIM, đồng sáng lập COMPA Class; làm và giảng dạy Data/AI tại Việt Nam. ducnguyen.vn · GitHub @ducnguyen221.')}
-    ${card('Giấy phép MIT', 'Chủ bản quyền Nguyễn Quang Đức. Được dùng, sửa, phân phối lại, kể cả thương mại, miễn giữ thông báo bản quyền.')}
-  </div>
-${note('', 'Nguồn tham khảo:', 'Studio có tham khảo cấu trúc công khai của `robonuggets/skill-creator-plus` (MIT) nhưng không chép mã của repo đó. Skill do Studio sinh ra cho dự án khác thuộc về chủ dự án đó.')}`)}`);
 
 // ---- Cài đặt ------------------------------------------------------------
 add('install/index.html', 'install/index.html', 'Cài đặt · Agent Skill Studio',
@@ -254,7 +217,7 @@ ${sec('Bảng 9 lệnh studio.py', `${table(['Lệnh', 'Việc', 'Cờ chính', 
   ['`doctor`', 'quét nhiều gốc skill, chỉ báo cáo', '`--roots`, `--roots-file`, `--profile {portable,opcos}`, `--target`, `--include-cache`, `--skip-marker`, `--baseline`, `--json`, `--out`, `--fail-on {error,warn,new}`', '`python3 studio.py doctor --roots "~/.claude/skills;.agents/skills"`'],
   ['`fmt`', 'kiểm (mặc định) hoặc sửa kiểu trình bày Markdown; không đổi chữ của thân', '`--all`, `--check`/`--fix`, `--no-backup`, `--profile`, `--json`', '`python3 studio.py fmt --check --all`'],
 ])}
-  <p>Cờ lấy từ <code>python studio.py &lt;lệnh&gt; --help</code> (chạy thật ngày 2026-10-28). Cờ chung: <code>--version</code> in phiên bản; <code>--help</code> cho mọi lệnh.</p>
+  <p>Cờ đầy đủ: <code>python studio.py &lt;lệnh&gt; --help</code>. Cờ chung: <code>--version</code> in phiên bản; <code>--help</code> cho mọi lệnh.</p>
 ${note('warn', 'Mã lỗi hay gặp:', '`INPUT` (file ở vùng cloud/secret, placeholder cloud, hoặc là link), `EV20` (catalog hỏng hoặc lệch bằng chứng), `PACK` (gói gặp link, placeholder, cây quá lớn, file trên 25 MB…), `SEC` (tên file giống secret như `.env*`, `*.pem`), `EX1`–`EX13` (xuất eval bị từ chối). Mỗi lần từ chối in mã ra stderr và trong `--json`.')}`)}
 ${sec('Ba ví dụ đầu-cuối', `  <h3>Ví dụ 1 — Tạo skill mới tiếng Việt, đến lúc đóng gói</h3>
 ${code('Terminal', `python3 studio.py new writing-weekly-notes --output skills --lang vi \\
@@ -265,11 +228,11 @@ python3 studio.py check skills/writing-weekly-notes      # còn cảnh báo CT9:
 python3 studio.py validate skills/writing-weekly-notes --require-evals
 python3 studio.py evals writing-weekly-notes
 python3 studio.py package skills/writing-weekly-notes --out dist`)}
-${note('', 'Kết quả chạy thử 2026-10-28', '(với `--full --lang vi` ở thư mục tạm): `new` thoát 0; `check` thoát 0 với 1 cảnh báo `CT9`; `package` thoát 1 với lỗi `PACK` «cannot package an unfinished template» cho tới khi xoá dấu nháp. Đây là chủ đích: khung chưa viết thì không phát hành được.')}
+${note('', 'Lưu ý:', '`package` từ chối khung còn dấu nháp («cannot package an unfinished template»): khung chưa viết thì không phát hành được.')}
   <h3 style="margin-top:28px">Ví dụ 2 — Kiểm cả thư viện skill trên máy, không sửa gì</h3>
 ${code('Terminal', `python3 studio.py doctor --roots "~/.claude/skills;~/.agents/skills" --json --out report.json
 python3 studio.py doctor --roots "~/.claude/skills;~/.agents/skills" --baseline report.json --fail-on new`)}
-  <p>Lần đầu ghi báo cáo JSON; lần sau so với mốc và chỉ báo đỏ khi có cặp (skill, mã lỗi) mới mọc thêm. <code>doctor</code> không mở vùng secret, cloud hay link. Ví dụ dựng từ <code>--help</code>, chưa chạy thử trên thư viện skill của máy.</p>
+  <p>Lần đầu ghi báo cáo JSON; lần sau so với mốc và chỉ báo đỏ khi có cặp (skill, mã lỗi) mới mọc thêm. <code>doctor</code> không mở vùng secret, cloud hay link.</p>
   <h3 style="margin-top:28px">Ví dụ 3 — Kiểm phát hành rồi cài skill cho Codex</h3>
 ${code('Terminal', `python3 studio.py doctor
 python3 studio.py fmt --check --all
@@ -281,8 +244,8 @@ python3 studio.py install skills/skill-creator-studio --agent codex --workspace 
 
 // ---- Luồng & quy trình --------------------------------------------------
 add('flow/index.html', 'flow/index.html', 'Luồng & quy trình · Agent Skill Studio',
-  'Vòng đời một skill, luồng dữ liệu eval và cổng model_evaluated, cấu trúc repo và CI mỗi lần push.',
-  `${hero('Luồng & quy trình', 'Việc chạy qua những bước nào', 'Bốn luồng: vòng đời một skill, dữ liệu eval và cổng `model_evaluated`, cấu trúc repo, và CI mỗi lần push.')}
+  'Vòng đời một skill, luồng dữ liệu eval và cổng model_evaluated, cấu trúc repo.',
+  `${hero('Luồng & quy trình', 'Việc chạy qua những bước nào', 'Ba luồng: vòng đời một skill, dữ liệu eval và cổng `model_evaluated`, và cấu trúc repo.')}
 ${sec('Luồng 1 — Vòng đời một skill', `${ig('Tám bước, từ Refine quay về Viết', [
   igStep(0, 'chat', 'Ý tưởng', 'Một việc lặp lại, có từ người dùng hay nói và một ca không nên gọi.'),
   igStep(1, 'book', 'Eval trước', 'Viết ≥3 ca thật (thường, biên, âm) và kế hoạch đo không skill, trước khi viết dài.'),
@@ -298,25 +261,21 @@ ${sec('Luồng 1 — Vòng đời một skill', `${ig('Tám bước, từ Refine
 ${note('', 'Đánh phiên bản:', 'PATCH sửa chữ, link; MINOR thêm quy trình, reference, eval; MAJOR đổi trigger, hợp đồng đầu ra, quyền thực thi.')}`)}
 ${sec('Luồng 2 — Dữ liệu eval và cổng model_evaluated', `${ig('Từ ca thử tới cổng EV20', [
   igStep(0, 'book', 'cases.json + rubric', 'Bộ ca: câu lệnh, có nên gọi không, hành vi kỳ vọng.'),
-  igStep(1, 'archive', 'Ledger thô', 'Ngoài repo, không public: log từng phiên, transcript đã che.'),
+  igStep(1, 'archive', 'Log từng lượt đo', 'Giữ ngoài repo: log từng phiên, transcript đã che.'),
   igStep(2, 'evidence', 'evidence/<lô>.json', 'Trong repo: sinh bằng `compact`, kiểm bằng `compact --verify`.'),
   igStep(3, 'shield', 'Cổng EV20', 'Đếm lại, tính lại `result`, so với khối khai.', gate('Khớp', 'thoát 0') + exit('Lệch', 'ERROR EV20, thoát 1')),
 ])}
-${notes([['book', '`evals/catalog.json`', 'mỗi skill một mục (đường, phiên bản, agent đích, `model_evaluated`), có thể mang khối `evaluated`; mũi tên khai vào cổng.'], ['archive', 'Ledger thô', 'nằm ở sổ OpcOS `system/ledger/agent-skill-studio/evidence/<lô>/<skill>/`.'], ['shield', 'Ngưỡng mỗi agent đã chạy', 'kích hoạt đúng ≥4, kích hoạt sai 0, 5 cặp A/B có `better` ≥3 và `worse` 0. Không bao giờ sửa ngưỡng cho vừa số.']])}
+${notes([['book', '`evals/catalog.json`', 'mỗi skill một mục (đường, phiên bản, agent đích, `model_evaluated`), có thể mang khối `evaluated`; mũi tên khai vào cổng.'], ['shield', 'Ngưỡng cố định', 'mỗi agent đã chạy phải đạt ngưỡng kích hoạt đúng, không kích hoạt sai, và A/B tốt hơn bản không skill. Không bao giờ sửa ngưỡng cho vừa số.']])}
   <p style="margin-top:16px"><code>result</code> nhận một trong bốn giá trị: <code>not_run</code> (không agent nào chạy), <code>below-threshold</code>, <code>partial</code> (đạt nhưng còn agent hoãn có lý do), <code>passed</code>. <code>model_evaluated: true</code> chỉ hợp lệ khi <code>passed</code>.</p>`)}
 ${sec('Luồng 3 — Cấu trúc repo', `${table(['Thư mục', 'Vai', 'Vào gói cài?'], [
-  ['`standards/`', '8 file chuẩn cho tác giả skill', 'Không'],
+  ['`standards/`', 'các file chuẩn cho tác giả skill', 'Không'],
   ['`skills/`', 'chỉ skill phát hành: `skill-creator-studio` (`SKILL.md`, `references/`, `scripts/` chứa engine, `assets/` chứa 2 khuôn)', '**Có** (chỉ thư mục này)'],
   ['`templates/`', '`starter-project/`: mẫu file luật cho dự án khác', 'Không'],
   ['`examples/`', 'mẫu để chép: `descriptions.md`, `eval-cases.md`, 2 skill mẫu ngắn, skill CSV `data-quality-audit`', 'Không'],
   ['`evals/`', '`catalog.json`, `RUNBOOK.md`, `tools/`, bộ eval từng skill', 'Không'],
-  ['`tests/`', 'test ngoại tuyến và 96 ca hợp đồng CLI', 'Không'],
-  ['`docs/`', 'website này (trang HTML, bản chép Design System, công cụ dựng). Không phải skill', 'Không'],
-])}
-${note('', 'Ngoài các thư mục:', '`README.md`, `CHANGELOG.md`, `LICENSE`, `LICENSE_POLICY.md`, `AGENTS.md`/`CLAUDE.md`/`GEMINI.md` (luật của repo cho ba agent), `studio.py` (vỏ mỏng gọi engine), manifest `.claude-plugin/`, `.codex-plugin/`, CI `.github/workflows/ci.yml`.')}
-${note('ok', 'Vào gói:', 'ZIP của `package` cho `skill-creator-studio` có 25 file: `SKILL.md`, 5 reference, 10 file engine Python, 9 file khuôn. Bị loại: `evals/`, `tests/`, thư mục cache; gặp tên giống secret thì dừng hẳn. Plugin chỉ phát hành `skills/`; `standards/` là tài liệu tác giả, không chèn vào lúc agent chạy (bản rút gọn của 16 luật đi theo skill dưới dạng `references/CORE_RULES.md`, sinh tự động, test canh khớp).')}`)}
-${sec('Luồng 4 — CI mỗi lần push', `  <p>Trên Ubuntu và Windows, Python 3.9 và 3.12, theo thứ tự:</p>
-  <ol class="timeline"><li><span class="tnum">01</span><h3>validate</h3><p><code>validate --all --require-evals</code></p></li><li><span class="tnum">02</span><h3>evals</h3><p><code>evals --all</code> (đỏ nếu cổng <code>model_evaluated</code> bị bỏ qua)</p></li><li><span class="tnum">03</span><h3>unittest</h3><p>Toàn bộ bộ test ngoại tuyến.</p></li><li><span class="tnum">04</span><h3>package</h3><p>Đóng gói skill phát hành.</p></li><li><span class="tnum">05</span><h3>ví dụ</h3><p><code>validate examples/data-quality-audit --require-evals</code>, rồi in dòng nhắc «CI tĩnh không chạy eval phụ thuộc model».</p></li></ol>`)}`);
+  ['`tests/`', 'test ngoại tuyến và ca hợp đồng của dòng lệnh', 'Không'],
+  ['`docs/`', 'website này', 'Không'],
+])}`)}`);
 
 // ---- Nguyên tắc ---------------------------------------------------------
 const RULES = [
@@ -348,12 +307,11 @@ ${sec('Ba loại tài liệu (DOC_TYPES.md)', `${table(['Loại', 'Nhận bằng
   ['**Workflow / quy trình**', '`type: workflow` hoặc nằm trong `workflows/`', 'câu Kết luận đầu file; Bước đánh số kiểm được; mục «Xong khi»', 'bước không kiểm được, nhật ký, chép luật nơi khác, bước nguy hiểm không cổng', '≤300 dòng'],
   ['**File luật agent**', '`AGENTS.md`, `CLAUDE.md`, `GEMINI.md` hoặc `type: rules`', 'chỉ luật đang hiệu lực; `AGENTS.md` là nguồn, hai file kia trỏ về', 'lịch sử đổi luật, mã commit, khối lệnh chạy ngay (trừ một mục lệnh kiểm trước khi báo xong)', '≤200 dòng'],
 ])}
-  <p>Không nhận ra loại thì <code>check</code> thoát 2, không đoán. Máy kiểm theo ba loại này thuộc chặng 3; hiện người soạn và reviewer tự kiểm.</p>`)}
+  <p>Không nhận ra loại thì <code>check</code> thoát 2, không đoán.</p>`)}
 ${sec('Chuẩn tiếng Việt (tóm tắt)', `  <ul>
     <li>Thân <code>SKILL.md</code> dùng <b>một</b> ngôn ngữ, Việt hoặc Anh; frontmatter luôn tiếng Anh và <code>description</code> phải còn cụm <code>Use when</code>.</li>
     <li>14 quy tắc <code>V01</code>–<code>V14</code>: kết luận lên đầu; mỗi bước bắt đầu bằng động từ; câu ≤25 từ; lặp danh từ thay đại từ xa; một khái niệm một từ; đủ dấu, chuẩn NFC; ngày ISO <code>2026-10-22</code>; giữ thuật ngữ kỹ thuật tiếng Anh đã quen, lần đầu ghi «Việt (Anh)».</li>
     <li>Lint <code>VI1</code>–<code>VI5</code> đều là cảnh báo, chỉ chạy khi thân có ≥3 % chữ có dấu; dòng có <code>&lt;!-- studio:vi-ok --&gt;</code> được miễn.</li>
-    <li>Tiếng Việt tốn token hơn tiếng Anh (×2,14 theo cl100k, ×1,19 theo o200k trên 3 đoạn mẫu); tokenizer của Claude chưa đo (<code>not_run</code>).</li>
   </ul>`)}
 ${sec('An toàn và quyền (tóm tắt)', `  <div class="grid-2">
     ${card('Skill không phải rào bảo mật', 'Rào thật là quyền của host, sandbox, kiểm trước khi chạy và bước duyệt.')}

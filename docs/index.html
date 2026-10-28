@@ -7,7 +7,7 @@
 <meta name="description" content="Bộ chuẩn và công cụ để tạo, kiểm, đo và phân phối Agent Skills cho Claude Code, Codex và Antigravity.">
 <link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/">
 <link rel="icon" href="assets/logo.svg">
-<link rel="stylesheet" href="assets/ds/site.css?v=1.0.1">
+<link rel="stylesheet" href="assets/ds/site.css?v=1.1.0">
 </head>
 <body>
 <canvas id="netbg" aria-hidden="true"></canvas>
@@ -28,7 +28,6 @@
     <a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Agent Skill Studio</a>
     <nav class="nav-links" aria-label="Điều hướng chính">
       <a href="index.html" class="active" aria-current="page">Trang chủ</a>
-      <a href="about/index.html">Giới thiệu</a>
       <a href="install/index.html">Cài đặt</a>
       <a href="guide/index.html">Cách dùng</a>
       <a href="flow/index.html">Luồng &amp; quy trình</a>
@@ -40,13 +39,16 @@
   </div>
 </header>
 <main id="main">
-<section class="page-hero"><div class="wrap">
-  <span class="eyebrow"><span class="dot"></span>Phiên bản 0.2.0</span>
-  <h1>Tạo Agent Skill chạy được trên cả ba agent, có bằng chứng</h1>
-  <p class="lead">Agent Skill Studio là bộ chuẩn và công cụ để tạo, kiểm, cải tiến, đo và phân phối Agent Skills dùng chung cho Claude Code, OpenAI Codex và Google Antigravity. Gồm một skill có sẵn, một công cụ dòng lệnh Python không cần cài thêm gì, và tám file chuẩn viết skill.</p>
+<section class="page-hero split"><div class="wrap">
+  <div>
+    <span class="eyebrow"><span class="dot"></span>Xưởng skill cho ba agent</span>
+    <h1>Tạo Agent Skill chạy được trên cả ba agent, có bằng chứng</h1>
+    <p class="lead">Agent Skill Studio là bộ chuẩn và công cụ để tạo, kiểm, cải tiến, đo và phân phối Agent Skills dùng chung cho Claude Code, OpenAI Codex và Google Antigravity, luôn theo bộ quy tắc viết skill tốt mới nhất.</p>
+    <div class="hero-cta"><a class="btn btn-primary" href="install/index.html">Cài đặt</a><a class="btn btn-ghost" href="guide/index.html">Xem cách dùng</a></div>
+    <div class="tech-badges"><span class="tb local"><span class="g"></span>Kiểm ngoại tuyến</span><span class="tb"><span class="g"></span>Python, không cần pip install</span><span class="tb gold"><span class="g"></span>Mã nguồn mở MIT</span></div>
+  </div>
+  <figure class="hero-media"><img src="assets/hero.webp" width="1200" height="800" alt="Minh hoạ dây chuyền dựng skill: khối và thẻ skill được đo, đối chiếu với phiếu chuẩn rồi gửi tới ba agent"></figure>
 </div></section>
-<div class="wrap"><div class="hero-cta" style="margin-top:-8px"><a class="btn btn-primary" href="install/index.html">Cài đặt</a><a class="btn btn-ghost" href="about/index.html">Tìm hiểu thêm</a></div>
-<div class="tech-badges"><span class="tb local"><span class="g"></span>Kiểm ngoại tuyến</span><span class="tb"><span class="g"></span>Python 3.9+, không cần pip install</span><span class="tb gold"><span class="g"></span>MIT</span></div></div>
 <section><div class="wrap">
   <div class="sec-head"><h2>Vấn đề nó giải quyết</h2></div>
   <p>Viết vài file Markdown chưa đủ làm nên một skill tốt. Skill hay hỏng ở năm chỗ, và Studio xử lý từng chỗ.</p>
@@ -62,9 +64,9 @@
   <div class="sec-head"><h2>Điểm nổi bật</h2></div>
   <div class="grid-2">
     <div class="card reveal"><div class="ficon"><svg class="ig-ico"><use href="#i-shield"/></svg></div><h3>1. Kiểm hoàn toàn ngoại tuyến</h3><p>Lệnh <code>check</code> đọc cấu trúc skill, báo lỗi theo mã, không gọi model nào và không sửa file.</p></div>
-    <div class="card reveal"><div class="ficon gold"><svg class="ig-ico"><use href="#i-book"/></svg></div><h3>2. Một bộ luật, ba agent</h3><p>16 luật <code>SK-00</code>…<code>SK-15</code> theo chuẩn mở Agent Skills; khác biệt riêng từng agent tách sang <code>HARNESSES.md</code>.</p></div>
-    <div class="card reveal"><div class="ficon ok"><svg class="ig-ico"><use href="#i-evidence"/></svg></div><h3>3. Không pass giả</h3><p>Chưa đo bằng model thật thì ghi <code>not_run</code>. Cổng <code>model_evaluated</code> tự đếm lại bằng chứng, không tin con số khai.</p></div>
-    <div class="card reveal"><div class="ficon"><svg class="ig-ico"><use href="#i-archive"/></svg></div><h3>4. Gói phát hành sạch</h3><p><code>package</code> chỉ đóng file chạy (25 file cho skill phát hành), bỏ bài test, đáp án, cache; gặp tên giống secret thì dừng.</p></div>
+    <div class="card reveal"><div class="ficon gold"><svg class="ig-ico"><use href="#i-book"/></svg></div><h3>2. Một bộ luật, ba agent</h3><p>Một bộ luật viết skill theo chuẩn mở Agent Skills; khác biệt riêng từng agent được tách riêng, không trộn vào skill.</p></div>
+    <div class="card reveal"><div class="ficon ok"><svg class="ig-ico"><use href="#i-evidence"/></svg></div><h3>3. Không pass giả</h3><p>Chưa đo bằng model thật thì ghi <code>not_run</code>. Cổng kiểm tự đếm lại bằng chứng, không tin con số khai.</p></div>
+    <div class="card reveal"><div class="ficon"><svg class="ig-ico"><use href="#i-archive"/></svg></div><h3>4. Gói phát hành sạch</h3><p><code>package</code> chỉ đóng file chạy, bỏ bài test, đáp án, cache; gặp tên giống secret thì dừng.</p></div>
   </div>
 </div></section>
 <section><div class="wrap">
@@ -92,7 +94,7 @@
 <section><div class="wrap">
   <div class="sec-head"><h2>Một nguồn, ba agent</h2></div>
   <div class="grid-3">
-    <div class="card reveal"><div class="ficon gold"><svg class="ig-ico"><use href="#i-book"/></svg></div><h3>Chuẩn chung</h3><p>16 luật SK + <code>HARNESSES.md</code>, đi cùng bản gốc <code>skills/skill-creator-studio</code>.</p></div>
+    <div class="card reveal"><div class="ficon gold"><svg class="ig-ico"><use href="#i-book"/></svg></div><h3>Chuẩn chung</h3><p>Một bộ luật viết skill, đi cùng bản gốc <code>skills/skill-creator-studio</code>.</p></div>
   </div>
   <p class="lead" style="margin:16px 0;text-align:center"><code>studio.py install</code> ↓</p>
   <div class="grid-3">
@@ -106,9 +108,17 @@
   <div class="step"><div class="num">1</div><div class="body"><h3>Cài</h3><p>Cài plugin vào Claude Code hoặc Codex (trang Cài đặt). Cần Python 3.9 trở lên, không cần <code>pip install</code>.</p></div></div>
   <div class="step"><div class="num">2</div><div class="body"><h3>Thử kiểm một skill có sẵn</h3>  <div class="code-card"><div class="code-top"><span class="fn">Terminal</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
   <div class="code-scroll"><pre><code>python3 studio.py check skills/skill-creator-studio</code></pre></div></div></div></div>
-  <div class="step"><div class="num">3</div><div class="body"><h3>Đọc file lõi</h3><p>Đọc <code>standards/SKILL_AUTHORING_STANDARD.md</code> (70 dòng) để hiểu 16 luật.</p></div></div>
+  <div class="step"><div class="num">3</div><div class="body"><h3>Đọc file lõi</h3><p>Đọc <code>standards/SKILL_AUTHORING_STANDARD.md</code> để hiểu bộ luật viết skill (có ở trang Docs).</p></div></div>
   <div class="step"><div class="num">4</div><div class="body"><h3>Tạo skill đầu tiên</h3><p>Nói với agent «Create a portable Skill for …», hoặc tự chạy <code>studio.py new</code>.</p></div></div>
   <div class="step"><div class="num">5</div><div class="body"><h3>Viết ít nhất 3 ca thử</h3><p>Có ca nên gọi và ca không nên gọi, trước khi viết dài; rồi <code>check</code> lại.</p></div></div>
+</div></section>
+<section><div class="wrap">
+  <div class="sec-head"><h2>Tác giả và giấy phép</h2></div>
+  <div class="grid-2">
+    <div class="card author" id="tac-gia"><div class="avatar" aria-hidden="true">QĐ</div><div><h3>Nguyễn Quang Đức (Tobi)</h3><p>Sáng lập và CEO KPIM, đồng sáng lập COMPA Class; làm và giảng dạy Data/AI tại Việt Nam. <a href="https://ducnguyen.vn" target="_blank" rel="noopener">ducnguyen.vn</a> · GitHub <a href="https://github.com/ducnguyen221" target="_blank" rel="noopener">@ducnguyen221</a>.</p></div></div>
+    <div class="card reveal"><div class="ficon ok"><svg class="ig-ico"><use href="#i-shield"/></svg></div><h3>Giấy phép MIT</h3><p>Được dùng, sửa, phân phối lại, kể cả thương mại, miễn giữ thông báo bản quyền của Nguyễn Quang Đức. Skill do Studio sinh ra cho dự án khác thuộc về chủ dự án đó.</p></div>
+  </div>
+  <p class="note"><b>Nguồn tham khảo:</b> Studio có tham khảo cấu trúc công khai của <code>robonuggets/skill-creator-plus</code> (MIT) nhưng không chép mã của repo đó.</p>
 </div></section>
 <section class="final"><div class="wrap">
   <h2>Bắt đầu trong vài phút</h2>
@@ -127,7 +137,6 @@
         <div class="foot-col">
           <b>Sản phẩm</b>
           <a href="index.html">Trang chủ</a>
-          <a href="about/index.html">Giới thiệu</a>
           <a href="install/index.html">Cài đặt</a>
           <a href="guide/index.html">Cách dùng</a>
           <a href="flow/index.html">Luồng &amp; quy trình</a>
@@ -147,6 +156,6 @@
     </div>
   </div>
 </footer>
-<script src="assets/ds/site.js?v=1.0.1"></script>
+<script src="assets/ds/site.js?v=1.1.0"></script>
 </body>
 </html>
