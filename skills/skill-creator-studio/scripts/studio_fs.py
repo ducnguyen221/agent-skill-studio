@@ -139,8 +139,12 @@ def skill_dirs(root: Path) -> list[Path]:
                 continue
         except OSError:
             continue
-        if (path / "SKILL.md").exists():
-            found.append(path)
+        manifest = path / "SKILL.md"
+        try:  # lstat, never stat: a SKILL.md that is a link is not a skill and its target is not asked about (FR11.1)
+            if os.path.lexists(manifest) and not is_link(manifest) and stat.S_ISREG(os.lstat(manifest).st_mode):
+                found.append(path)
+        except OSError:
+            continue
     return sorted(found)
 
 

@@ -22,11 +22,16 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     is a WARN ST6, the OPCOS_PROVENANCE_KEYS are WARN FM4, and no `metadata.opcos_*` key is a NOTE MD1. ST3 and ST8 apply to every profile.
     `max_file_bytes` (doctor passes DOCTOR_MAX_FILE_BYTES): a SKILL.md or reference above it is not read, WARN SZ1. `skip_markers` extend CLOUD_MARKERS.
     A symlink, junction or cloud placeholder inside the skill is reported (SEC, SZ2) and never opened, listed or followed."""
+    markers = C.CLOUD_MARKERS + tuple(skip_markers)
+    given = folder / "SKILL.md"
     folder = folder.resolve()
     manifest = folder / "SKILL.md"
+    for candidate in dict.fromkeys((given, manifest)):  # the spelling given and the real path: a zone on either side refuses, before any stat or read (FR10.1)
+        problem = fs.input_file_problem(candidate, markers)
+        if problem:
+            return [fs.emit("ERROR", "INPUT", manifest, 0, "SKILL.md %s" % problem)]
     if not manifest.is_file():
         return [fs.emit("ERROR", "FM1", manifest, 0, "SKILL.md is missing")]
-    markers = C.CLOUD_MARKERS + tuple(skip_markers)
     try:
         text, too_big = fs.read_capped(manifest, max_file_bytes)
     except UnicodeError:
