@@ -169,8 +169,11 @@ def iter_skill_dirs(roots: list, include_cache: bool = False, skip_markers: tupl
     return sorted(skills, key=lambda p: os.path.normcase(str(p))), skipped
 
 
-def _skill_identity(skill: Path, target: str, max_bytes: int | None = None) -> tuple[str, str]:
-    """(name, 'en'|'vi') from SKILL.md: frontmatter name (folder name when unreadable or above `max_bytes`) and the body language."""
+def _skill_identity(skill: Path, target: str, max_bytes: int | None = None, skip_read: bool = False) -> tuple[str, str]:
+    """(name, 'en'|'vi') from SKILL.md: frontmatter name (folder name when unreadable or above `max_bytes`) and the body language.
+    `skip_read` (validate refused the file with INPUT): SKILL.md is not opened again and the folder name stands."""
+    if skip_read:
+        return skill.name, "en"
     manifest = skill / "SKILL.md"
     try:
         text, too_big = fs.read_capped(manifest, max_bytes)
@@ -253,7 +256,7 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
             except ValueError:
                 shown = _posix(path)
             codes.append({"code": f["code"], "level": f["level"], "file": shown, "line": f["line"], "message": f["message"]})
-        name, lang = _skill_identity(skill, target, C.DOCTOR_MAX_FILE_BYTES)
+        name, lang = _skill_identity(skill, target, C.DOCTOR_MAX_FILE_BYTES, skip_read=any(c["code"] == "INPUT" for c in codes))
         errors, warnings = sum(c["level"] == "ERROR" for c in codes), sum(c["level"] == "WARN" for c in codes)
         entries.append({"path": _posix(skill), "name": name, "lang": lang, "errors": errors, "warnings": warnings, "codes": codes})
         totals["skills"] += 1

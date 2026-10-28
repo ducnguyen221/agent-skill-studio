@@ -5,15 +5,21 @@ Run: python -X utf8 -m pytest tests/test_engine_modules.py -q -p no:cacheprovide
 from __future__ import annotations
 
 import ast
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine  # noqa: E402
+from _batches import activation  # noqa: E402
+
+E = _engine
 
 ENGINE_DIR = _engine.ENGINE_DIR
 ENGINE_PATH = _engine.ENGINE_PATH
@@ -138,6 +144,44 @@ class EngineIdentityTests(unittest.TestCase):
         done = self.run_child(self.a, self.a)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertIn("B-LOADED", done.stdout)
+
+
+class Rq029EngineTests(unittest.TestCase):
+    """SPR-04 TK2 (FR11.1, FR11.2, RQ-029): the activation tool checks every engine module, and the catalog gate does not look through a linked evals folder."""
+
+    def test_rq029_engine_checks_every_sibling_module(self):
+        """bắt-lỗi (red at c3deee2: `_engine()` returns the module, no EngineMismatch): FR11.1 a `studio_*` sibling loaded from another folder is a mismatch, not only `studio_evals`."""
+        other = Path(tempfile.mkdtemp(prefix="studio-alien-")).resolve()
+        self.addCleanup(shutil.rmtree, other, True)
+        alien = types.ModuleType("studio_fs")
+        alien.__file__ = str(other / "studio_fs.py")
+        with mock.patch.object(sys, "path", list(sys.path)), mock.patch.dict(sys.modules, {"studio_fs": alien}):
+            with self.assertRaises(activation.EngineMismatch) as caught:
+                activation._engine()
+        self.assertIn("studio_fs", str(caught.exception))
+        self.assertIn(str(other), str(caught.exception))
+
+    def test_rq029_catalog_gate_skips_a_linked_evals_entry(self):
+        """bắt-lỗi (red at c3deee2: the junction passes `is_dir(follow_symlinks=False)` and `evidence` is probed through it): FR11.2 an evals/<x> that is a link is left out, said in one line, and `<x>/evidence` is never probed."""
+        tmp = Path(tempfile.mkdtemp(prefix="studio-evlink-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "evals").mkdir()
+        (tmp / "evals" / "catalog.json").write_text('{"skills": []}', encoding="utf-8")
+        (tmp / "evals" / "plain" / "evidence").mkdir(parents=True)
+        (tmp / "evals" / "door" / "evidence").mkdir(parents=True)
+        door = tmp / "evals" / "door"
+        real_link, real_lexists, probed = E.fs.is_link, os.path.lexists, []
+
+        def lexists(path):
+            probed.append(os.path.normcase(os.fspath(path)))
+            return real_lexists(path)
+
+        with mock.patch.object(E.fs, "is_link", side_effect=lambda p: Path(p) == door or real_link(p)),                 mock.patch.object(E.evals.os.path, "lexists", lexists):
+            problems = E.evals.model_evaluated_problems(tmp / "evals" / "catalog.json", tmp)
+        self.assertEqual([], [p for p in probed if os.path.normcase(os.fspath(door)) in p], "the linked folder was probed")
+        self.assertTrue(any("evals/door" in p and "link" in p for p in problems), problems)
+        self.assertTrue(any("evals/plain/evidence has no catalog entry" in p for p in problems), problems)
+        self.assertFalse(any("evals/door/evidence" in p for p in problems), problems)
 
 
 if __name__ == "__main__":

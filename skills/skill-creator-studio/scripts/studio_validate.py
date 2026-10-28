@@ -222,6 +222,11 @@ def resolve_check_path(arg: str) -> Path:
     path = Path(arg).expanduser()
     if path.name == "SKILL.md":
         return path.parent
+    named = fs.input_name_problem(path)  # by the spelling alone, before is_file stats anything: a path in a forbidden zone is never touched
+    if named and (path.suffix or fs.secret_file_name(path.name)):  # a document or a secret-looking file is refused here
+        raise ValueError("%s %s" % (path, named))
+    if named:  # a folder-like name: validate_skill says INPUT for it without touching it
+        return path
     if not path.is_file():
         return path
     problem = fs.input_file_problem(path)  # before anything opens the file: secret or cloud zone, secret-looking name, stream, placeholder

@@ -1168,5 +1168,27 @@ class DoctorRound4Tests(unittest.TestCase):
             self.assertIsNone(studio_fs.input_file_problem(tmp / "roots.txt"))
 
 
+class DoctorRq029Tests(unittest.TestCase):
+    """SPR-04 TK2 (FR11.3, RQ-029): a skill whose SKILL.md was refused (INPUT) is not opened again for its name."""
+
+    def test_rq029_identity_does_not_reread_a_skill_with_input(self):
+        """bắt-lỗi (red at c3deee2: `_skill_identity` opens SKILL.md after validate said INPUT): FR11.3 the entry's name is the folder name and no read reaches SKILL.md."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp).resolve()
+            skill = make_skill(tmp / "root", "folder-name")
+            (skill / "SKILL.md").write_bytes((SKILL % ("name-in-file", "")).encode("utf-8"))
+            refused = [studio_fs.emit("ERROR", "INPUT", skill / "SKILL.md", 0, "SKILL.md is inside a cloud zone; not read")]
+            reads, real = [], studio_fs.read_capped
+
+            def spy(path, *a, **k):
+                reads.append(os.fspath(path))
+                return real(path, *a, **k)
+
+            with mock.patch.object(studio_validate, "validate_skill", return_value=refused), mock.patch.object(studio_fs, "read_capped", spy):
+                report = studio_doctor.doctor_run([tmp / "root"], "opcos", "portable", False, None)
+            self.assertEqual(["folder-name"], [s["name"] for s in report["skills"]])
+            self.assertEqual([], [r for r in reads if r.endswith("SKILL.md")], "SKILL.md was opened for the name")
+
+
 if __name__ == "__main__":
     unittest.main()

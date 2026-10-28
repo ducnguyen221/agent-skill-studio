@@ -339,28 +339,36 @@ def root_too_broad(path, markers=C.CLOUD_MARKERS) -> bool:
     return real != given and _broad_by_name(real, homes)
 
 
-def input_file_problem(source: Path, markers=C.CLOUD_MARKERS) -> str | None:
-    """Why an input file (--roots-file, --baseline) may not be read, else None. Decided before opening it: not an NTFS data stream
-    (name:stream), not a secret-looking name, not a cloud placeholder, and neither the spelling given nor the real path (a link, an 8.3
-    name such as SECRET~1) in a cloud or secret zone."""
+def input_name_problem(source: Path, markers=C.CLOUD_MARKERS) -> str | None:
+    """The part of `input_file_problem` decided from the spelling alone, so nothing is stat-ed or opened: an NTFS data stream (name:stream),
+    a secret-looking file name, or the spelling given in a cloud or secret zone. Else None."""
     text = os.fspath(source)
     if os.name == "nt" and ":" in os.path.splitdrive(text)[1]:
         return "names an NTFS data stream; not read"
     if secret_file_name(source.name):
         return "has a secret-looking file name; not read"
     reason = zone_reason(source, markers)
-    if not reason:
-        if path_is_cloud(source):
-            return "is a cloud placeholder; not read"
-        try:
-            real = source.resolve()
-        except (OSError, RuntimeError):
-            return "cannot be resolved; not read"
-        if secret_file_name(real.name):
-            return "is a link to a file with a secret-looking name; not read"
-        reason = zone_reason(real, markers)
-        if not reason and path_is_cloud(real):
-            return "is a cloud placeholder; not read"
+    return "is inside a %s zone; not read" % reason if reason else None
+
+
+def input_file_problem(source: Path, markers=C.CLOUD_MARKERS) -> str | None:
+    """Why an input file (--roots-file, --baseline) may not be read, else None. Decided before opening it: not an NTFS data stream
+    (name:stream), not a secret-looking name, not a cloud placeholder, and neither the spelling given nor the real path (a link, an 8.3
+    name such as SECRET~1) in a cloud or secret zone."""
+    named = input_name_problem(source, markers)
+    if named:
+        return named
+    if path_is_cloud(source):
+        return "is a cloud placeholder; not read"
+    try:
+        real = source.resolve()
+    except (OSError, RuntimeError):
+        return "cannot be resolved; not read"
+    if secret_file_name(real.name):
+        return "is a link to a file with a secret-looking name; not read"
+    reason = zone_reason(real, markers)
+    if not reason and path_is_cloud(real):
+        return "is a cloud placeholder; not read"
     return "is inside a %s zone; not read" % reason if reason else None
 
 

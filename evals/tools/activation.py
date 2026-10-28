@@ -17,6 +17,7 @@ import argparse
 import bisect
 import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -386,7 +387,8 @@ def _engine():
 
     The counting rule lives once, in the engine (`studio_evals.summarize_logs`, which the `evals --all` gate also uses). The engine folder is
     found by a fixed path from this file, `<repo>/skills/skill-creator-studio/scripts/`, never from the cwd or an environment variable: it is
-    put first on sys.path (any other entry for it is dropped), and the module that was loaded must sit in that folder (RF-S8).
+    put first on sys.path (any other entry for it is dropped), and the module that was loaded must sit in that folder (RF-S8). So must
+    every other `studio_*` module of that folder that is loaded: `studio_evals` imports its siblings, and a foreign one would count by a foreign rule.
     """
     engine_dir = ENGINE_DIR.resolve()
     sys.path[:] = [entry for entry in sys.path if entry != str(engine_dir)]
@@ -395,6 +397,14 @@ def _engine():
     found = Path(studio_evals.__file__).resolve().parent
     if found != engine_dir:
         raise EngineMismatch("loaded engine module studio_evals from %s, expected %s; nothing was counted" % (found, engine_dir))
+    with os.scandir(engine_dir) as scan:  # the folder's own list, not a fixed one: a module added to the engine is checked without an edit here
+        siblings = sorted(e.name[:-3] for e in scan if e.name.startswith("studio_") and e.name.endswith(".py"))
+    for name in siblings:
+        module = sys.modules.get(name)
+        where = getattr(module, "__file__", None) if module is not None else None
+        if module is not None and (not where or Path(where).resolve().parent != engine_dir):
+            raise EngineMismatch("loaded engine module %s from %s, expected %s; nothing was counted"
+                                 % (name, Path(where).resolve().parent if where else "an unknown place", engine_dir))
     return studio_evals
 
 

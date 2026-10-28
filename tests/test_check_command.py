@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,9 +24,9 @@ SKILL = "examples/data-quality-audit"
 BROKEN = "evals/skill-creator-studio/fixtures/broken-skill"
 
 
-def run_engine(*args, cwd=None):
+def run_engine(*args, cwd=None, engine=None):
     """(exit code, stdout, stderr) of `python studio.py <args>` with the engine under test."""
-    proc = subprocess.run([sys.executable, "-X", "utf8", str(E.ENGINE_PATH)] + list(args), cwd=str(cwd or ROOT), stdin=subprocess.DEVNULL,
+    proc = subprocess.run([sys.executable, "-X", "utf8", str(engine or E.ENGINE_PATH)] + list(args), cwd=str(cwd or ROOT), stdin=subprocess.DEVNULL,
                           capture_output=True, text=True, encoding="utf-8", timeout=300)
     return proc.returncode, proc.stdout, proc.stderr
 
@@ -206,6 +207,63 @@ class CheckOtherTypesTests(unittest.TestCase):
         missing = self.tmp / "no-such-skill"
         self.assertEqual(missing, E.validate.resolve_check_path(str(missing)))
         self.assertEqual(self.tmp / "gone", E.validate.resolve_check_path(str(self.tmp / "gone" / "SKILL.md")))
+
+
+class Rq029CheckTests(unittest.TestCase):
+    """SPR-04 TK2 (FR11.4, FR11.5, RQ-029)."""
+
+    def test_rq029_resolve_check_path_decides_zone_before_any_stat(self):
+        """bắt-lỗi (red at c3deee2: `path.is_file()` runs first, so the file in ~/.secret is stat-ed): FR11.4 `check ~/.secret/x.md` is a zone line and no stat, open or is_file reaches the path."""
+        home = Path(tempfile.mkdtemp(prefix="studio-home-"))
+        self.addCleanup(shutil.rmtree, home, True)
+        secret = home / ".secret"
+        secret.mkdir()
+        (secret / "x.md").write_text("CANARY", encoding="utf-8")
+        seen = []
+        real = {"stat": os.stat, "lstat": os.lstat, "open": open, "is_file": Path.is_file}
+
+        def spy(name, original):
+            def wrapper(target, *a, **k):
+                text = os.fspath(target) if not isinstance(target, int) else ""
+                if ".secret" in text:
+                    seen.append((name, text))
+                return original(target, *a, **k)
+            return wrapper
+
+        with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
+            E.clear_caches()
+            self.addCleanup(E.clear_caches)
+            with mock.patch.object(os, "stat", spy("stat", real["stat"])), mock.patch.object(os, "lstat", spy("lstat", real["lstat"])),                     mock.patch("builtins.open", spy("open", real["open"])),                     mock.patch.object(Path, "is_file", lambda self, *a, **k: spy("is_file", real["is_file"])(self, *a, **k)):
+                with self.assertRaises(ValueError) as caught:
+                    E.validate.resolve_check_path(str(secret / "x.md"))
+        self.assertIn("secret-zone", str(caught.exception))
+        self.assertEqual([], seen, "the path in the forbidden zone was touched")
+
+    def test_rq029_check_all_merges_several_reports_on_a_real_repo(self):
+        """bắt-lỗi (red at c3deee2: no test ran `check --all` on two skills): FR11.5 the merged report of two skills is one `reports` list in folder order, the exit code is the worst, and the text output names both."""
+        tmp = Path(tempfile.mkdtemp(prefix="studio-two-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / ".claude-plugin").mkdir()
+        (tmp / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
+        (tmp / "standards").mkdir()
+        (tmp / "standards" / "SKILL_AUTHORING_STANDARD.md").write_text("x\n", encoding="utf-8")
+        shutil.copytree(E.ENGINE_DIR, tmp / "engine", ignore=shutil.ignore_patterns("__pycache__"))
+        good = (ROOT / SKILL / "SKILL.md").read_bytes()
+        for name, body in (("alpha", good), ("beta", b"---\nname: beta\n---\n")):
+            (tmp / "skills" / name).mkdir(parents=True)
+            (tmp / "skills" / name / "SKILL.md").write_bytes(body)
+        engine = tmp / "engine" / "studio.py"
+        code, out, err = run_engine("check", "--all", "--json", cwd=tmp, engine=engine)
+        self.assertEqual(1, code, err)
+        reports = json.loads(out)["reports"]
+        self.assertEqual(["alpha", "beta"], [Path(r["skill"]).name for r in reports])
+        self.assertTrue(all(r["type"] == "skill" for r in reports), reports)
+        self.assertFalse([f for f in reports[0]["findings"] if f["level"] == "ERROR" and f["code"] in ("INPUT", "FM1")], reports[0])
+        self.assertTrue([f for f in reports[1]["findings"] if f["level"] == "ERROR"], reports[1])
+        code_t, out_t, err_t = run_engine("check", "--all", cwd=tmp, engine=engine)
+        self.assertEqual(1, code_t)
+        self.assertIn("alpha", out_t + err_t)
+        self.assertIn("beta", out_t + err_t)
 
 
 if __name__ == "__main__":
