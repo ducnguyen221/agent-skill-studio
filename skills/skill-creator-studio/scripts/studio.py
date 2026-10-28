@@ -122,6 +122,8 @@ def cmd_evals(args) -> int:
         findings = evals.check_evals(path)
         reports.append({"skill": path.name, "findings": findings})
     gate_root, gate_dir = (evals.gate_root() if args.all else None), None  # the gate follows the engine's repository, never the cwd; outside a repository, or in one without evals/, it is skipped (FR6.2)
+    if args.all and evals.installed_engine():  # said once per run, on stderr: a skipped gate is never mistaken for a passed one (FR13.3)
+        print("note: model_evaluated gate skipped: installed engine (%s); run `evals --all` from the Studio repository to check it" % Path(__file__).resolve().parent, file=sys.stderr)
     if gate_root is not None:
         catalog = gate_root / evals.CATALOG_REL
         problems = evals.catalog_problems(gate_root)

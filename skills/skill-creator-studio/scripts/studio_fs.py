@@ -149,13 +149,17 @@ def skill_dirs(root: Path) -> list[Path]:
 
 
 def is_link(path: Path) -> bool:
-    """True for a symlink or, on Windows, any reparse point such as a directory junction (os.path.isjunction needs Python 3.12)."""
-    try:  # pathlib re-raises ENAMETOOLONG and the like from is_symlink(): a path that cannot be probed is not a link (1a RF-T6)
+    """True for a symlink or, on Windows, any reparse point such as a directory junction (os.path.isjunction needs Python 3.12).
+    Fails closed (SPR-03 FR13.1): a path that does not exist (or whose parent is not a folder) is not a link, but any other OSError while probing
+    it (PermissionError, ENAMETOOLONG, Windows winerror 123) makes it «a link», so the caller refuses or skips it instead of treating it as plain."""
+    try:  # pathlib re-raises ENAMETOOLONG and the like from is_symlink(); lstat then asks again, so an error that pathlib swallows still counts
         if path.is_symlink():
             return True
         return bool(getattr(os.lstat(path), "st_file_attributes", 0) & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return False
+    except OSError:
+        return True
 
 
 def valid_resolved_under(child: Path, parent: Path) -> bool:
@@ -620,7 +624,7 @@ def _remove_quietly(path) -> None:
 def _is_dir_quiet(path: Path) -> bool:
     """True for a real folder. A link (symlink, junction), a cloud placeholder, a missing path and an OSError the stdlib does not swallow
     (ENAMETOOLONG on POSIX) are 'not a directory'; one lstat, so the target of a link is never stat-ed (SPR-02 FR7.1)."""
-    try:  # is_link() asks pathlib first, which re-raises ENAMETOOLONG and similar: every OSError means 'not a directory'
+    try:  # is_link() is True for a path that cannot be probed (ENAMETOOLONG and similar): not a directory; any other OSError means the same
         if is_link(path) or path_is_cloud(path):
             return False
         return stat.S_ISDIR(os.lstat(path).st_mode)

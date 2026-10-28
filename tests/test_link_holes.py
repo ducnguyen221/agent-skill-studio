@@ -313,9 +313,13 @@ class ProbeErrorTests(unittest.TestCase):
         return mock.patch.object(Path, "is_symlink", side_effect=OSError(errno.ENAMETOOLONG, "File name too long"))
 
     def test_bat_loi_is_link_treats_oserror_as_not_a_link(self):
-        """bắt-lỗi: fs.is_link returns False when pathlib raises ENAMETOOLONG for the path (CI ubuntu on 138cbfa: it raised)."""
+        """bắt-lỗi, LẬT ở SPR-03 TK9 (1a RF-T6 asserted False; now True): fs.is_link returns True when pathlib raises ENAMETOOLONG for the path
+        (CI ubuntu on 138cbfa: it raised). Why flipped: a path that cannot be probed is no longer «not a link» — that failed open, and the callers
+        (doctor, fmt, validate, package, install) went on as if it were an ordinary path (RQ-025 / RF-S4, SPEC FR13.1). Fails closed: the callers
+        refuse or skip it with the report they have for a link. What stays: the next test, `parse_roots` still ends in «root not found»; replaced by
+        tests/test_link_probe_fail_closed.py (test_is_link_fails_closed and the caller tests)."""
         with tempfile.TemporaryDirectory() as t, self.too_long():
-            self.assertFalse(E.fs.is_link(Path(t) / "x"))
+            self.assertTrue(E.fs.is_link(Path(t) / "x"))
 
     def test_bat_loi_parse_roots_oserror_while_probing_is_root_not_found(self):
         """bắt-lỗi: doctor `--roots` with a path that cannot be probed (ENAMETOOLONG) ends in the old ValueError «root not found», not an OSError traceback."""

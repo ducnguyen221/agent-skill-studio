@@ -295,9 +295,22 @@ def _load_json(path):
     return json.loads(_read_text(path))
 
 
+INSTALL_DIR_NAMES = (".claude", ".agents", ".codex", ".gemini")  # the folders an installed copy of the engine lives under (SPR-03 FR13.3)
+
+
+def installed_engine(engine_file=None) -> bool:
+    """True when a folder above the engine file is named exactly `.claude`, `.agents`, `.codex` or `.gemini` (case-insensitive: those file systems
+    are): an installed copy, whose surrounding tree is not the Studio repository. Names only; nothing is stat-ed."""
+    parents = Path(os.path.abspath(__file__ if engine_file is None else engine_file)).parents
+    return any(parent.name.casefold() in INSTALL_DIR_NAMES for parent in parents)
+
+
 def gate_root() -> Path | None:
     """The repository the `model_evaluated` gate runs in: the engine's own repository when it has an evals/ folder (a plain one), else None
-    (an engine copied out of a repository, or one installed into a tree without evals/, has nothing to count)."""
+    (an engine installed under `.claude`/`.agents`/`.codex`/`.gemini`, copied out of a repository, or put in a tree without evals/, has nothing to
+    count: an installed copy never reads the catalog of the tree around it, FR13.3)."""
+    if installed_engine():
+        return None
     root = engine_repo_root()
     if root is None or not fs._is_dir_quiet(root / "evals"):
         return None
@@ -645,7 +658,9 @@ def model_evaluated_problems(catalog_path, root):
         elif result in RESULT_VALUES and result != recomputed:
             problems.append("%s evaluated.result %r != recomputed %r" % (tag, result, recomputed))
     evals_dir = Path(root) / "evals"
-    if evals_dir.is_dir() and not fs.is_link(evals_dir):  # an evidence/ folder whose skill the catalog does not name is never skipped silently
+    if fs.is_link(evals_dir):  # a link, or a folder that cannot be probed (FR13.1): its evidence/ folders cannot be compared with the catalog, and that is said
+        problems.append("evals/ is a link or cannot be probed; its evidence folders are not checked against the catalog")
+    elif evals_dir.is_dir():  # an evidence/ folder whose skill the catalog does not name is never skipped silently
         with os.scandir(evals_dir) as scan:
             folders = sorted(e.name for e in scan if e.is_dir(follow_symlinks=False) and os.path.lexists(evals_dir / e.name / "evidence"))
         problems.extend("evals/%s/evidence has no catalog entry with evals: evals/%s" % (n, n) for n in folders if "evals/%s" % n not in declared)
