@@ -18,6 +18,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine as E  # noqa: E402
 from _batches import COMPACT, RAW, activation, write_compact  # noqa: E402
+from _gate_mutations import FIXTURE as GATE_FIXTURE, GOLDEN as GATE_GOLDEN, MUTATIONS, new_catalog, norm_new  # noqa: E402
 
 ROOT = E.ROOT
 REPO_PARTS = ("studio.py", ".claude-plugin", "standards", "evals", "skills")
@@ -443,81 +444,48 @@ class BatchRejectTests(CatalogGateBase):
         self.assertTrue(any("needs evaluated.ab_report" in p for p in E.evals.catalog_problems(self.repo)))
 
 
-class GateRawAndCompactTests(unittest.TestCase):
-    """FR3.1: the gate counts a raw run folder and its compact file to the same list of problems (the fixture stays in CI for good)."""
-    SKILL, BATCH = "fixture-skill", "B1"
+class GateMatchesOldGateTests(unittest.TestCase):
+    """FR3.1: over the compact files the gate prints the list of problems the gate of 3cc1bd3 printed over the raw `runs/` folders (RK1).
 
+    tests/fixtures/gate/golden.json was produced once by the OLD gate (`git archive 3cc1bd3`) under the 13 catalog edits of tests/_gate_mutations.py;
+    nothing here calls the old gate, and nothing derives the expected lines from the code under test.
+    """
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        self.tmp = Path(self._tmp.name)
+        self.root = Path(self._tmp.name) / "repo"
+        shutil.copytree(GATE_FIXTURE / "evals", self.root / "evals")
+        self.base = json.loads((self.root / "evals" / "catalog.json").read_text(encoding="utf-8"))
+        self.golden = json.loads(GATE_GOLDEN.read_text(encoding="utf-8"))["cases"]
 
-    def repo_for(self, raw: Path, flag=False) -> Path:
-        repo = self.tmp / "repo"
-        evals_dir = repo / "evals" / self.SKILL
-        evals_dir.mkdir(parents=True)
-        cases = [{"id": "c-pos", "should_trigger": True, "kind": "typical"}, {"id": "c-neg", "should_trigger": False, "kind": "near-miss"}]
-        (evals_dir / "cases.json").write_text(json.dumps({"skill_name": self.SKILL, "cases": cases}), encoding="utf-8")
-        evaluated = {"sprint": self.BATCH, "date": "2026-10-18", "evidence": "evals/%s/evidence/%s.json" % (self.SKILL, self.BATCH),
-                     "harnesses": {"claude-code": "ran", "codex": "ran", "antigravity": "not_run:fixture"},
-                     "ab_report": "evals/%s/evidence/%s.json" % (self.SKILL, self.BATCH),
-                     "result": "passed" if flag else "below-threshold", "batch_sha": "a" * 40, "batch_sha_kind": "tree"}
-        catalog = {"skills": [{"name": self.SKILL, "evals": "evals/" + self.SKILL, "targets": ["claude-code", "codex", "antigravity"],
-                               "status": "model-evaluated" if flag else "prototype-static-validated", "model_evaluated": flag, "evaluated": evaluated}]}
-        (repo / "evals" / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
-        write_compact(raw, self.SKILL, self.BATCH, evals_dir / "evidence" / (self.BATCH + ".json"))
-        return repo
-
-    def both(self, raw: Path, flag=False):
-        repo = self.repo_for(raw, flag)
-        from_file = E.evals.model_evaluated_problems(repo / "evals" / "catalog.json", repo)
-        from_raw = E.evals.model_evaluated_problems(repo / "evals" / "catalog.json", repo, batch_loader=lambda *a: activation.raw_batch(raw, self.SKILL, self.BATCH))
-        shutil.rmtree(repo)
-        return from_file, from_raw
-
-    def raw_copy(self) -> Path:
-        raw = self.tmp / "raw"
-        shutil.copytree(RAW, raw)
-        return raw
+    def problems_for(self, mutate) -> list:
+        catalog = new_catalog(self.base, mutate)
+        path = self.root / "evals" / "edited.json"
+        path.write_text(json.dumps(catalog), encoding="utf-8")
+        return sorted(norm_new(p) for p in E.evals.model_evaluated_problems(path, self.root))
 
     def test_raw_and_compact_gate_equal(self):
-        def trigger_codex(raw):
-            f = next(raw.glob("*codex_c-pos_with.json"))
-            f.write_text(f.read_text(encoding="utf-8").replace('"triggered": false', '"triggered": true'), encoding="utf-8")
-
-        def drop_base(raw):
-            next(raw.glob("*codex_c-pos_base.json")).unlink()
-
-        def foreign_runtime(raw):
-            (raw / "z_gemini.json").write_text(json.dumps({"runtime": "gemini-cli", "with_skill": True, "status": "ran", "case_id": "c-x"}), encoding="utf-8")
-
-        def drop_ab(raw):
-            (raw / "ab-2026-10-18.json").unlink()
-
-        def ran_antigravity(raw):
-            (raw / "z_ag.json").write_text(json.dumps({"runtime": "antigravity", "with_skill": True, "status": "ran", "case_id": "c-pos"}), encoding="utf-8")
-
-        cases = [("fixture as it is", None, None), ("codex trigger changed", trigger_codex, "recount"), ("baseline missing", drop_base, "baseline logs"),
-                 ("runtime outside targets", foreign_runtime, "gemini-cli"), ("ab block missing", drop_ab, "missing under"),
-                 ("not_run harness with a ran log", ran_antigravity, "has a ran log")]
-        for label, mutate, needle in cases:
+        """tương-đương: SC6 / RK1 each of the 13 edits gives EXACTLY the set of lines the old gate gave on raw logs (paths spelled alike)."""
+        self.assertEqual(sorted(label for label, _ in MUTATIONS), sorted(self.golden))
+        for label, mutate in MUTATIONS:
             with self.subTest(label):
-                shutil.rmtree(self.tmp / "raw", ignore_errors=True)
-                raw = self.raw_copy()
-                if mutate:
-                    mutate(raw)
-                from_file, from_raw = self.both(raw)
-                self.assertEqual(from_raw, from_file)
-                if needle is None:
-                    self.assertEqual([], from_file)
-                else:
-                    self.assertTrue(any(needle in p for p in from_file), from_file)
+                self.assertEqual(self.golden[label], self.problems_for(mutate))
 
-    def test_raw_and_compact_gate_equal_when_the_flag_is_true(self):
-        """tương-đương: the thresholds apply when the flag is true; both forms miss them the same way."""
-        from_file, from_raw = self.both(self.raw_copy(), flag=True)
-        self.assertEqual(from_raw, from_file)
-        self.assertTrue(any("required" in p for p in from_file), from_file)
+    def test_golden_is_not_trivial(self):
+        """tương-đương: the golden answers cover both an empty list and edits that really make the gate speak (a golden of empty lists would pass a gate that checks nothing)."""
+        sizes = {label: len(lines) for label, lines in self.golden.items()}
+        self.assertEqual(0, sizes["as committed"])
+        self.assertGreaterEqual(sum(1 for n in sizes.values() if n), 11)
+        self.assertEqual(18, sizes["dqa targets claude-code only"])
+
+    def test_the_fixture_is_the_committed_evidence(self):
+        """tương-đương: the frozen fixture catalog and evidence files are the ones the repository ships today, so the golden answers describe the real data."""
+        for rel in ("catalog.json", "data-quality-audit/evidence/SPR-18.json", "skill-creator-studio/evidence/studio-SPR-02.json"):
+            self.assertEqual((ROOT / "evals" / rel).read_bytes(), (GATE_FIXTURE / "evals" / rel).read_bytes(), rel)
+
+
+class BatchFixtureTests(unittest.TestCase):
+    SKILL, BATCH = "fixture-skill", "B1"
 
     def test_fixture_compact_file_is_read_by_the_gate(self):
         """tương-đương: the committed tests/fixtures/batch/compact.json is a file the loader accepts for the fixture skill and batch."""
@@ -525,6 +493,12 @@ class GateRawAndCompactTests(unittest.TestCase):
         self.assertEqual(6, len(batch["logs"]))
         self.assertEqual(1, len(batch["smoke"]))
         self.assertEqual(["2026-10-18"], sorted(batch["ab"]))
+
+    def test_compact_file_loads_back_to_what_the_raw_folder_gives(self):
+        """tương-đương: the file `compact` writes is read back by `load_batch` as the very dict `raw_batch` built from the raw folder (serialisation loses nothing)."""
+        with tempfile.TemporaryDirectory() as t:
+            out = write_compact(RAW, self.SKILL, self.BATCH, Path(t) / "evals" / "x" / "evidence" / "B1.json")
+            self.assertEqual(activation.raw_batch(RAW, self.SKILL, self.BATCH), E.evals.load_batch(out, Path(t), self.SKILL, self.BATCH))
 
 
 if __name__ == "__main__":

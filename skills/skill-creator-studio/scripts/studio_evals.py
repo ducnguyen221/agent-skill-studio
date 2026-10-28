@@ -466,7 +466,7 @@ def load_batch(path, root, skill: str, batch: str) -> dict:
     return data
 
 
-def _scan_evidence(root, evals_rel: str, skill: str, loader):
+def _scan_evidence(root, evals_rel: str, skill: str):
     """(batches {file stem: dict}, stems that failed to load, problems, readable) for evals/<x>/evidence/*.json. A missing folder is empty and readable."""
     ev_dir = Path(root) / evals_rel / "evidence"
     batches, failed, problems = {}, set(), []
@@ -478,7 +478,7 @@ def _scan_evidence(root, evals_rel: str, skill: str, loader):
         return batches, failed, ["evidence dir not safe to read: %s" % (reason or "link %s" % link)], False
     for path in sorted(p for p in found if p.parent == ev_dir and p.suffix == ".json" and not fs._is_dir_quiet(p)):
         try:
-            batches[path.stem] = loader(path, root, skill, path.stem)
+            batches[path.stem] = load_batch(path, root, skill, path.stem)
         except ValueError as exc:
             failed.add(path.stem)
             problems.append("evidence %s: %s" % (path.relative_to(root).as_posix(), exc))
@@ -506,11 +506,9 @@ AB_THRESHOLDS = (("positive_triggered", lambda v: v >= 4, ">= 4"), ("negative_tr
                  ("worse", lambda v: v == 0, "== 0"), ("better", lambda v: v >= 3, ">= 3"), ("pairs", lambda v: v == 5, "== 5"))
 
 
-def model_evaluated_problems(catalog_path, root, batch_loader=None):
-    """Return the list of reasons the catalog's model_evaluated / status claims are not backed by counted evidence.
-    `batch_loader(path, root, skill, batch)` replaces `load_batch` (tests give the gate a batch built from a raw folder)."""
+def model_evaluated_problems(catalog_path, root):
+    """Return the list of reasons the catalog's model_evaluated / status claims are not backed by counted evidence."""
     problems = []
-    loader = batch_loader or load_batch
     catalog = _load_json(Path(catalog_path))
     declared = set()
     for skill in catalog["skills"]:
@@ -528,7 +526,7 @@ def model_evaluated_problems(catalog_path, root, batch_loader=None):
         evals_rel = skill["evals"].replace("\\", "/").rstrip("/")
         declared.add(evals_rel)
         # nothing under evidence/ is opened until the folder is known to hold plain files; every runtime in any batch must be a declared target
-        batches, failed, scan_problems, readable = _scan_evidence(root, evals_rel, name, loader)
+        batches, failed, scan_problems, readable = _scan_evidence(root, evals_rel, name)
         problems.extend("%s %s" % (tag, p) for p in scan_problems)
         if not readable:
             continue
