@@ -5,7 +5,7 @@ updated: 2026-10-28
 ---
 # Skill Authoring Standard — SK-00…SK-15
 
-**Version:** 0.1.0 · Nguồn: [SOURCE_TRACEABILITY.md](SOURCE_TRACEABILITY.md). **Mức** do Studio đặt: MUST = bắt buộc (bỏ thì báo lỗi hoặc owner duyệt ngoại lệ); SHOULD = nên, không theo thì ghi lý do; «MUST nếu …» = bắt buộc khi có điều kiện đó.
+Nguồn: [SOURCE_TRACEABILITY.md](SOURCE_TRACEABILITY.md). **Mức** do Studio đặt: MUST = bắt buộc (bỏ thì báo lỗi hoặc owner duyệt ngoại lệ); SHOULD = nên, không theo thì ghi lý do; «MUST nếu …» = bắt buộc khi có điều kiện đó.
 
 ### SK-00 — Manifest portable [MUST] · kiểm: `FM1`, `FM2`, `FM4`–`FM6`, `DS1`
 `SKILL.md` mở bằng frontmatter ở dòng 1 với `name` và `description`. `name` ≤64 ký tự, `a-z0-9-`, không mở/đóng/đôi `-`, khớp tên thư mục, không chứa "anthropic"/"claude"; cả hai không có thẻ XML. `description` ≤1 024 ký tự, nêu làm gì + khi nào dùng. Khoá thêm chỉ `license`, `compatibility` (≤500), `metadata` (map chuỗi), `allowed-tools`; khoá riêng Claude Code chỉ qua `--target claude-code`; không `version:` hay `triggers:` top-level.
@@ -14,7 +14,7 @@ updated: 2026-10-28
 Thân `SKILL.md` là bộ định tuyến, <500 dòng, <5 000 token. Chi tiết ở `references/`, link một cấp từ `SKILL.md` kèm khi nào đọc; guardrail quan trọng không đẩy vào file có thể không được đọc. Không tạo `scripts/`, `assets/` rỗng.
 
 ### SK-02 — Content lists và cắt gọn [SHOULD] · kiểm: review
-Mục lục theo `SK-15`. Trước khi giữ một đoạn, hỏi: bỏ đoạn này agent có làm sai không? Có lặp điều ở file khác không (link thay chép)? Điều kiện có lồng quá hai tầng không? Cắt chọn lọc, không nén thành mảnh câu.
+Mục lục theo `SK-15`. Trước khi giữ một đoạn, hỏi: bỏ đoạn này agent có làm sai không? Có lặp file khác không (link thay chép)? Điều kiện có lồng quá hai tầng không? Cắt chọn lọc, không nén thành mảnh câu.
 
 ### SK-03 — Mức tự do theo rủi ro [MUST khi thiết kế] · kiểm: review
 Tự do cao thì văn xuôi, vừa thì mẫu ưu tiên, thấp (rủi ro: thanh toán, xoá, deploy, migration) thì script/schema/approval. Mỗi bước hỏi "agent làm khác thì tổn thất gì?": không gì thì tăng tự do, mất tiền/dữ liệu thì giảm tự do. Trộn mức trong cùng skill.
@@ -64,7 +64,7 @@ Reference >100 dòng phải có `## Contents`; thân >100 dòng nên có. Ngay d
 - **Draft** → **Candidate** (`check` sạch, ≥3 tình huống, đã review ngữ nghĩa) → **Production** (eval trên runtime đích, owner duyệt, không blocker an toàn) → **Deprecated** (dừng kích hoạt, ghi đường chuyển trong changelog, không xoá đột ngột).
 - NEW → AUDIT → REFINE → RELEASE: `new` → `check` và audit tay → eval phiên mới, sửa theo failure → review bảo mật khi có side effect → `package`, `install` thử, owner duyệt.
 - PATCH sửa typo, link; MINOR thêm workflow, reference, eval; MAJOR đổi trigger, output contract, quyền thực thi.
-- AUDIT chỉ đọc; REFINE chỉ sửa khi owner yêu cầu hoặc duyệt. Mỗi thay đổi có diff, lý do, rule ID, test, cách hoàn tác. Không tự sửa mọi WARN.
+- AUDIT chỉ đọc; REFINE chỉ sửa khi owner yêu cầu hoặc duyệt. Mỗi thay đổi có diff, lý do, rule ID, test, cách hoàn tác. Không tự sửa mọi WARN (có thể là chủ ý của owner).
 
 ## Definition of Done
 Frontmatter portable, trigger và negative scope rõ, script đã test, không secret, eval ≥3 case pass, `check` đạt, gói runtime không có fixture hay kết quả test. Production có [model eval](EVALUATION_STANDARD.md), owner, phiên bản, rollback, changelog; «model tested» cần log, ngày, phiên bản, prompt, kết quả. Ngoại lệ cần lý do trong audit.

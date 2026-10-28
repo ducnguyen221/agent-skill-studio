@@ -101,7 +101,7 @@ updated: 2026-10-28
 | CT7 | One default plus escape hatch | SK-08 | Studio | Review |
 | CT8 | Full MCP tool names | SK-09 | Best practice | Review |
 | CT9 | No TODO/FIXME placeholders in release | SK-07 | Studio | Static WARN |
-| CT10 | One rule in one location | SK-05 | Studio | Review |
+| CT10 | Forcing words carry a reason | SK-14 | Studio | Static WARN |
 | WF1 | Checklist, checkable done, go-back | SK-06 | Best practice | Review |
 | WF2 | Validator feedback loop | SK-07 | Best practice | Review |
 | WF3 | Plan/validate/execute before destructive | SK-03, SK-10 | Best practice | Review |
