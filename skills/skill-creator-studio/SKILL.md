@@ -2,7 +2,7 @@
 name: skill-creator-studio
 description: "Creates, audits, refines and packages reusable Agent Skills using portable authoring rules and evidence-based quality checks. Use when asked to build a new SKILL.md, review an existing skill library, fix a failing skill, or prepare skill releases for Claude Code, Codex or Google Antigravity."
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: "Agent Skill Studio"
 ---
 

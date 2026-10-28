@@ -5,7 +5,7 @@
     {
       "name": "skill-creator-studio",
       "path": "skills/skill-creator-studio",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "status": "prototype-static-validated",
       "owner": "Agent Skill Studio maintainers",
       "targets": ["claude-code", "codex", "antigravity"],
