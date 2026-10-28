@@ -12,7 +12,7 @@
       "src": "CHANGELOG.md",
       "out": "docs/CHANGELOG/index.html",
       "title": "Changelog",
-      "sha256": "df47f79eae56ef987babb5225c741326aecf882f4bbb6f692b7580985448852a"
+      "sha256": "10a782161c61001d0dca7242b869835fb9fb9501794874658e5aba24d5582c64"
     },
     {
       "src": "CLAUDE.md",
@@ -36,7 +36,7 @@
       "src": "README.md",
       "out": "docs/README/index.html",
       "title": "Agent Skill Studio",
-      "sha256": "9cd8e8ea6a2d6ca05d4109224629d5ca1b96b5a49ecc3439d453e468b7510665"
+      "sha256": "7495e70f303cccedbd6599de438e3c8a957143f649e721e43c68cb874881e25f"
     },
     {
       "src": "evals/RUNBOOK.md",

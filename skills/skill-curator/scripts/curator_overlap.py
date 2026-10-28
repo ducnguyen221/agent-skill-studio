@@ -21,6 +21,7 @@ import studio_fs as fs
 NOMINATE = 0.20       # a pair of different names is put forward when the descriptions are at least this alike (spike: 20 pairs in 124 skills)
 SAME_FUNCTION = 0.30  # ... and it is `same_function` only from here AND with at least two file names in common (never on text alone, FR4.2)
 MIN_SHARED_FILES = 2
+OVERLAP_MAX_PAIRS = 20000  # nominated pairs per run: a library whose descriptions fall into two word groups would otherwise give a quadratic list (RF-S2)
 SUGGESTION = {"distribution_copy": "keep", "version_drift": "sync", "same_function": "merge", "same_name_other_role": "keep", "insufficient_evidence": "keep"}
 NOT_NAMES = ("readme.md", "__init__.py")
 # Fixed list (EN and VI). Words under four characters never reach it: the word test drops them first.
@@ -114,41 +115,52 @@ def _representatives(items: list) -> list:
     return sorted(i for _, i in best.values())
 
 
-def candidates(rows: list, installed: list) -> list:
+class _Full(Exception):
+    """The nominated pairs reached OVERLAP_MAX_PAIRS."""
+
+
+def candidates(rows: list, installed: list, cut: list | None = None) -> list:
     """Every pair worth a label, as (a, b) items, each once: the same (plugin, skill) between a source and its installed copies or between two copies; the same
     `name:` in two plugins (one representative per (plugin, skill), so a skill that is only installed is compared too and the copies of one skill are not
-    paired with the copies of the other); and two source skills of different names whose descriptions are alike (cosine >= NOMINATE). `rows` are the source items."""
+    paired with the copies of the other); and two source skills of different names whose descriptions are alike (cosine >= NOMINATE). `rows` are the source items.
+    At most OVERLAP_MAX_PAIRS pairs are put forward; when that stops the search `True` is appended to `cut` (when a list is given)."""
     items = list(rows) + list(installed)
     seen: set = set()
     out: list = []
 
     def add(i: int, j: int) -> None:
         if i != j and (min(i, j), max(i, j)) not in seen:
+            if len(out) >= OVERLAP_MAX_PAIRS:
+                raise _Full
             seen.add((min(i, j), max(i, j)))
             first, second = sorted((items[i], items[j]), key=lambda x: (x["harness"] is not None, x["key"], x["path"]))
             out.append((first, second))
 
-    by_key: dict = {}
-    for i, it in enumerate(items):
-        by_key.setdefault((it["plugin"], it["skill"]), []).append(i)
-    for group in by_key.values():
-        for x in range(len(group)):
-            for y in range(x + 1, len(group)):
-                add(group[x], group[y])
-    by_name: dict = {}
-    for i in _representatives(items):
-        by_name.setdefault(items[i]["name"].casefold(), []).append(i)
-    for group in by_name.values():
-        for x in range(len(group)):
-            for y in range(x + 1, len(group)):
-                if items[group[x]]["plugin"] != items[group[y]]["plugin"]:
+    try:
+        by_key: dict = {}
+        for i, it in enumerate(items):
+            by_key.setdefault((it["plugin"], it["skill"]), []).append(i)
+        for group in by_key.values():
+            for x in range(len(group)):
+                for y in range(x + 1, len(group)):
                     add(group[x], group[y])
-    df, n = doc_freq([r["desc"] for r in rows])
-    vectors = [_weights(r["desc"], df, n) for r in rows]
-    for i in range(len(rows)):
-        for j in range(i + 1, len(rows)):
-            if rows[i]["name"].casefold() != rows[j]["name"].casefold() and _cosine(vectors[i], vectors[j]) >= NOMINATE:
-                add(i, j)
+        by_name: dict = {}
+        for i in _representatives(items):
+            by_name.setdefault(items[i]["name"].casefold(), []).append(i)
+        for group in by_name.values():
+            for x in range(len(group)):
+                for y in range(x + 1, len(group)):
+                    if items[group[x]]["plugin"] != items[group[y]]["plugin"]:
+                        add(group[x], group[y])
+        df, n = doc_freq([r["desc"] for r in rows])
+        vectors = [_weights(r["desc"], df, n) for r in rows]
+        for i in range(len(rows)):
+            for j in range(i + 1, len(rows)):
+                if rows[i]["name"].casefold() != rows[j]["name"].casefold() and _cosine(vectors[i], vectors[j]) >= NOMINATE:
+                    add(i, j)
+    except _Full:
+        if cut is not None:
+            cut.append(True)
     return out
 
 
@@ -213,10 +225,15 @@ def classify(a: dict, b: dict, df: dict, n: int, markers: tuple = C.CLOUD_MARKER
     return _pair(a, b, "insufficient_evidence", [cosine, files, note] if sim >= SAME_FUNCTION else [cosine, note])
 
 
-def find_pairs(rows: list, installed: list, markers: tuple = C.CLOUD_MARKERS, cache=None) -> list:
-    """The labelled pairs of a library: `candidates`, each through `classify`, sorted by (a, b, label) so that two runs give the same list."""
+def find_pairs(rows: list, installed: list, markers: tuple = C.CLOUD_MARKERS, cache=None, notes: list | None = None) -> list:
+    """The labelled pairs of a library: `candidates`, each through `classify`, sorted by (a, b, label) so that two runs give the same list. When the search
+    stopped at OVERLAP_MAX_PAIRS one line saying so is appended to `notes` (a list, when given)."""
     df, n = doc_freq([r["desc"] for r in rows])
     names: dict = {}
     cache = cache if cache is not None else _cat().TreeCache(markers)
-    pairs = [classify(a, b, df, n, markers, names, cache) for a, b in candidates(rows, installed)]
+    cut: list = []
+    nominated = candidates(rows, installed, cut)
+    if cut and notes is not None:
+        notes.append("pairs: the search stopped at %d nominated pairs (limit); the list is not complete" % OVERLAP_MAX_PAIRS)
+    pairs = [classify(a, b, df, n, markers, names, cache) for a, b in nominated]
     return sorted(pairs, key=lambda p: (p["a"], p["b"], p["label"]))

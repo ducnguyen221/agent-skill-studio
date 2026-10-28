@@ -129,7 +129,7 @@ def _claude(base: Path, root: dict, markers: tuple, items: list) -> None:
         root["status"], root["reasons"] = "error", ["link"]
         return
     try:
-        data = roots_mod._read_json(index, INDEX_MAX, markers)
+        data = roots_mod._read_json(index, INDEX_MAX, markers, base)
     except roots_mod.RootError as exc:
         root["status"], root["reasons"] = "error", ["index-too-big" if exc.reason == "limit" else "index-unreadable" if exc.reason == "unreadable" else exc.reason]
         return
@@ -217,7 +217,7 @@ def _antigravity(base: Path, root: dict, markers: tuple, items: list) -> None:
     for plugin in _listing(plugins, base, root, markers):
         version = None
         try:
-            data = roots_mod._read_json(plugin / "plugin.json", C.MANIFEST_MAX, markers) if os.path.lexists(plugin / "plugin.json") else None
+            data = roots_mod._read_json(plugin / "plugin.json", C.MANIFEST_MAX, markers, base) if os.path.lexists(plugin / "plugin.json") else None
             version = _text(data.get("version")) if isinstance(data, dict) else None
         except roots_mod.RootError as exc:
             roots_mod.note_skip(root, _posix(plugin / "plugin.json"), exc.reason)

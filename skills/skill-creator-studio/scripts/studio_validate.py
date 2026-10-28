@@ -6,6 +6,7 @@ Internal module of `studio.py`; do not run it. It reaches other studio modules t
 from __future__ import annotations
 
 import bisect
+import os
 import re
 from pathlib import Path
 
@@ -237,6 +238,10 @@ def resolve_check_path(arg: str) -> tuple:
         raise ValueError("%s %s" % (path, named))
     if named:  # a folder-like name: validate_skill says INPUT for it without touching it
         return "skill", path
+    absolute, cwd = Path(os.path.abspath(path)), Path.cwd()
+    stop = cwd if cwd in absolute.parents else absolute.parent  # inside the working folder every step down is looked at; elsewhere the file and its folder
+    if fs.link_in_chain(absolute, stop) is not None:  # before is_file stats the target (RF-S3)
+        raise ValueError("%s is a symlink or junction, or lies below one; check does not read it" % path)
     if not path.is_file():
         return "skill", path
     problem = fs.input_file_problem(path)  # before anything opens the file: secret or cloud zone, secret-looking name, stream, placeholder

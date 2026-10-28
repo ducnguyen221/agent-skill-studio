@@ -261,7 +261,7 @@ def _pack_name(skill: Path, roots: list, cache: dict, markers: tuple) -> str:
         if folder not in cache:
             name = None
             try:
-                data = roots_mod._read_json(folder / ".claude-plugin" / "plugin.json", C.MANIFEST_MAX, markers) if (folder / ".claude-plugin").is_dir() else None
+                data = roots_mod._read_json(folder / ".claude-plugin" / "plugin.json", C.MANIFEST_MAX, markers, Path(root).parent) if (folder / ".claude-plugin").is_dir() else None
                 if isinstance(data, dict) and isinstance(data.get("name"), str) and data["name"].strip():
                     name = data["name"].strip()[:200]
             except roots_mod.RootError:

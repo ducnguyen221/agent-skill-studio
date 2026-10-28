@@ -103,13 +103,21 @@ def _plugin_version(plugin: Path | None, markers: tuple, cache: dict) -> str | N
     if key not in cache:
         version = None
         try:
-            data = roots_mod._read_json(plugin / ".claude-plugin" / "plugin.json", C.MANIFEST_MAX, markers)
+            data = roots_mod._read_json(plugin / ".claude-plugin" / "plugin.json", C.MANIFEST_MAX, markers, plugin)
             if isinstance(data, dict) and isinstance(data.get("version"), str):
-                version = data["version"]
+                version = data["version"][:200]
         except roots_mod.RootError:
             pass
         cache[key] = version
     return cache[key]
+
+
+def _real_zone(path: Path) -> str | None:
+    """The zone ('cloud' or 'secret-zone') of the real path of `path`, else None; a path that cannot be resolved counts as a zone, so it is not read."""
+    try:
+        return fs.zone_reason(path.resolve())
+    except (OSError, RuntimeError):
+        return "unreadable"
 
 
 def _evals_entries(plugin: Path | None, cache: dict, notes: list | None = None) -> dict:
@@ -121,7 +129,7 @@ def _evals_entries(plugin: Path | None, cache: dict, notes: list | None = None) 
     if key not in cache:
         found: dict = {}
         path = plugin / evals.CATALOG_REL
-        if not (fs.zone_reason(path) or fs.is_link(path) or fs.path_is_cloud(path)) and os.path.isfile(path):
+        if not (fs.zone_reason(path) or fs.link_in_chain(path, plugin) or fs.path_is_cloud(path) or _real_zone(path)) and os.path.isfile(path):
             try:
                 data = evals._load_json(path)
             except (ValueError, OSError):
@@ -248,6 +256,8 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
         for item in by_key.get((skill["plugin"], folder.name), []):  # one harness may hold several copies (two scopes): `match` wins over `differ`
             if item["harness"] in state and state[item["harness"]]["state"] != "match":
                 same, how = _same_trees(folder, digest, Path(item["path"]), markers, cache)
+                if not same and (digest is None or cache.sha(Path(item["path"])) is None):  # a tree that cannot be hashed whole: not a claimed difference (RF-A2)
+                    how = "unhashable"
                 state[item["harness"]] = {"state": "match" if same else "differ", "version": item.get("version"), "compare": how}
                 used.add((item["harness"], item["plugin"], item["skill"]))
         rows.append({"name": name, "description_short": short_description(desc), "repo": skill["repo"], "path": home_path(folder),
@@ -259,11 +269,15 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
     rows.sort(key=lambda r: (r["repo"].casefold(), r["name"].casefold(), r["path"]))
     only = [dict(i, path=home_path(i["path"])) for i in installed if (i["harness"], i["plugin"], i["skill"]) not in used
             and (i["plugin"], i["skill"]) not in {(s["plugin"], Path(s["path"]).name) for s in skills}]
-    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers, cache), markers, cache) if overlap else None
+    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers, cache), markers, cache, notes) if overlap else None
     return {"schema": SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "studio_version": C.VERSION,
             "roots": [_display_root(r) for r in roots], "skills": rows, "installed_only": only, "pairs": pairs,
             "totals": {"skills": len(rows), "repos": len({r["repo"] for r in rows}), "roots_not_ok": sum(r["status"] != "ok" for r in roots),
-                       "pairs": len(pairs or [])}}
+                       "pairs": len(pairs or []), "pairs_to_review": sum(p["label"] in TO_REVIEW for p in pairs or [])}}
+
+
+TO_REVIEW = ("same_name_other_role", "same_function", "version_drift")  # the labels a person has to look at: not a copy, not «too little evidence»
+NEED_ERRORS, NEED_DIFFER, NEED_PAIRS = 6, 5, 6  # lines per list of «Cần xem trước»: the section stays within 25 lines
 
 
 def _cell(text) -> str:
@@ -271,17 +285,59 @@ def _cell(text) -> str:
 
 
 def _harness_cell(item: dict) -> str:
+    if item["state"] == "differ" and item.get("compare") == "unhashable":
+        return "không so được"
     if item["state"] == "differ":
         return "khác (%s)" % item["version"] if item["version"] else "khác"
     return _STATE_CELL.get(item["state"], "—")
 
 
-def render_md(report: dict) -> str:
-    """CATALOG.md: the marker line, a one-sentence summary, a table per repo, then the roots that are not ok, the installed-only copies and the pairs."""
+def _need_to_see(report: dict) -> list:
+    """The lines of «Cần xem trước»: skills with ERROR, installed copies that differ, pairs a person has to look at; at most 25 lines with the heading."""
+    erred = sorted((r for r in report["skills"] if r["doctor"]["errors"]), key=lambda r: (-r["doctor"]["errors"], r["name"].casefold(), r["repo"].casefold()))
+    differ = [(r, h) for r in report["skills"] for h in HARNESSES if r["installed"][h]["state"] == "differ" and r["installed"][h]["compare"] != "unhashable"]
+    pairs = [p for p in report["pairs"] or [] if p["label"] in TO_REVIEW]
+    out = ["## Cần xem trước", ""]
+    if erred:
+        out.append("**Skill có ERROR** (%d):" % len(erred))
+        out += ["- %s · %s · %d ERROR" % (_cell(r["name"]), _cell(r["repo"]), r["doctor"]["errors"]) for r in erred[:NEED_ERRORS]]
+        if len(erred) > NEED_ERRORS:
+            out.append("- … và %d skill nữa: xem cột Lỗi ở mục Skill theo repo." % (len(erred) - NEED_ERRORS))
+    if differ:
+        out.append("**Bản cài lệch so với nguồn** (%d):" % len(differ))
+        out += ["- %s · %s%s" % (_cell(r["name"]), h, (" (%s)" % _cell(r["installed"][h]["version"])) if r["installed"][h]["version"] else "") for r, h in differ[:NEED_DIFFER]]
+        if len(differ) > NEED_DIFFER:
+            out.append("- … và %d bản nữa: xem cột Claude, Codex, Antigravity ở mục Skill theo repo." % (len(differ) - NEED_DIFFER))
+    if pairs and len(pairs) <= NEED_PAIRS:
+        out.append("**Cặp nghi trùng** (%d):" % len(pairs))
+        out += ["- %s ↔ %s · %s" % (_cell(p["a"]), _cell(p["b"]), p["label"]) for p in pairs]
+    elif pairs:
+        out.append("**Cặp nghi trùng**: %d cặp, xem mục Cặp trùng." % len(pairs))
+    if len(out) == 2:
+        out.append("Không có gì cần xem.")
+    return out + [""]
+
+
+def _summary(report: dict) -> str:
+    """The one sentence under the title, written as work to do: how many skills have an ERROR, how many installed copies differ, and (with --overlap) how many pairs."""
     totals = report["totals"]
-    out = ["<!-- studio catalog -->", "", "# Danh mục skill", "",
-           "%d skill nguồn ở %d repo; %d gốc không ok; %d cặp cần xem." % (totals["skills"], totals["repos"], totals["roots_not_ok"], totals["pairs"]), "",
-           "## Skill theo repo", "", "Lỗi = số ERROR / số WARN của `doctor`. Đã đo = `model_evaluated` trong `evals/catalog.json` (— khi repo không có).", ""]
+    erred = sum(bool(r["doctor"]["errors"]) for r in report["skills"])
+    differ = sum(r["installed"][h]["state"] == "differ" and r["installed"][h]["compare"] != "unhashable" for r in report["skills"] for h in HARNESSES)
+    text = "%d skill nguồn ở %d repo; %d gốc không ok. Cần xem: %d skill có ERROR, %d bản cài lệch (khác)" % (totals["skills"], totals["repos"], totals["roots_not_ok"], erred, differ)
+    if report["pairs"] is not None:
+        count = {label: sum(p["label"] == label for p in report["pairs"]) for label in TO_REVIEW}
+        text += ", %d cặp nghi trùng (cùng tên khác vai %d, trùng chức năng %d, khác phiên bản %d)" % (
+            sum(count.values()), count["same_name_other_role"], count["same_function"], count["version_drift"])
+    return text + "."
+
+
+def render_md(report: dict, command: str | None = None) -> str:
+    """CATALOG.md: the marker line, a one-sentence summary, when and how it was made, what to look at first, a table per repo, then the roots that are not ok,
+    the pairs and, last, the installed-only copies (a lookup table, not work to do)."""
+    out = ["<!-- studio catalog -->", "", "# Danh mục skill", "", _summary(report),
+           "Sinh lúc %s (UTC)%s." % (report["generated_at"], (" bằng `%s`" % command) if command else ""), "",
+           *_need_to_see(report),
+           "## Skill theo repo", "", "Lỗi = số ERROR / số WARN của `doctor`. Đã đo = `model_evaluated` trong `evals/catalog.json` (— khi repo không có). Bản cài «không so được» = một trong hai cây có file không băm được.", ""]
     repos: dict = {}
     for row in report["skills"]:
         repos.setdefault(row["repo"], []).append(row)
@@ -300,12 +356,6 @@ def render_md(report: dict) -> str:
         out += ["| %s | %s | %s |" % (_cell(r["path"] or r["area"]), r["status"], _cell(", ".join(r["reasons"]) or "—")) for r in bad]
     else:
         out.append("Không có: mọi gốc đã quét đều ok.")
-    out += ["", "## Chỉ có bản cài", ""]
-    if report["installed_only"]:
-        out += ["| Harness | Plugin | Skill | Bản | Đường |", "|---|---|---|---|---|"]
-        out += ["| %s | %s | %s | %s | %s |" % (i["harness"], _cell(i["plugin"]), _cell(i["skill"]), _cell(i["version"] or "—"), _cell(i["path"])) for i in report["installed_only"]]
-    else:
-        out.append("Không có.")
     out += ["", "## Cặp trùng", ""]
     pairs = report["pairs"]
     if pairs is None:
@@ -317,6 +367,12 @@ def render_md(report: dict) -> str:
         if shown:
             out += ["", "| Cặp | Loại | Bằng chứng | Đề xuất |", "|---|---|---|---|"]
             out += ["| %s ↔ %s | %s | %s | %s (cần người duyệt) |" % (_cell(p["a"]), _cell(p["b"]), p["label"], _cell("; ".join(p["evidence"])), p["suggestion"]) for p in shown]
+    out += ["", "## Chỉ có bản cài", ""]
+    if report["installed_only"]:
+        out += ["| Harness | Plugin | Skill | Bản | Đường |", "|---|---|---|---|---|"]
+        out += ["| %s | %s | %s | %s | %s |" % (i["harness"], _cell(i["plugin"]), _cell(i["skill"]), _cell(i["version"] or "—"), _cell(i["path"])) for i in report["installed_only"]]
+    else:
+        out.append("Không có.")
     return "\n".join(out) + "\n"
 
 
@@ -355,7 +411,7 @@ def _manifest_plugin(folder: Path, top: Path, markers: tuple, cache: dict) -> st
             key = os.path.normcase(os.fspath(parent))
             if key not in cache:
                 try:
-                    data = roots_mod._read_json(manifest, C.MANIFEST_MAX, markers)
+                    data = roots_mod._read_json(manifest, C.MANIFEST_MAX, markers, limit)
                     cache[key] = data["name"] if isinstance(data, dict) and isinstance(data.get("name"), str) and data["name"] else None
                 except roots_mod.RootError:
                     cache[key] = None
@@ -371,6 +427,7 @@ def _plain_roots(paths: list, skip_markers: tuple) -> tuple:
     them apart, and a pair or an installed copy is keyed as in an OpcOS tree), else the repo. A skipped path attaches to the root that holds it, and a root
     that is itself skipped is an `error`."""
     folders, skipped = doctor.iter_skill_dirs(paths, False, skip_markers)
+    skipped = roots_mod._rule_names(skipped, roots_mod._extra(C.CLOUD_MARKERS + tuple(skip_markers)))  # a folder named like a cloud zone is a rule here too (RF-A3)
     roots = [roots_mod._new_root(p, "plugin", "roots") for p in paths]
     for item in skipped:
         low = item["path"].lower().rstrip("/")
@@ -401,6 +458,34 @@ def _harness_problem(out: Path, flag: str) -> str | None:
         if fs.valid_resolved_under(real, home / name):
             return "%s must not be inside a harness folder (%s): %s" % (flag, name, out)
     return None
+
+
+def _command_text(args) -> str:
+    """The command as it was given, for the line under the summary of CATALOG.md: paths with the home folder written as `~`, in the same order as the flags."""
+    def path_of(value: str) -> str:
+        return ";".join(home_path(os.path.abspath(os.path.expanduser(x))) if x else x for x in value.split(";"))
+
+    def word(text: str) -> str:
+        return '"%s"' % text if re.search(r"[\s;]", text) else text
+
+    parts = ["studio.py", "catalog"]
+    if args.roots_from:
+        parts += ["--roots-from", args.roots_from]
+    if args.roots:
+        parts += ["--roots", word(path_of(args.roots))]
+    if args.roots_file:
+        parts += ["--roots-file", word(path_of(args.roots_file))]
+    if args.installed:
+        parts += ["--installed", args.installed]
+    if args.overlap:
+        parts.append("--overlap")
+    for marker in args.skip_marker or []:
+        parts += ["--skip-marker", word(marker)]
+    if args.out:
+        parts += ["--out", word(path_of(args.out))]
+    if args.md:
+        parts += ["--md", word(path_of(args.md))]
+    return " ".join(parts)
 
 
 def run(args) -> int:
@@ -470,7 +555,7 @@ def run(args) -> int:
     for line in notes:
         _say("NOTE: %s" % line, sys.stderr)
     for target, kind, flag in targets:
-        text = json.dumps(report, ensure_ascii=False, indent=2) + "\n" if kind == "catalog-json" else render_md(report)
+        text = json.dumps(report, ensure_ascii=False, indent=2) + "\n" if kind == "catalog-json" else render_md(report, _command_text(args))
         try:
             with open(target, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(text)

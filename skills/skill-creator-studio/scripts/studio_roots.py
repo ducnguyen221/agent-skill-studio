@@ -45,13 +45,22 @@ def _extra(markers: tuple) -> tuple:
     return tuple(m for m in markers if m not in C.CLOUD_MARKERS)
 
 
-def _plain_file_problem(path: Path, markers: tuple, limit: int) -> tuple:
-    """(reason, text) why `path` may not be read, else None. Decided by name, link and cloud attributes first, size last; nothing is opened."""
+def _plain_file_problem(path: Path, markers: tuple, limit: int, base: Path) -> tuple:
+    """(reason, text) why `path` may not be read, else None. Decided by name, link and cloud attributes first, size last; nothing is opened.
+    `base` is the trusted folder the file belongs to: a link or junction at the file or at any folder from `base` down to it is refused (RF-S1), and so is
+    a real path (after resolving) in a cloud or secret zone, which the spelling of the path alone would not show."""
     if fs.input_name_problem(path, markers):
         reason = fs.zone_reason(path, markers) or "unreadable"
         return reason, "its name or place is refused (%s)" % reason
-    if fs.is_link(path):
-        return "link", "is a link; not followed"
+    if fs.link_in_chain(path, base) is not None:
+        return "link", "is a link or lies below one; not followed"
+    try:
+        real = path.resolve()
+    except (OSError, RuntimeError):
+        return "unreadable", "cannot be resolved; not read"
+    reason = fs.zone_reason(real, markers)
+    if reason:
+        return reason, "its real path is in a %s place; not read" % reason
     if fs.path_is_cloud(path):
         return "cloud", "is a cloud placeholder; not read"
     try:
@@ -65,9 +74,10 @@ def _plain_file_problem(path: Path, markers: tuple, limit: int) -> tuple:
     return None
 
 
-def _read_json(path: Path, limit: int, markers: tuple):
-    """The JSON value of a small plain file; RootError (cloud, secret-zone, link, limit, unreadable) otherwise. At most `limit` bytes are read."""
-    problem = _plain_file_problem(path, markers, limit)
+def _read_json(path: Path, limit: int, markers: tuple, base: Path):
+    """The JSON value of a small plain file below the trusted folder `base`; RootError (cloud, secret-zone, link, limit, unreadable) otherwise.
+    At most `limit` bytes are read."""
+    problem = _plain_file_problem(path, markers, limit, base)
     if problem:
         raise RootError(problem[0], "%s %s (%s)" % (path.name, problem[1], problem[0]))
     try:
@@ -109,7 +119,7 @@ def find_paths_json(start: Path, env: Mapping[str, str], markers: tuple = C.CLOU
             continue
         except OSError:
             raise RootError("unreadable", "%s cannot be probed (unreadable)" % candidate)
-        problem = _plain_file_problem(candidate, markers, C.PATHS_JSON_MAX)
+        problem = _plain_file_problem(candidate, markers, C.PATHS_JSON_MAX, folder)  # folder = OPCOS_ROOT (or the folder of the walk up): a link there is refused
         if problem:
             raise RootError(problem[0], "%s %s (%s)" % (candidate, problem[1], problem[0]))
         return candidate
@@ -156,7 +166,7 @@ def opcos_roots(paths_file: Path, include_system_plugins: bool = True, markers: 
     Each root is {path, kind, area, status, reasons, skipped_by_rule}; here the status is `ok` or `error` (collect_skills adds `partial`). A paths.json
     that cannot be read raises RootError."""
     paths_file = Path(os.path.abspath(os.fspath(paths_file)))
-    data = _read_json(paths_file, C.PATHS_JSON_MAX, markers)
+    data = _read_json(paths_file, C.PATHS_JSON_MAX, markers, paths_file.parent)
     areas = data.get("areas") if isinstance(data, dict) else None
     if not isinstance(areas, list):
         raise RootError("unreadable", "paths.json has no areas list (unreadable)")
@@ -277,7 +287,7 @@ def _plugin_scan(plugin: Path, markers: tuple, budget: dict | None = None, manif
     if fs.link_in_chain(manifest, plugin) is not None:
         return plugin.name, [], [{"path": _posix(manifest), "reason": "link"}]
     try:
-        data = _read_json(manifest, C.MANIFEST_MAX, markers)
+        data = _read_json(manifest, C.MANIFEST_MAX, markers, plugin)
     except RootError as exc:
         return plugin.name, [], [{"path": _posix(manifest), "reason": exc.reason}]
     if not isinstance(data, dict):
