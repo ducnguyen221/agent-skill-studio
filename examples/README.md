@@ -15,6 +15,7 @@ Mỗi mục trích nguồn chính thức (URL) hoặc gắn `[nội bộ]` khi l
 | [eval-cases.md](eval-cases.md) | lập `evals/<skill>/cases.json`; cần ví dụ case typical, edge, near-miss và bản xuất agentskills |
 | [exemplar/writing-commit-messages/SKILL.md](exemplar/writing-commit-messages/SKILL.md) | cần khuôn skill tiếng Anh ngắn, có `## Gotchas`, tên dạng gerund |
 | [exemplar-vi/writing-release-notes/SKILL.md](exemplar-vi/writing-release-notes/SKILL.md) | cần khuôn skill thân tiếng Việt, frontmatter tiếng Anh |
+| [data-quality-audit/](data-quality-audit/) | cần ví dụ skill có script thật (kiểm CSV), kèm bộ eval ở `evals/data-quality-audit/` |
 
 Quy tắc nền: [SKILL_AUTHORING_STANDARD.md](../standards/SKILL_AUTHORING_STANDARD.md) cho mọi skill, [VIETNAMESE_SKILL_WRITING.md](../standards/VIETNAMESE_SKILL_WRITING.md) cho thân tiếng Việt.
 

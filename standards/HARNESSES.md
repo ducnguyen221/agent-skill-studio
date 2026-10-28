@@ -99,7 +99,7 @@ disable-model-invocation: true
 
 **Giới hạn danh sách skill:** docs cắt `description` cộng `when_to_use` ở 1 536 ký tự; đặt ý «dùng khi nào» lên đầu. Chuẩn Studio chặt hơn (`description` ≤1 024 ký tự, SK-00) nên bám chuẩn Studio.
 
-**Kiểm tĩnh:** `claude plugin validate <thư mục> --json` chỉ để ghi nhận, không làm cổng của Studio. Lần chạy 2026-10-23 trên `.claude/skills` vừa cài: exit 0, `success: true`, `contents: []`.
+**Kiểm tĩnh:** `claude plugin validate <thư mục> --json` chỉ để ghi nhận, không làm cổng cho skill; cổng của plugin là `tests/test_plugin_validate.py`, chạy cục bộ khi máy có `claude`. Lần chạy 2026-10-23 trên `.claude/skills` vừa cài: exit 0, `success: true`, `contents: []`.
 
 **Nguyên tắc:** không copy cấu hình Claude thành portable `SKILL.md`; giữ base Skill chung và tạo variant khi tính năng riêng là cần thiết.
 
