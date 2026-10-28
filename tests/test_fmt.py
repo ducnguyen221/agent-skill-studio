@@ -327,6 +327,22 @@ class FmtMoreTests(unittest.TestCase):
                                                      "evals/fixtures/e.md", "evals/s/x/fixtures/f.md", "docs/tests/fixtures/g.md"]),
                          "'fixtures' elsewhere (skills/, examples/, a deeper tests/ or evals/ path) is documentation like any other")
 
+    def test_fmt_explicit_folder_still_reads_fixtures(self):
+        base = self.tmp / "repo"
+        for rel in ("tests/fixtures/x.md", "tests/notes.md", "evals/s/fixtures/y.md", "docs/ok.md"):
+            write(base / rel, "# T  \n")
+        got = lambda *a: sorted(str(Path(f["path"]).relative_to(base).as_posix()) for f in __import__("json").loads(run("--check", "--json", *a, root=base)[1])["files"])
+        self.assertEqual(got(str(base / "tests")), ["tests/fixtures/x.md", "tests/notes.md"], "no --all: a named folder is read whole")
+        self.assertEqual(got(str(base / "tests" / "fixtures")), ["tests/fixtures/x.md"])
+        self.assertEqual(got(str(base / "evals")), ["evals/s/fixtures/y.md"])
+        self.assertEqual(self._listed(base), ["docs/ok.md", "tests/notes.md"], "--all still skips them")
+        self.assertEqual(sorted(p.relative_to(base).as_posix() for p in studio_fmt.iter_md([base / "tests"], False, None)),
+                         ["tests/fixtures/x.md", "tests/notes.md"], "no repo root: nothing is skipped")
+        self.assertEqual(sorted(p.relative_to(base).as_posix() for p in studio_fmt.iter_md([base / "tests"], False, base)),
+                         ["tests/fixtures/x.md", "tests/notes.md"], "a root without all_repo does not skip")
+        self.assertEqual(sorted(p.relative_to(base).as_posix() for p in studio_fmt.iter_md([base / "tests"], True, base)),
+                         ["docs/ok.md", "tests/notes.md"], "all_repo skips fixtures")
+
     def test_fmt_all_scans_examples(self):
         base = self.tmp / "repo"
         for rel in ("examples/csv/SKILL.md", "examples/csv/references/r.md", "examples/README.md"):

@@ -254,8 +254,8 @@ def _is_fixture_dir(path: Path, root: Path | None) -> bool:
 
 def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None = None) -> list[Path]:
     """The Markdown files to format: each given file, plus every *.md under each given folder (and under `root` with all_repo). Never
-    entered or opened: links, cloud placeholders, cloud/secret zones, .git, .tmp, .worktrees, dist, node_modules, evals/**/runs, tests/fixtures, evals/*/fixtures. A file or
-    folder left out is appended to `skipped` as {path, reason}."""
+    entered or opened: links, cloud placeholders, cloud/secret zones, .git, .tmp, .worktrees, dist, node_modules, evals/**/runs. With all_repo also not tests/fixtures and
+    evals/*/fixtures (a folder named on the command line is read whole). A file or folder left out is appended to `skipped` as {path, reason}."""
     skipped = skipped if skipped is not None else []
     files: list[Path] = []
     seen: set = set()
@@ -331,7 +331,7 @@ def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None
                             continue
                         if entry.name in C.FMT_PRUNE_DIRS or (entry.name == "runs" and "evals" in (x.casefold() for x in child.parts)):
                             continue
-                        if _is_fixture_dir(child, root):
+                        if all_repo and _is_fixture_dir(child, root):
                             continue
                         if fs.zone_named(entry.name):
                             skip(child, "cloud-or-secret-zone")
