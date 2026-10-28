@@ -448,6 +448,11 @@ def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
     skill = Path(os.path.abspath(os.fspath(skill)))
     if fs.zone_reason(skill, markers) or fs.is_link(skill) or fs.path_is_cloud(skill) or not fs._is_dir_quiet(skill):
         return None
+    try:  # walk_files skips a folder it cannot list: for the skill folder itself that would hash the empty tree
+        with os.scandir(skill):
+            pass
+    except OSError:
+        return None
     found, links, dirs, cloud, cut = fs.walk_files(skill, markers, skip_names=("__pycache__",))
     if links or cloud or cut:
         return None

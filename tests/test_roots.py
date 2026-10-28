@@ -613,6 +613,18 @@ class TreeShaTests(TmpCase):
         with mock.patch("os.scandir", side_effect=scan):
             self.assertIsNone(R.tree_sha256(skill, C.CLOUD_MARKERS))
 
+    def test_tree_sha_is_none_when_the_skill_folder_itself_cannot_be_listed(self):
+        """bắt-lỗi: RF-5.9 the skill folder that cannot be listed gives None, not the hash of the empty string."""
+        skill = self.skill()
+        real = os.scandir
+
+        def scan(path, *a, **k):
+            if Path(os.fspath(path)) == skill:
+                raise PermissionError(13, "denied")
+            return real(path, *a, **k)
+        with mock.patch("os.scandir", side_effect=scan):
+            self.assertIsNone(R.tree_sha256(skill, C.CLOUD_MARKERS))
+
     def test_tree_sha_keeps_crlf_and_ignores_pycache(self):
         """bắt-lỗi: bytes are hashed as they are (CRLF counts), __pycache__ and .pyc do not, and the result does not depend on the order files were made."""
         one, two = self.skill("one"), self.skill("two")
