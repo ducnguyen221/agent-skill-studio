@@ -25,5 +25,5 @@ updated: 2026-10-28
 
 - **Nhận loại:** tên file `AGENTS.md`, `CLAUDE.md` hay `GEMINI.md`; hoặc `type: rules` ở frontmatter cho file luật tên khác (ví dụ trong `.agents/rules/`, `.claude/rules/`).
 - **Bắt buộc:** chỉ luật đang hiệu lực, mỗi luật nêu được lý do hoặc phạm vi; `AGENTS.md` là bản nguồn, `CLAUDE.md` nạp nó bằng `@AGENTS.md` và `GEMINI.md` trỏ về `AGENTS.md` ([HARNESSES.md](HARNESSES.md)); mục kiểm trước khi báo xong nếu repo có lệnh kiểm.
-- **Cấm:** lịch sử đổi luật, ngày «đổi từ bản X», mã commit; khối lệnh dùng để chạy ngay (lệnh thuộc README của thành phần); ngoại lệ duy nhất là một mục lệnh kiểm chạy trước khi báo xong, không kèm lệnh cài, chạy hay triển khai; secret; luật tắt sandbox hay xác nhận của host.
+- **Cấm:** lịch sử đổi luật, ngày «đổi từ bản X», mã commit; khối lệnh dùng để chạy ngay (lệnh thuộc README của thành phần; một dòng lệnh cài nêu trong câu chỉ dẫn harness, như ở `CLAUDE.md`, `GEMINI.md` và `templates/starter-project/`, được phép, còn khối lệnh cài, chạy hay triển khai thì vẫn cấm); ngoại lệ duy nhất là một mục lệnh kiểm chạy trước khi báo xong, không kèm lệnh cài, chạy hay triển khai; secret; luật tắt sandbox hay xác nhận của host.
 - **Giới hạn:** ≤ 200 dòng; file luật dùng chung cho nhiều agent thì giữ một bản và để các file còn lại trỏ về.
