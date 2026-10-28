@@ -512,6 +512,26 @@ class VietnameseLintTest(StudioCase):
         vietnamese = vi_body("", "## Quy trình", "Việc này mô tả cách ráp báo cáo từ dữ liệu thô và những bước kiểm trước khi công bố số liệu cuối cùng cho cả nhóm.")
         self.assertEqual(of(self.vi(vietnamese, "vi-whole"), "VI5"), [])
 
+    ENGLISH_SECTION = ("This section explains in plain English how the report is assembled from the raw data "
+                       "and which checks run before the final numbers are published to the team.")
+
+    def test_vi5_skips_english_body(self):
+        """SPR-03 TK11 / FR14.1 (RQ-012): a body that is mostly English (diacritics under VI5_ACCENT_MIN of ALL its letters,
+        code included) gets no VI5 per section, even when its prose alone passes the 3 % Vietnamese gate."""
+        code = "\n".join(["```text"] + ["print the whole report and check every single column of the table"] * 60 + ["```"])
+        body = vi_body("", "## Steps", self.ENGLISH_SECTION, "", code)
+        self.assertEqual(studio_lint.detect_lang(body), "vi", "precondition: the prose still counts as Vietnamese")
+        letters, accents = studio_lint._vi_counts(body)
+        self.assertLess(accents / letters, studio_const.VI5_ACCENT_MIN, "precondition: the whole body is under the VI5 share")
+        self.assertEqual(of(self.vi(body, "en-label"), "VI5"), [])
+
+    def test_vi5_still_flags_english_section_in_vietnamese_body(self):
+        """FR14.1 second half: a Vietnamese body keeps VI5 for a long English section (control for the test above)."""
+        body = vi_body("", "## Mục tiêu", "Việc kiểm dữ liệu giúp báo cáo đúng hơn.", "", "## Quy trình", self.ENGLISH_SECTION)
+        letters, accents = studio_lint._vi_counts(body)
+        self.assertGreaterEqual(accents / letters, studio_const.VI5_ACCENT_MIN)
+        self.assertEqual([f["code"] for f in of(self.vi(body, "vi-mixed"), "VI5")], ["VI5"])
+
     def test_vi_lint_english_body_no_vi_codes(self):
         body = ("# Audit\n\nThe date 22/10/2026 is in the body. " + " ".join(["word"] * 60) + ".\n\n## Steps\n"
                 + "Run the check and read the result carefully before you report anything to the team lead.")

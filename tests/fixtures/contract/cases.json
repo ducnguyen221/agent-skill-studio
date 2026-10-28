@@ -12,7 +12,8 @@
     "exit",
     "stdout_text",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "R-validate-all-require-evals-json",
@@ -177,7 +178,8 @@
     "exit",
     "stdout_json",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "R-fmt-check-live-json",
@@ -368,7 +370,8 @@
     "exit",
     "stdout_text",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "C-validate-all-require-evals-json",
@@ -533,7 +536,8 @@
     "exit",
     "stdout_json",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "C-fmt-check-live-json",
@@ -724,7 +728,8 @@
     "exit",
     "stdout_text",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "E-validate-all-require-evals-json",
@@ -889,7 +894,8 @@
     "exit",
     "stdout_json",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "E-fmt-check-live-json",
@@ -1101,7 +1107,8 @@
     "exit",
     "stdout_text",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "S-validate-self-json",
@@ -1267,7 +1274,8 @@
     "exit",
     "stdout_json",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "S-fmt-check-self-json",
@@ -1307,7 +1315,8 @@
     "exit",
     "stdout_text",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "Z-validate-self-json",
@@ -1473,7 +1482,8 @@
     "exit",
     "stdout_json",
     "stderr"
-   ]
+   ],
+   "changed_by": "SPR-03/TK11"
   },
   {
    "id": "Z-fmt-check-self-json",

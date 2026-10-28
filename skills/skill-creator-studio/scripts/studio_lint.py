@@ -226,7 +226,8 @@ def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path, fron
     """FR16 / SPEC 9.10: VI1-VI5, all WARN, only when the body is Vietnamese (detect_lang). Line numbers are file lines.
     VI1 body not NFC (first deviating line) · VI2 d/m/yyyy date · VI3 sentence over VI_SENTENCE_MAX words ·
     VI4 frontmatter outside `description` holds Vietnamese letters, or `description` does but has no 'Use when' ·
-    VI5 a '## ' section of at least VI5_SECTION_MIN_LETTERS letters with under VI5_ACCENT_MIN diacritics."""
+    VI5 a '## ' section of at least VI5_SECTION_MIN_LETTERS letters with under VI5_ACCENT_MIN diacritics, unless the whole body
+    (every letter, code and tables included) is itself under VI5_ACCENT_MIN: a mostly English body is not reported section by section (FR14.1)."""
     lines = prose_lines(body)
     if _vi_lang(lines) != "vi":
         return []
@@ -293,10 +294,12 @@ def lint_vietnamese(meta: dict, body: str, body_start: int, manifest: Path, fron
     if accented(desc) and not C.VI_TRIGGER_RE.search(desc) and not (at <= len(front) and C.VI_OK_MARK in front[at - 1]):
         findings.append(fs.emit("WARN", "VI4", manifest, at,
                              "description has Vietnamese letters but no 'Use when' trigger phrase; write it in English and add Vietnamese only as extra trigger words (V13)"))
+    whole_letters, whole_accents = _vi_counts(body)
+    english_body = whole_letters > 0 and whole_accents / whole_letters < C.VI5_ACCENT_MIN
     section = None
     for rel, text in lines + [(0, "# end")]:
         if re.match(r"^#{1,2}\s+\S", text):
-            if section and section[1] >= C.VI5_SECTION_MIN_LETTERS and section[2] / section[1] < C.VI5_ACCENT_MIN:
+            if section and not english_body and section[1] >= C.VI5_SECTION_MIN_LETTERS and section[2] / section[1] < C.VI5_ACCENT_MIN:
                 findings.append(fs.emit("WARN", "VI5", manifest, body_start + section[0],
                                      "section '%s' has %d letters and almost no Vietnamese diacritics; one language per skill, write it in Vietnamese (V14)"
                                      % (section[3], section[1])))

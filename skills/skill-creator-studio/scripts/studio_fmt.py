@@ -255,7 +255,7 @@ def _is_fixture_dir(path: Path, root: Path | None) -> bool:
 def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None = None) -> list[Path]:
     """The Markdown files to format: each given file, plus every *.md under each given folder (and under `root` with all_repo). Never
     entered or opened: links, cloud placeholders, cloud/secret zones, .git, .tmp, .worktrees, dist, node_modules, evals/**/runs. With all_repo also not tests/fixtures and
-    evals/*/fixtures (a folder named on the command line is read whole). A file or folder left out is appended to `skipped` as {path, reason}."""
+    evals/*/fixtures wherever a walk meets them (a fixture folder itself named on the command line is still read whole). A file or folder left out is appended to `skipped` as {path, reason}."""
     skipped = skipped if skipped is not None else []
     files: list[Path] = []
     seen: set = set()

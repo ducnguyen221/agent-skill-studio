@@ -1,6 +1,32 @@
 # Changelog
 
-## Chưa phát hành
+## 0.2.0 — 2026-10-28
+
+Chặng 2 (agent-skill-studio:SPR-03): repo gọn sáu thư mục, luật nạp được cho ba agent, bằng chứng gọn mà cổng vẫn đếm lại được. Cộng cả mọi mục SPR-01, SPR-02 chưa phát hành bên dưới (ba chuẩn gộp vào `SKILL_AUTHORING_STANDARD.md` ở TK5 có lịch sử ngay trong mục TK5). **Đổi hợp đồng của bản này** (ai dùng bản `0.1.0` đọc kỹ):
+
+| Thay đổi | Trước → sau | Ai bị ảnh hưởng | Tương thích ngược |
+|---|---|---|---|
+| Đường catalog đánh giá | `registry/catalog.json` → `evals/catalog.json`; đường cũ không đọc nữa | `studio_evals`, `studio.py`, test, fixture hợp đồng | Không |
+| Bằng chứng đánh giá | `evals/<skill>/runs/<lô>/*.json` + `ab-<ngày>.json` → một file gọn `evals/<skill>/evidence/<lô>.json`; khối `evaluated` thêm khoá `evidence`, `ab_report` trỏ file gọn | cổng `model_evaluated`, `RUNBOOK.md`, `activation.py` | Không |
+| Skill phát hành | plugin ship 2 skill → 1: `data-quality-audit` sang `examples/`, `content/` sang `examples/` | người cài plugin, CI, junction Antigravity | Không |
+| `new --output` không `--eval-root` | eval ghi vào `<repo engine>/evals` → theo `--output` (`<cha>/evals` khi tên là `skills`, ngược lại `<output>/evals`); gốc ổ đĩa hoặc đường có link bị từ chối (thoát 2) | ca `new` dùng `--output` | Không |
+| `new` khi file eval đã có | ghi đè → giữ, in `kept existing <đường>` | người chạy `new` lại | Có (chỉ bớt ghi) |
+| `is_link` gặp `OSError` | `False` → `True` (từ chối, có báo) với mọi lỗi trừ không tồn tại / không phải thư mục | 23 nơi gọi | Không với đường không dò được |
+| `fmt --all` | quét `tests/fixtures/`, `evals/*/fixtures/` → bỏ qua | CI, người chạy `fmt --all` | Có |
+| File luật gốc | `CLAUDE.md` gốc giữ chỗ, trỏ `AGENTS.md`; `AGENTS.md`/`GEMINI.md` trỏ đường sống; `templates/project/` → `templates/starter-project/` nạp luật ba agent | người dùng Claude Code trong repo | Có |
+| `VI5` | một mục tiếng Anh dài bị báo trong mọi thân → không báo khi tỉ lệ chữ có dấu của cả thân (kể cả code, bảng) dưới 1 % | skill thân tiếng Anh có nhãn Việt | Có (chỉ bớt báo) |
+| README | 297 dòng hai ngôn ngữ → dưới 150 dòng, một `README.md` tiếng Việt | người đọc repo | Có |
+| Phiên bản | `0.1.0` → `0.2.0` (`VERSION` của engine và ba manifest) + tag | marketplace, cache cài | Có |
+
+- **agent-skill-studio:SPR-03 TK11 (chặng 2, `0.2.0`).** `VI5` bỏ báo theo mục khi cả thân dưới `VI5_ACCENT_MIN` (1 %) chữ có dấu; thân Việt có một mục tiếng Anh dài vẫn bị báo. README viết lại gọn (bỏ ghi chú dời cây cũ; giữ mục mã `INPUT`, `EV20` và bảng mã của engine; chi tiết `doctor`, `EX1`–`EX13`, `PACK` còn ở các mục SPR-01/SPR-02 dưới đây). Docstring `iter_md` nói đúng: với `--all` vẫn bỏ fixture, chỉ thư mục fixture được gọi đích danh mới đọc trọn. Test mới `tests/test_layout.py` (`test_six_top_dirs`, `test_no_file_deeper_than_three`, `test_no_runs_in_git`, `test_readme_short_one_language`) và hai test `VI5`. Bộ ca hợp đồng: các ca `*-version` đổi `after` sang `0.2.0`.
+- **agent-skill-studio:SPR-03 TK10 (`new` không ghi đè, eval theo `--output`).** `new` ghi `cases.json`, `rubric.md`, `baselines/BASELINE.md` bằng ghi độc quyền, đã có thì giữ; thư mục eval theo `--output`; từ chối gốc ổ đĩa và đường đi qua link; lỗi ghi được báo có mã.
+- **agent-skill-studio:SPR-03 TK9 (`is_link` hỏng-đóng).** `ENAMETOOLONG`, `winerror 123`, `PermissionError` coi là link và mỗi nơi gọi báo có lý do; `doctor` không còn `realpath` trên đường không dò được. Engine cài trong `.claude`, `.agents`, `.codex`, `.gemini` bỏ qua cổng `model_evaluated` và in một dòng ra stderr (thoát không đổi); `validate --all` / `audit --all` nói skill nào bị bỏ qua; CI thất bại nếu cổng bị bỏ qua trên chính repo Studio.
+- **agent-skill-studio:SPR-03 TK8 (đọc `SKILL.md` vùng cấm).** `check`/`validate`/`audit` trên thư mục chặn `SKILL.md` ở vùng cloud, secret, placeholder hoặc symlink bằng ERROR `INPUT` trước khi mở; `skill_dirs` không stat xuyên `SKILL.md` là symlink.
+- **agent-skill-studio:SPR-03 TK7 (file luật gốc).** `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` trỏ đường tồn tại (test), thêm `doctor` và `fmt --check` trước khi báo xong; `tests/test_plugin_validate.py` chạy `claude plugin validate` và chấp nhận đúng một cảnh báo (`CLAUDE.md` ở gốc plugin) cùng `ICON_MISSING`.
+- **agent-skill-studio:SPR-03 TK6 (`CORE_RULES.md` sinh từ chuẩn).** `skills/skill-creator-studio/references/CORE_RULES.md` sinh bởi `tests/gen_core_rules.py` từ `SKILL_AUTHORING_STANDARD.md` (đủ `SK-00`…`SK-15`, nguyên thân mỗi khối, kèm ưu tiên, vòng đời, Definition of Done); `SKILL.md` của skill trỏ về nó; test canh khớp.
+- **agent-skill-studio:SPR-03 TK4 (`templates/starter-project/`).** `templates/project/` đổi tên `templates/starter-project/`; `AGENTS.md` là bộ luật chung duy nhất, `CLAUDE.md` nạp bằng `@AGENTS.md`, Codex đọc thẳng, `GEMINI.md` trỏ về; mỗi file có dòng `install` đúng cờ của engine.
+- **agent-skill-studio:SPR-03 TK3 (`fmt --all` bỏ fixture).** `fmt --all` bỏ qua `tests/fixtures/` và `evals/*/fixtures/`, vẫn quét `examples/`; thư mục fixture gọi đích danh vẫn đọc trọn.
+
 
 - **agent-skill-studio:SPR-03 TK5 (chặng 2, `standards/` 11 → 8 file; chưa phát hành).** **Đổi hợp đồng:** các đường `standards/CORE_STANDARD.md`, `RULES_AND_PRECEDENCE.md`, `SKILL_LIFECYCLE.md`, `ROBONUGGETS_46_RULE_MAP.md`, `MEMO-SKILL-V0.md`, `adapters/*`, `ECOSYSTEM.md`, `registry/*`, `QA_REPORT.md` không còn
   - **Gộp ba chuẩn vào `SKILL_AUTHORING_STANDARD.md`** (7 273 ký tự, trần +30 % so với 5 599): đoạn «Mức» (MUST / SHOULD / «MUST nếu …» của `CORE_STANDARD`, phiên bản 0.1.0 ngày 12/10/2026); mục «Ưu tiên khi luật mâu thuẫn» (từ `RULES_AND_PRECEDENCE`: policy host thắng Markdown, một luật một chỗ, `references/` chỉ chứa sự kiện); mục «Vòng đời» (từ `SKILL_LIFECYCLE`: bốn trạng thái Draft / Candidate / Production / Deprecated, luồng NEW → AUDIT → REFINE → RELEASE, PATCH / MINOR / MAJOR, AUDIT chỉ đọc). Các câu trùng với `SK-*` hoặc không còn đúng bỏ, mỗi câu có dòng trong bảng đối chiếu ở sổ OpcOS (`plans/2026-10-28-structure-rules-2/evidence/rule-map.md`). Số «13 rules» không còn: bộ luật là `SK-00`…`SK-15`.
