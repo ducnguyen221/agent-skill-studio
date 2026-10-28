@@ -27,7 +27,7 @@ NOT_NAMES = ("readme.md", "__init__.py")
 STOPWORDS = frozenset("""
 about above after also another because been before being between both can could does doing each either else even every from have having here
 into just like make many more most much must need only other over same should some such than that their them then there these they this those through
-thus under until upon used uses using very want were what when where whether which while will with within without would your when
+thus under until upon used uses using very want were what when where whether which while will with within without would your
 
 những được trong không cùng khi để của các cho với này đó khác nhiều mỗi tất cả hoặc nhưng nếu rồi sau trước thì là
 """.split())
@@ -100,9 +100,24 @@ def _excludes(item: dict, other: dict) -> str | None:
     return None
 
 
+HARNESS_ORDER = {"claude": 0, "codex": 1, "antigravity": 2}
+
+
+def _representatives(items: list) -> list:
+    """Indexes into `items`, one per (plugin, skill): the source copy when there is one, else the first installed copy in a fixed order (harness, key, path)."""
+    best: dict = {}
+    for i, it in enumerate(items):
+        rank = (0, 0, "", "") if it["harness"] is None else (1, HARNESS_ORDER.get(it["harness"], len(HARNESS_ORDER)), it["key"], it["path"])
+        slot = (it["plugin"], it["skill"])
+        if slot not in best or rank < best[slot][0]:
+            best[slot] = (rank, i)
+    return sorted(i for _, i in best.values())
+
+
 def candidates(rows: list, installed: list) -> list:
     """Every pair worth a label, as (a, b) items, each once: the same (plugin, skill) between a source and its installed copies or between two copies; the same
-    `name:` in two plugins; and two source skills of different names whose descriptions are alike (cosine >= NOMINATE). `rows` are the source items."""
+    `name:` in two plugins (one representative per (plugin, skill), so a skill that is only installed is compared too and the copies of one skill are not
+    paired with the copies of the other); and two source skills of different names whose descriptions are alike (cosine >= NOMINATE). `rows` are the source items."""
     items = list(rows) + list(installed)
     seen: set = set()
     out: list = []
@@ -120,18 +135,17 @@ def candidates(rows: list, installed: list) -> list:
         for x in range(len(group)):
             for y in range(x + 1, len(group)):
                 add(group[x], group[y])
-    sources = range(len(rows))
     by_name: dict = {}
-    for i in sources:
-        by_name.setdefault(rows[i]["name"].casefold(), []).append(i)
+    for i in _representatives(items):
+        by_name.setdefault(items[i]["name"].casefold(), []).append(i)
     for group in by_name.values():
         for x in range(len(group)):
             for y in range(x + 1, len(group)):
-                if rows[group[x]]["plugin"] != rows[group[y]]["plugin"]:
+                if items[group[x]]["plugin"] != items[group[y]]["plugin"]:
                     add(group[x], group[y])
     df, n = doc_freq([r["desc"] for r in rows])
     vectors = [_weights(r["desc"], df, n) for r in rows]
-    for i in sources:
+    for i in range(len(rows)):
         for j in range(i + 1, len(rows)):
             if rows[i]["name"].casefold() != rows[j]["name"].casefold() and _cosine(vectors[i], vectors[j]) >= NOMINATE:
                 add(i, j)
@@ -143,8 +157,10 @@ def _cat():
     return curator_catalog
 
 
-def _sha(item: dict, markers: tuple):
-    return item["sha"] if "sha" in item else _cat().roots_mod.tree_sha256(Path(item["path"]), markers)
+def _sha(item: dict, markers: tuple, cache=None):
+    if "sha" in item:
+        return item["sha"]
+    return cache.sha(Path(item["path"])) if cache is not None else _cat().roots_mod.tree_sha256(Path(item["path"]), markers)
 
 
 def _short(sha) -> str:
@@ -158,15 +174,15 @@ def _pair(a: dict, b: dict, label: str, evidence: list) -> dict:
     return {"a": a["key"], "b": b["key"], "label": label, "evidence": evidence, "suggestion": SUGGESTION[label], "needs_review": True}
 
 
-def classify(a: dict, b: dict, df: dict, n: int, markers: tuple = C.CLOUD_MARKERS, names: dict | None = None) -> dict:
+def classify(a: dict, b: dict, df: dict, n: int, markers: tuple = C.CLOUD_MARKERS, names: dict | None = None, cache=None) -> dict:
     """The Pair for two items: the first row of the decision table that fits (SPEC FR4.1), always `needs_review`. `df`, `n` come from `doc_freq` over the
-    source descriptions; `names` is an optional cache {path: file_names}."""
+    source descriptions; `names` is an optional cache {path: file_names}, `cache` an optional curator_catalog.TreeCache."""
     if (a["plugin"], a["skill"]) == (b["plugin"], b["skill"]):
         head = "cùng (plugin, skill): %s:%s" % (a["plugin"], a["skill"])
-        sha_a, sha_b = _sha(a, markers), _sha(b, markers)
+        sha_a, sha_b = _sha(a, markers, cache), _sha(b, markers, cache)
         if sha_a is None or sha_b is None:  # a tree that cannot be hashed whole is neither equal nor different
             return _pair(a, b, "insufficient_evidence", [head, "không băm được cả cây: chưa biết hai bản có cùng nội dung không"])
-        same, how = _cat().same_content(a, b, markers)
+        same, how = _cat().same_content(a, b, markers, cache)
         hashes = "tree_sha256 a=%s b=%s" % (_short(sha_a), _short(sha_b))
         if same:
             return _pair(a, b, "distribution_copy", [head, "compare: %s" % how, hashes])
@@ -197,9 +213,10 @@ def classify(a: dict, b: dict, df: dict, n: int, markers: tuple = C.CLOUD_MARKER
     return _pair(a, b, "insufficient_evidence", [cosine, files, note] if sim >= SAME_FUNCTION else [cosine, note])
 
 
-def find_pairs(rows: list, installed: list, markers: tuple = C.CLOUD_MARKERS) -> list:
+def find_pairs(rows: list, installed: list, markers: tuple = C.CLOUD_MARKERS, cache=None) -> list:
     """The labelled pairs of a library: `candidates`, each through `classify`, sorted by (a, b, label) so that two runs give the same list."""
     df, n = doc_freq([r["desc"] for r in rows])
     names: dict = {}
-    pairs = [classify(a, b, df, n, markers, names) for a, b in candidates(rows, installed)]
+    cache = cache if cache is not None else _cat().TreeCache(markers)
+    pairs = [classify(a, b, df, n, markers, names, cache) for a, b in candidates(rows, installed)]
     return sorted(pairs, key=lambda p: (p["a"], p["b"], p["label"]))

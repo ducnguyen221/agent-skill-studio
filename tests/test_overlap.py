@@ -142,6 +142,90 @@ class CandidateTests(TmpCase):
         self.assertEqual(O.SAME_FUNCTION, 0.30)
 
 
+class RepresentativeCandidateTests(TmpCase):
+    """RF-11.1: `same name: in two plugins` covers every (plugin, skill), also a skill that is only installed, one representative each."""
+
+    def pairs(self, rows, installed):
+        return sorted(tuple(i["key"] for i in p) for p in O.candidates(rows, installed))
+
+    def test_source_and_installed_only_plugin_with_same_name(self):
+        src = self.tmp / "src"
+        notes = write_skill(src, "pa", "notes", desc="Keeps meeting notes tidy and filed.")
+        other = write_skill(self.tmp / "other", "pz", "notes", desc="Draws sketches of ocean currents.")
+        inst_other = installed_copy(self.tmp, other)  # pz has no source here, only its installed copy
+        own = installed_copy(self.tmp, notes)         # the installed copy of pa itself
+        got = self.pairs([notes], [inst_other, own])
+        self.assertIn(("pa:notes", "claude/pz:notes"), got)
+        self.assertEqual(len([p for p in got if "claude/pz:notes" in p]), 1, "one pair for the relation, not one per copy")
+        self.assertNotIn(("claude/pa:notes", "claude/pz:notes"), got)
+        pair = O.classify(notes, inst_other, *corpus(notes, inst_other))
+        self.assertEqual(pair["label"], "same_name_other_role")
+
+    def test_two_installed_only_plugins_with_same_name(self):
+        px = write_skill(self.tmp / "x", "px", "pdf", desc="Reads portable documents and extracts the text.")
+        py = write_skill(self.tmp / "y", "py", "pdf", desc="Fills forms in scanned paperwork for clerks.")
+        got = self.pairs([], [installed_copy(self.tmp, px, "codex"), installed_copy(self.tmp, py, "codex"), installed_copy(self.tmp, px, "claude"),
+                              installed_copy(self.tmp, py, "claude")])
+        self.assertEqual([p for p in got if p[0].split("/")[1] != p[1].split("/")[1]], [("claude/px:pdf", "claude/py:pdf")])
+
+    def test_representative_is_stable_and_prefers_the_source(self):
+        px = write_skill(self.tmp / "x", "px", "pdf", desc="Reads portable documents and extracts the text.")
+        py = write_skill(self.tmp / "y", "py", "pdf", desc="Fills forms in scanned paperwork for clerks.")
+        a, b = installed_copy(self.tmp, px, "codex"), installed_copy(self.tmp, px, "antigravity")
+        c = installed_copy(self.tmp, py, "antigravity")
+        self.assertEqual(self.pairs([], [b, a, c]), self.pairs([], [a, c, b]))
+        self.assertIn(("antigravity/py:pdf", "codex/px:pdf"), self.pairs([], [b, a, c]))  # codex comes before antigravity: it represents px
+        self.assertIn(("px:pdf", "antigravity/py:pdf"), self.pairs([px], [b, a, c]))     # a source copy beats every installed one
+
+
+class TreeCacheTests(TmpCase):
+    """RF-11.2: one run hashes a tree once (bytes) and folds it once (semantic); equal bytes never reach the semantic digest."""
+
+    def test_find_pairs_hashes_each_tree_once(self):
+        src = write_skill(self.tmp / "s", "pa", "audit")
+        one = installed_copy(self.tmp, src, "claude", edit=lambda f: (f / "x.md").write_text("x"))
+        two = installed_copy(self.tmp, src, "codex", edit=lambda f: (f / "x.md").write_text("x"))
+        three = installed_copy(self.tmp, src, "antigravity")
+        rows = [dict(src, sha=CAT.roots_mod.tree_sha256(Path(src["path"])))]
+        calls = {"sha": [], "sem": []}
+        real_sha, real_sem = CAT.roots_mod.tree_sha256, CAT.roots_mod.tree_digest_semantic
+
+        def count(kind, real):
+            def inner(path, *rest):
+                calls[kind].append(os.path.normcase(os.fspath(path)))
+                return real(path, *rest)
+            return inner
+
+        with mock.patch.object(CAT.roots_mod, "tree_sha256", side_effect=count("sha", real_sha)), mock.patch.object(CAT.roots_mod, "tree_digest_semantic", side_effect=count("sem", real_sem)):
+            cache = CAT.TreeCache(C_MARKERS)
+            items = CAT._installed_items([{"harness": i["harness"], "plugin": i["plugin"], "skill": i["skill"], "path": i["path"]} for i in (one, two, three)],
+                                         C_MARKERS, cache)
+            O.find_pairs(rows, items, C_MARKERS, cache)
+        for kind in ("sha", "sem"):
+            counts = {x: calls[kind].count(x) for x in calls[kind]}
+            self.assertLessEqual(max(counts.values()), 1, (kind, counts))
+
+    def test_same_content_byte_equal_skips_semantic(self):
+        src = write_skill(self.tmp / "s", "pa", "audit")
+        inst = installed_copy(self.tmp, src)
+        with mock.patch.object(CAT.roots_mod, "tree_digest_semantic", side_effect=AssertionError("semantic digest asked")):
+            self.assertEqual(CAT.same_content(src, inst), (True, "byte"))
+            same = CAT.same_content(dict(src, sha="s"), dict(inst, sha="s"))
+        self.assertEqual(same, (True, "byte"))
+
+    def test_cache_key_ignores_case_of_the_path(self):
+        src = write_skill(self.tmp / "s", "pa", "audit")
+        cache = CAT.TreeCache()
+        with mock.patch.object(CAT.roots_mod, "tree_sha256", wraps=CAT.roots_mod.tree_sha256) as probe:
+            first = cache.sha(Path(src["path"]))
+            second = cache.sha(Path(src["path"].swapcase() if os.name == "nt" else src["path"]))
+        self.assertEqual(first, second)
+        self.assertEqual(probe.call_count, 1)
+
+
+C_MARKERS = CAT.C.CLOUD_MARKERS
+
+
 class DecisionTableTests(TmpCase):
     """One test per row of the decision table, in the order the table is applied."""
 

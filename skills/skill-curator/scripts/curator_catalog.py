@@ -145,31 +145,72 @@ def _display_root(root: dict) -> dict:
     return out
 
 
-def same_content(a_item: dict, b_item: dict, markers: tuple = C.CLOUD_MARKERS) -> tuple:
+class TreeCache:
+    """Digests of skill folders for one run: a folder is walked once for `tree_sha256` and once for `tree_digest_semantic`, however many pairs or columns
+    ask. Keyed by the folder's path as the OS compares it, with its own mtime and size so that a folder changed during the run is read again."""
+
+    def __init__(self, markers: tuple = C.CLOUD_MARKERS):
+        self.markers = markers
+        self._byte: dict = {}
+        self._semantic: dict = {}
+
+    @staticmethod
+    def _key(path) -> tuple:
+        folder = os.path.abspath(os.fspath(path))
+        try:
+            st = os.lstat(folder)
+            stamp = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            stamp = None
+        return os.path.normcase(folder), stamp
+
+    def sha(self, path):
+        key = self._key(path)
+        if key not in self._byte:
+            self._byte[key] = roots_mod.tree_sha256(Path(path), self.markers)
+        return self._byte[key]
+
+    def semantic(self, path):
+        key = self._key(path)
+        if key not in self._semantic:
+            self._semantic[key] = roots_mod.tree_digest_semantic(Path(path), self.markers)
+        return self._semantic[key]
+
+
+_UNSET = object()
+
+
+def same_content(a_item: dict, b_item: dict, markers: tuple = C.CLOUD_MARKERS, cache: TreeCache | None = None) -> tuple:
     """(equal, how) for two skill folders given as records with a `path` (a source skill, an Installed copy): (True, "byte") when the trees hash the same byte
     for byte, (True, "semantic") when they only agree after folding what an adapter rewrites (tree_digest_semantic), else (False, None); also (False, None) when
-    either tree cannot be hashed whole. The one comparison of `match` (FR3.2) and of the pairs (FR4)."""
+    either tree cannot be hashed whole. The one comparison of `match` (FR3.2) and of the pairs (FR4). A record that carries `sha` is not hashed again; `cache`
+    (a TreeCache) shares digests between calls."""
+    cache = cache or TreeCache(markers)
     a, b = Path(a_item["path"]), Path(b_item["path"])
-    return _same_trees(a, roots_mod.tree_sha256(a, markers), b, markers)
+    a_digest = a_item["sha"] if "sha" in a_item else cache.sha(a)
+    return _same_trees(a, a_digest, b, markers, cache, b_item["sha"] if "sha" in b_item else _UNSET)
 
 
-def _same_trees(a: Path, a_digest, b: Path, markers: tuple) -> tuple:
-    """`same_content` with the byte digest of `a` already in hand."""
-    b_digest = roots_mod.tree_sha256(b, markers)
+def _same_trees(a: Path, a_digest, b: Path, markers: tuple, cache: TreeCache | None = None, b_digest=_UNSET) -> tuple:
+    """`same_content` with the byte digest of `a` (and, when known, of `b`) already in hand; the semantic digests are taken only when the bytes differ."""
+    cache = cache or TreeCache(markers)
+    if b_digest is _UNSET:
+        b_digest = cache.sha(b)
     if a_digest is not None and a_digest == b_digest:
         return True, "byte"
-    left, right = roots_mod.tree_digest_semantic(a, markers), roots_mod.tree_digest_semantic(b, markers)
+    left, right = cache.semantic(a), cache.semantic(b)
     return (True, "semantic") if left is not None and left == right else (False, None)
 
 
-def _installed_items(installed: list, markers: tuple) -> list:
+def _installed_items(installed: list, markers: tuple, cache: TreeCache | None = None) -> list:
     """The Installed records as items for `curator_overlap`: key "<harness>/<plugin>:<skill>", the description from the copy's SKILL.md and its tree hash."""
+    cache = cache or TreeCache(markers)
     out = []
     for item in installed:
         folder = Path(item["path"])
         name, desc, _, _ = _read_skill_meta(folder)
         out.append({"key": "%s/%s:%s" % (item["harness"], item["plugin"], item["skill"]), "plugin": item["plugin"], "skill": item["skill"], "name": name,
-                    "desc": desc, "path": os.fspath(folder), "harness": item["harness"], "sha": roots_mod.tree_sha256(folder, markers)})
+                    "desc": desc, "path": os.fspath(folder), "harness": item["harness"], "sha": cache.sha(folder)})
     return out
 
 
@@ -180,6 +221,7 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
     here as `--roots-from opcos` does. With `overlap` the pairs are labelled (curator_overlap, FR4); without it `pairs` is null. Notes about what was dropped are
     appended to `notes` when a list is given."""
     markers = C.CLOUD_MARKERS + tuple(skip_markers)
+    cache = TreeCache(markers)
     sources = [r for r in roots if r["kind"] != "harness"]  # a harness root is only reported: it holds copies, not source skills
     skills, _ = scanned if scanned is not None else roots_mod.collect_skills(sources, markers)
     paths = [s["path"] for s in skills]
@@ -198,14 +240,14 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
         if notes is not None:
             notes.extend(found)
         plugin = _plugin_dir(folder, skill["repo"])
-        digest = roots_mod.tree_sha256(folder, markers)
+        digest = cache.sha(folder)
         entry = by_path.get(os.path.normcase(doctor._posix(folder)), {})
         rel = folder.relative_to(plugin).as_posix() if plugin is not None else ""
         flag = _evals_entries(plugin, catalogs, notes).get(rel)
         state = {h: {"state": "absent", "version": None, "compare": None} for h in HARNESSES}
         for item in by_key.get((skill["plugin"], folder.name), []):  # one harness may hold several copies (two scopes): `match` wins over `differ`
             if item["harness"] in state and state[item["harness"]]["state"] != "match":
-                same, how = _same_trees(folder, digest, Path(item["path"]), markers)
+                same, how = _same_trees(folder, digest, Path(item["path"]), markers, cache)
                 state[item["harness"]] = {"state": "match" if same else "differ", "version": item.get("version"), "compare": how}
                 used.add((item["harness"], item["plugin"], item["skill"]))
         rows.append({"name": name, "description_short": short_description(desc), "repo": skill["repo"], "path": home_path(folder),
@@ -217,7 +259,7 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
     rows.sort(key=lambda r: (r["repo"].casefold(), r["name"].casefold(), r["path"]))
     only = [dict(i, path=home_path(i["path"])) for i in installed if (i["harness"], i["plugin"], i["skill"]) not in used
             and (i["plugin"], i["skill"]) not in {(s["plugin"], Path(s["path"]).name) for s in skills}]
-    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers), markers) if overlap else None
+    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers, cache), markers, cache) if overlap else None
     return {"schema": SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "studio_version": C.VERSION,
             "roots": [_display_root(r) for r in roots], "skills": rows, "installed_only": only, "pairs": pairs,
             "totals": {"skills": len(rows), "repos": len({r["repo"] for r in rows}), "roots_not_ok": sum(r["status"] != "ok" for r in roots),
