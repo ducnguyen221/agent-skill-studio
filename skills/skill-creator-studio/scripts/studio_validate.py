@@ -15,6 +15,17 @@ import studio_fs as fs
 import studio_lint as lint
 
 
+def budget_desc(meta: dict) -> str:
+    """The description as `get_field` of bootstrap/measure-skill-budget.py reads it: the lines of a block scalar joined by one space (BG1, `budget`)."""
+    desc = meta.get("description")
+    return " ".join(desc.split("\n")) if isinstance(desc, str) else ""
+
+
+def desc_chars_like_budget(meta: dict) -> int:
+    """Characters of the description measured like measure-skill-budget.py; only BG1 uses it, DS1 keeps its own count."""
+    return len(budget_desc(meta))
+
+
 def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: bool = False, target: str = "portable",
                    profile: str = "portable", allow_links_under: Path | None = None, max_file_bytes: int | None = None,
                    skip_markers: tuple = ()) -> list[dict]:
@@ -70,6 +81,8 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
         listing = len(desc) + (len(meta["when_to_use"]) if isinstance(meta.get("when_to_use"), str) else 0)
         if claude and listing > C.LISTING_MAX:
             findings.append(fs.emit("WARN", "DS5", manifest, 3, "description + when_to_use is %d chars; Claude Code truncates the skill listing at %d" % (listing, C.LISTING_MAX)))
+    if profile == "opcos" and desc_chars_like_budget(meta) > C.OPCOS_DESC_CHARS:
+        findings.append(fs.emit("WARN", "BG1", manifest, 3, "description is %d chars (>%d, the OpcOS budget); every session loads it, shorten it" % (desc_chars_like_budget(meta), C.OPCOS_DESC_CHARS)))
     allowed = sorted(C.PORTABLE_KEYS | C.CLAUDE_CODE_KEYS) if claude else sorted(C.PORTABLE_KEYS)
     for key in meta:
         if key in C.PORTABLE_KEYS:

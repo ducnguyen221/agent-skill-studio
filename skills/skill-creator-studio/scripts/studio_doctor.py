@@ -187,6 +187,21 @@ def _skill_identity(skill: Path, target: str, max_bytes: int | None = None, skip
     return name, lint.detect_lang("\n".join(text.splitlines()[body_start:]))
 
 
+def _budget_desc_bytes(skill: Path, max_bytes: int | None, skip_read: bool) -> int:
+    """UTF-8 bytes of the description as measure-skill-budget.py counts them (0 when SKILL.md is unreadable, refused, too big or has no description)."""
+    if skip_read:
+        return 0
+    manifest = skill / "SKILL.md"
+    try:
+        text, too_big = fs.read_capped(manifest, max_bytes)
+    except (OSError, UnicodeError):
+        return 0
+    if too_big:
+        return 0
+    meta, _, _ = fs.parse_frontmatter(text, manifest)
+    return len(validate.budget_desc(meta).encode("utf-8"))
+
+
 def _under_roots(path, roots) -> str:
     """`path` relative to the first of the report's `roots` that holds it (posix, case-folded on Windows), else `path` as written:
     a baseline taken in another checkout of the same tree still matches."""
@@ -240,6 +255,7 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
                 continue
     entries = []
     totals = {"skills": 0, "errors": 0, "warnings": 0, "notes": 0}
+    desc_bytes = 0
     for skill in skills:
         under = next((r for r in real_roots if fs.valid_resolved_under(skill, r)), None)
         findings = validate.validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under,
@@ -257,7 +273,9 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
             except ValueError:
                 shown = _posix(path)
             codes.append({"code": f["code"], "level": f["level"], "file": shown, "line": f["line"], "message": f["message"]})
-        name, lang = _skill_identity(skill, target, C.DOCTOR_MAX_FILE_BYTES, skip_read=any(c["code"] == "INPUT" for c in codes))
+        refused = any(c["code"] == "INPUT" for c in codes)
+        name, lang = _skill_identity(skill, target, C.DOCTOR_MAX_FILE_BYTES, skip_read=refused)
+        desc_bytes += _budget_desc_bytes(skill, C.DOCTOR_MAX_FILE_BYTES, refused) if profile == "opcos" else 0
         errors, warnings = sum(c["level"] == "ERROR" for c in codes), sum(c["level"] == "WARN" for c in codes)
         entries.append({"path": _posix(skill), "name": name, "lang": lang, "errors": errors, "warnings": warnings, "codes": codes})
         totals["skills"] += 1
@@ -267,6 +285,8 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
     report = {"schema": C.DOCTOR_SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "studio_version": C.VERSION, "roots": [_posix(r) for r in roots], "skills": entries, "skipped": skipped,
               "totals": totals, "new_vs_baseline": []}
+    if profile == "opcos":  # the same verdict as measure-skill-budget.py on the total (SPEC FR5.2)
+        report["budget"] = {"desc_bytes_total": desc_bytes, "limit": C.OPCOS_DESC_TOTAL_BYTES, "over": desc_bytes > C.OPCOS_DESC_TOTAL_BYTES}
     if baseline is not None:
         report["new_vs_baseline"] = diff_baseline(report, baseline)
     return report
