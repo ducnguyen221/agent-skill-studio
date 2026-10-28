@@ -116,7 +116,7 @@ class RowsTests(TmpCase):
             self.assertNotIn("\\", row["path"])
         by = {r["name"]: r for r in report["skills"]}
         self.assertEqual((by["a"]["repo"], by["c"]["repo"]), ("p-default", "k"))
-        self.assertEqual(report["totals"], {"skills": 5, "repos": 5, "roots_not_ok": 1, "pairs": 0, "pairs_to_review": 0})
+        self.assertEqual(report["totals"], {"skills": 5, "repos": 5, "roots_not_ok": 1, "pairs": 0, "pairs_to_review": 0, "installed_differ_skills": 0, "pairs_truncated": False})
         self.assertIsNone(report["pairs"])
         self.assertEqual(report["installed_only"], [])
 
@@ -304,7 +304,7 @@ class MarkdownTests(TmpCase):
         lines = text.splitlines()
         self.assertEqual(lines[0], "<!-- studio catalog -->")
         self.assertEqual(lines[2], "# Danh mục skill")
-        self.assertEqual(lines[4], "5 skill nguồn ở 5 repo; 1 gốc không ok. Cần xem: 2 skill có ERROR, 0 bản cài lệch (khác).")  # TK16 RF-A1: no pair clause without --overlap
+        self.assertEqual(lines[4], "5 skill nguồn ở 5 repo; 1 gốc không ok. Cần xem: 2 skill có ERROR, 0 skill có bản cài lệch.")  # TK16 RF-A1: no pair clause without --overlap
         self.assertTrue(lines[5].startswith("Sinh lúc ") and "studio.py catalog --roots-from opcos" in lines[5])  # TK16 RF-U11
         self.assertEqual([x for x in lines if x.startswith("## ")], ["## Cần xem trước", "## Skill theo repo", "## Gốc không ok", "## Cặp trùng", "## Chỉ có bản cài"])  # TK16 RF-U2
         self.assertEqual([x for x in lines if x.startswith("### ")], ["### k", "### p-agents", "### p-default", "### p-nested", "### p-root"])

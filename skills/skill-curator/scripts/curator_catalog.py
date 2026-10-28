@@ -37,10 +37,22 @@ def _posix(path) -> str:
 def home_path(path) -> str:
     """`path` in posix form, with the home folder written as `~` (no user name in a catalog that is shared). Anything outside home stays as it is."""
     text = _posix(path)
-    home = _posix(os.path.expanduser("~")).rstrip("/")
+    plain = _home_tail(text, _posix(os.path.expanduser("~")).rstrip("/"))
+    if plain is not None:
+        return plain
+    if os.path.isabs(text):  # another spelling of home (an 8.3 name such as DUCNGU~1, a link): compare the real paths of both (RF-A12)
+        try:
+            real_text, real_home = _posix(os.path.realpath(text)), _posix(os.path.realpath(os.path.expanduser("~"))).rstrip("/")
+        except (OSError, ValueError, RuntimeError):
+            return text
+        return _home_tail(real_text, real_home) or text
+    return text
+
+
+def _home_tail(text: str, home: str) -> str | None:
     if home and home != "~" and len(text) > len(home) and text[:len(home) + 1].lower() == (home + "/").lower():
         return "~" + text[len(home):]
-    return text
+    return None
 
 
 def short_description(text: str, limit: int = DESC_MAX) -> str:
@@ -129,6 +141,8 @@ def _evals_entries(plugin: Path | None, cache: dict, notes: list | None = None) 
     if key not in cache:
         found: dict = {}
         path = plugin / evals.CATALOG_REL
+        if fs.link_in_chain(path, plugin) and notes is not None:  # not read, and not silent either (RF-R1)
+            notes.append("%s: evals/catalog.json is behind a link (not read); model_evaluated is null" % home_path(path))
         if not (fs.zone_reason(path) or fs.link_in_chain(path, plugin) or fs.path_is_cloud(path) or _real_zone(path)) and os.path.isfile(path):
             try:
                 data = evals._load_json(path)
@@ -242,6 +256,7 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
     versions: dict = {}
     catalogs: dict = {}
     rows, used, items = [], set(), []
+    differ_ids: set = set()
     for skill in skills:
         folder = Path(skill["path"])
         name, desc, keys, found = _read_skill_meta(folder)
@@ -259,6 +274,8 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
                 if not same and (digest is None or cache.sha(Path(item["path"])) is None):  # a tree that cannot be hashed whole: not a claimed difference (RF-A2)
                     how = "unhashable"
                 state[item["harness"]] = {"state": "match" if same else "differ", "version": item.get("version"), "compare": how}
+                if not same and how != "unhashable":
+                    differ_ids.add((skill["plugin"], folder.name))
                 used.add((item["harness"], item["plugin"], item["skill"]))
         rows.append({"name": name, "description_short": short_description(desc), "repo": skill["repo"], "path": home_path(folder),
                      "plugin_version": _plugin_version(plugin, markers, versions), "tree_sha256": digest, "installed": state,
@@ -269,15 +286,45 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
     rows.sort(key=lambda r: (r["repo"].casefold(), r["name"].casefold(), r["path"]))
     only = [dict(i, path=home_path(i["path"])) for i in installed if (i["harness"], i["plugin"], i["skill"]) not in used
             and (i["plugin"], i["skill"]) not in {(s["plugin"], Path(s["path"]).name) for s in skills}]
-    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers, cache), markers, cache, notes) if overlap else None
+    cut: list = []
+    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers, cache), markers, cache, notes, cut) if overlap else None
     return {"schema": SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "studio_version": C.VERSION,
             "roots": [_display_root(r) for r in roots], "skills": rows, "installed_only": only, "pairs": pairs,
             "totals": {"skills": len(rows), "repos": len({r["repo"] for r in rows}), "roots_not_ok": sum(r["status"] != "ok" for r in roots),
-                       "pairs": len(pairs or []), "pairs_to_review": sum(p["label"] in TO_REVIEW for p in pairs or [])}}
+                       "pairs": len(pairs or []), "pairs_to_review": sum(p["label"] in TO_REVIEW for p in pairs or []),
+                       "installed_differ_skills": _differ_skills(differ_ids, pairs or []), "pairs_truncated": bool(cut)}}
 
 
-TO_REVIEW = ("same_name_other_role", "same_function", "version_drift")  # the labels a person has to look at: not a copy, not «too little evidence»
-NEED_ERRORS, NEED_DIFFER, NEED_PAIRS = 6, 5, 6  # lines per list of «Cần xem trước»: the section stays within 25 lines
+TO_REVIEW = ("same_name_other_role", "same_function")  # the labels of a suspected duplicate; version_drift is an installed copy that differs, counted per skill (RF-A10)
+NEED_ERRORS, NEED_DIFFER, NEED_PAIRS = 4, 3, 10  # lines per list of «Cần xem trước»: the section stays within 25 lines
+
+
+def _skill_id(key: str) -> tuple:
+    """(plugin, skill) of a pair key: "plugin:skill" for a source skill, "harness/plugin:skill" for an installed copy."""
+    for harness in HARNESSES:
+        if key.startswith(harness + "/"):
+            key = key[len(harness) + 1:]
+            break
+    plugin, _, skill = key.rpartition(":")
+    return plugin, skill
+
+
+def _differ_skills(differ_ids: set, pairs: list) -> int:
+    """Skills with an installed copy that differs: the source skills whose copy differs (`differ_ids`) joined with the skills named by a version_drift pair, each once."""
+    ids = set(differ_ids)
+    for pair in pairs:
+        if pair["label"] == "version_drift":
+            ids.add(_skill_id(pair["a"]))
+            ids.add(_skill_id(pair["b"]))
+    return len(ids)
+
+
+def _differ_rows(report: dict) -> list:
+    return [r for r in report["skills"] if any(r["installed"][h]["state"] == "differ" and r["installed"][h]["compare"] != "unhashable" for h in HARNESSES)]
+
+
+def _differ_total(report: dict) -> int:
+    return report["totals"].get("installed_differ_skills", len(_differ_rows(report)))
 
 
 def _cell(text) -> str:
@@ -295,7 +342,7 @@ def _harness_cell(item: dict) -> str:
 def _need_to_see(report: dict) -> list:
     """The lines of «Cần xem trước»: skills with ERROR, installed copies that differ, pairs a person has to look at; at most 25 lines with the heading."""
     erred = sorted((r for r in report["skills"] if r["doctor"]["errors"]), key=lambda r: (-r["doctor"]["errors"], r["name"].casefold(), r["repo"].casefold()))
-    differ = [(r, h) for r in report["skills"] for h in HARNESSES if r["installed"][h]["state"] == "differ" and r["installed"][h]["compare"] != "unhashable"]
+    differ = _differ_rows(report)
     pairs = [p for p in report["pairs"] or [] if p["label"] in TO_REVIEW]
     out = ["## Cần xem trước", ""]
     if erred:
@@ -303,11 +350,16 @@ def _need_to_see(report: dict) -> list:
         out += ["- %s · %s · %d ERROR" % (_cell(r["name"]), _cell(r["repo"]), r["doctor"]["errors"]) for r in erred[:NEED_ERRORS]]
         if len(erred) > NEED_ERRORS:
             out.append("- … và %d skill nữa: xem cột Lỗi ở mục Skill theo repo." % (len(erred) - NEED_ERRORS))
-    if differ:
-        out.append("**Bản cài lệch so với nguồn** (%d):" % len(differ))
-        out += ["- %s · %s%s" % (_cell(r["name"]), h, (" (%s)" % _cell(r["installed"][h]["version"])) if r["installed"][h]["version"] else "") for r, h in differ[:NEED_DIFFER]]
-        if len(differ) > NEED_DIFFER:
-            out.append("- … và %d bản nữa: xem cột Claude, Codex, Antigravity ở mục Skill theo repo." % (len(differ) - NEED_DIFFER))
+    total = _differ_total(report)
+    if total:
+        out.append("**Skill có bản cài lệch so với nguồn** (%d):" % total)
+        for r in differ[:NEED_DIFFER]:
+            where = ", ".join(h + ((" (%s)" % _cell(r["installed"][h]["version"])) if r["installed"][h]["version"] else "")
+                              for h in HARNESSES if r["installed"][h]["state"] == "differ" and r["installed"][h]["compare"] != "unhashable")
+            out.append("- %s · %s" % (_cell(r["name"]), where))
+        shown = min(len(differ), NEED_DIFFER)
+        if total > shown:
+            out.append("- … và %d skill nữa: xem cột Claude, Codex, Antigravity ở mục Skill theo repo và mục Cặp trùng." % (total - shown))
     if pairs and len(pairs) <= NEED_PAIRS:
         out.append("**Cặp nghi trùng** (%d):" % len(pairs))
         out += ["- %s ↔ %s · %s" % (_cell(p["a"]), _cell(p["b"]), p["label"]) for p in pairs]
@@ -319,15 +371,14 @@ def _need_to_see(report: dict) -> list:
 
 
 def _summary(report: dict) -> str:
-    """The one sentence under the title, written as work to do: how many skills have an ERROR, how many installed copies differ, and (with --overlap) how many pairs."""
+    """The one sentence under the title, written as work to do: how many skills have an ERROR, how many skills have an installed copy that differs, and (with --overlap) how many pairs are suspected duplicates."""
     totals = report["totals"]
     erred = sum(bool(r["doctor"]["errors"]) for r in report["skills"])
-    differ = sum(r["installed"][h]["state"] == "differ" and r["installed"][h]["compare"] != "unhashable" for r in report["skills"] for h in HARNESSES)
-    text = "%d skill nguồn ở %d repo; %d gốc không ok. Cần xem: %d skill có ERROR, %d bản cài lệch (khác)" % (totals["skills"], totals["repos"], totals["roots_not_ok"], erred, differ)
+    text = "%d skill nguồn ở %d repo; %d gốc không ok. Cần xem: %d skill có ERROR, %d skill có bản cài lệch" % (
+        totals["skills"], totals["repos"], totals["roots_not_ok"], erred, _differ_total(report))
     if report["pairs"] is not None:
         count = {label: sum(p["label"] == label for p in report["pairs"]) for label in TO_REVIEW}
-        text += ", %d cặp nghi trùng (cùng tên khác vai %d, trùng chức năng %d, khác phiên bản %d)" % (
-            sum(count.values()), count["same_name_other_role"], count["same_function"], count["version_drift"])
+        text += ", %d cặp nghi trùng (cùng tên khác vai %d, trùng chức năng %d)" % (sum(count.values()), count["same_name_other_role"], count["same_function"])
     return text + "."
 
 
@@ -364,6 +415,8 @@ def render_md(report: dict, command: str | None = None) -> str:
         copies = sum(p["label"] == "distribution_copy" for p in pairs)
         shown = [p for p in pairs if p["label"] != "distribution_copy"]
         out.append("%d cặp là bản sao phân phối (đã thể hiện ở cột harness, không liệt kê)." % copies)
+        if report["totals"].get("pairs_truncated"):
+            out.append("Danh sách cặp đã cắt ở %s." % "{:,}".format(curator_overlap.OVERLAP_MAX_PAIRS).replace(",", " "))
         if shown:
             out += ["", "| Cặp | Loại | Bằng chứng | Đề xuất |", "|---|---|---|---|"]
             out += ["| %s ↔ %s | %s | %s | %s (cần người duyệt) |" % (_cell(p["a"]), _cell(p["b"]), p["label"], _cell("; ".join(p["evidence"])), p["suggestion"]) for p in shown]
@@ -433,7 +486,7 @@ def _plain_roots(paths: list, skip_markers: tuple) -> tuple:
         low = item["path"].lower().rstrip("/")
         owner = next((r for r in roots if low == r["path"].lower().rstrip("/")), None)
         if owner is not None:
-            owner["status"], owner["reasons"] = "error", [item["reason"]]
+            owner["status"], owner["reasons"] = "error", ["cloud" if item["reason"] == "cloud-name" else item["reason"]]  # the root itself is named like a cloud: not «a rule, root ok» (RF-A11)
             continue
         owner = next((r for r in roots if low.startswith(r["path"].lower().rstrip("/") + "/")), roots[0])
         roots_mod.note_skip(owner, item["path"], item["reason"])
@@ -479,6 +532,8 @@ def _command_text(args) -> str:
         parts += ["--installed", args.installed]
     if args.overlap:
         parts.append("--overlap")
+    if args.json:
+        parts.append("--json")
     for marker in args.skip_marker or []:
         parts += ["--skip-marker", word(marker)]
     if args.out:

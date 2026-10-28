@@ -225,14 +225,16 @@ def classify(a: dict, b: dict, df: dict, n: int, markers: tuple = C.CLOUD_MARKER
     return _pair(a, b, "insufficient_evidence", [cosine, files, note] if sim >= SAME_FUNCTION else [cosine, note])
 
 
-def find_pairs(rows: list, installed: list, markers: tuple = C.CLOUD_MARKERS, cache=None, notes: list | None = None) -> list:
+def find_pairs(rows: list, installed: list, markers: tuple = C.CLOUD_MARKERS, cache=None, notes: list | None = None, truncated: list | None = None) -> list:
     """The labelled pairs of a library: `candidates`, each through `classify`, sorted by (a, b, label) so that two runs give the same list. When the search
-    stopped at OVERLAP_MAX_PAIRS one line saying so is appended to `notes` (a list, when given)."""
+    stopped at OVERLAP_MAX_PAIRS one line saying so is appended to `notes` (a list, when given), and `True` to `truncated` (likewise)."""
     df, n = doc_freq([r["desc"] for r in rows])
     names: dict = {}
     cache = cache if cache is not None else _cat().TreeCache(markers)
     cut: list = []
     nominated = candidates(rows, installed, cut)
+    if cut and truncated is not None:
+        truncated.append(True)
     if cut and notes is not None:
         notes.append("pairs: the search stopped at %d nominated pairs (limit); the list is not complete" % OVERLAP_MAX_PAIRS)
     pairs = [classify(a, b, df, n, markers, names, cache) for a, b in nominated]

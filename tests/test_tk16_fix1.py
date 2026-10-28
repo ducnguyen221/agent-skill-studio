@@ -136,29 +136,30 @@ class MarkdownTk16Tests(TC.TmpCase):
             row["doctor"]["errors"] = count
         for row, harness in zip(report["skills"], differ or []):
             row["installed"][harness] = _state("differ")
-        report["totals"]["pairs_to_review"] = sum(p["label"] in ("same_name_other_role", "same_function", "version_drift") for p in pairs or [])
+        report["totals"]["pairs_to_review"] = sum(p["label"] in ("same_name_other_role", "same_function") for p in pairs or [])
+        report["totals"]["installed_differ_skills"] = len(differ or [])
         return module, report
 
     def test_summary_counts_what_needs_a_person_not_copies(self):
-        """bắt-lỗi: RF-A1 one copy + one of each real label + one insufficient: the first sentence counts 3 pairs to review, with the split."""
+        """bắt-lỗi: RF-A1 one copy + one of each real label + one insufficient: the first sentence counts 2 suspected pairs (drift is per skill), with the split."""
         pairs = [_pair("a", "b", "distribution_copy"), _pair("c", "d", "version_drift"), _pair("e", "f", "same_name_other_role"),
                  _pair("g", "h", "same_function"), _pair("i", "j", "insufficient_evidence")]
         module, report = self.report_for(pairs, errors=[2, 0], differ=["codex"])
         line = module.render_md(report).splitlines()[4]
-        self.assertEqual(line, "2 skill nguồn ở 2 repo; 0 gốc không ok. Cần xem: 1 skill có ERROR, 1 bản cài lệch (khác), "
-                               "3 cặp nghi trùng (cùng tên khác vai 1, trùng chức năng 1, khác phiên bản 1).")
+        self.assertEqual(line, "2 skill nguồn ở 2 repo; 0 gốc không ok. Cần xem: 1 skill có ERROR, 1 skill có bản cài lệch, "
+                               "2 cặp nghi trùng (cùng tên khác vai 1, trùng chức năng 1).")
 
     def test_summary_without_overlap_has_no_pair_clause(self):
         """bắt-lỗi: RF-A1 `pairs` null (no --overlap): the sentence does not say «0 cặp»."""
         module, report = self.report_for(None)
         line = module.render_md(report).splitlines()[4]
-        self.assertEqual(line, "2 skill nguồn ở 2 repo; 0 gốc không ok. Cần xem: 0 skill có ERROR, 0 bản cài lệch (khác).")
+        self.assertEqual(line, "2 skill nguồn ở 2 repo; 0 gốc không ok. Cần xem: 0 skill có ERROR, 0 skill có bản cài lệch.")
 
     def test_json_totals_pairs_to_review(self):
         """bắt-lỗi: RF-A1 `totals.pairs_to_review` exists and `pairs` still counts every pair."""
         module = TC.load_catalog_module()
         report = module.build(R.opcos_roots(self.clean_tree() / "paths.json"), [], True, "portable")
-        self.assertEqual(report["totals"], {"skills": 2, "repos": 2, "roots_not_ok": 0, "pairs": 0, "pairs_to_review": 0})
+        self.assertEqual(report["totals"], {"skills": 2, "repos": 2, "roots_not_ok": 0, "pairs": 0, "pairs_to_review": 0, "installed_differ_skills": 0, "pairs_truncated": False})
 
     def test_need_to_see_section_order_and_size(self):
         """bắt-lỗi: RF-U2 «Cần xem trước» follows the summary, holds at most 25 lines however many items, and «Chỉ có bản cài» is the last section."""
@@ -241,7 +242,7 @@ class UnhashableInstalledTests(TC.TmpCase):
         self.assertEqual([p["label"] for p in report["pairs"]], ["insufficient_evidence"])
         text = module.render_md(report)
         self.assertIn("không so được", text)
-        self.assertIn("0 bản cài lệch", text)
+        self.assertIn("0 skill có bản cài lệch", text)
 
 
 # --- RF-S2 -------------------------------------------------------------------------------------------------------------------------------------
