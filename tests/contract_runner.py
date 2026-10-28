@@ -160,7 +160,10 @@ def stderr_norm(text: str, root) -> str:
         forms |= {str(item).replace("\\", "/"), str(item.resolve()).replace("\\", "/"), os.path.realpath(item).replace("\\", "/")}
     for form in sorted(forms, key=len, reverse=True):
         text = re.sub(re.escape(form), "<ROOT>", text, flags=re.IGNORECASE)
-    return text
+    # argparse words its own usage block and its `invalid choice` list differently from Python 3.9 to 3.12 (quoted choices, wrapping); the line
+    # `studio.py: error: argument command: invalid choice: 'x'` that Studio's parser raises stays, so a changed message is still caught
+    text = re.sub(r"(?m)^usage:.*(?:\n[ \t]+.*)*", "usage: <ARGPARSE>", text)
+    return re.sub(r"\(choose from [^)]*\)", "(choose from <CHOICES>)", text)
 
 
 def eol_map(path: Path) -> dict:
@@ -351,7 +354,11 @@ def cmd_record_after(cid: str, by: str, engine: Path) -> int:
     if cid in strict_results and STRICT_FILE.is_file():  # wrapped like golden: `before` stays, `after` takes the new stderr and line ends
         strict = json.loads(STRICT_FILE.read_text(encoding="utf-8"))
         if cid in strict["cases"]:
-            strict["cases"][cid] = record_after(strict["cases"][cid], strict_results[cid], by)
+            old = strict["cases"][cid]
+            was = (old["before"] if "changed_by" in old else old)["eol"]
+            new = strict_results[cid]  # a file that was "native" and still has the OS default line end stays "native"; anything else is stored raw
+            new = {"stderr": new["stderr"], "eol": {k: ("native" if was.get(k) == "native" and v == native_eol() else v) for k, v in new["eol"].items()}}
+            strict["cases"][cid] = record_after(old, new, by)
             store(STRICT_FILE, dumps(strict))
     raw = json.loads(CASES_FILE.read_text(encoding="utf-8"))
     for case in raw["cases"]:

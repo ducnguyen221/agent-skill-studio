@@ -121,7 +121,7 @@
       }
     },
     "R-sync-template-check": {
-      "stderr": "usage: studio.py [-h] [--version]\n                 {new,check,validate,audit,evals,package,install,doctor,fmt}\n                 ...\nstudio.py: error: argument command: invalid choice: 'sync-template' (choose from new, check, validate, audit, evals, package, install, doctor, fmt)\n",
+      "stderr": "usage: <ARGPARSE>\nstudio.py: error: argument command: invalid choice: 'sync-template' (choose from <CHOICES>)\n",
       "eol": {}
     },
     "C-version": {
@@ -244,7 +244,7 @@
       }
     },
     "C-sync-template-check": {
-      "stderr": "usage: studio.py [-h] [--version]\n                 {new,check,validate,audit,evals,package,install,doctor,fmt}\n                 ...\nstudio.py: error: argument command: invalid choice: 'sync-template' (choose from new, check, validate, audit, evals, package, install, doctor, fmt)\n",
+      "stderr": "usage: <ARGPARSE>\nstudio.py: error: argument command: invalid choice: 'sync-template' (choose from <CHOICES>)\n",
       "eol": {}
     },
     "E-version": {
@@ -376,7 +376,7 @@
       }
     },
     "E-sync-template-check": {
-      "stderr": "usage: studio.py [-h] [--version]\n                 {new,check,validate,audit,evals,package,install,doctor,fmt}\n                 ...\nstudio.py: error: argument command: invalid choice: 'sync-template' (choose from new, check, validate, audit, evals, package, install, doctor, fmt)\n",
+      "stderr": "usage: <ARGPARSE>\nstudio.py: error: argument command: invalid choice: 'sync-template' (choose from <CHOICES>)\n",
       "eol": {}
     },
     "S-version": {

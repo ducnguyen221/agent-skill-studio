@@ -24,7 +24,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import contract_runner as runner  # noqa: E402
 
 BEFORE_DIGEST = "4b3c6d47713289adfaa1a0e20c374b30c57c7e587f966a6cf2dcc2f16c1b7c0d"
-STRICT_BEFORE_DIGEST = "4715153c1ef0e740af5e96cad7c24566dfbadd9bf08c3828af5904793bcaa5bb"
+STRICT_BEFORE_DIGEST = "e94baeafdd19dbbf9d1790f4e52b5914ff59fc633aba4c6e09f40d5e973dd9be"
+# cases added in SPR-04 by --add-case (RF-1.2); each later --add-case extends these two tuples and digests
+ADDED_IDS = ("evals-all-broken-catalog", "new-output-no-eval-root")
+ADDED_BEFORE_DIGEST = "4b7ee405cbf7cd6031198a7d374cecf742ddd9aa93e53f238c2314bc1a7ded72"
+ADDED_STRICT_BEFORE_DIGEST = "c44927fd0ae10f76f7c630fef95b78a2d63e66579e3302271b5ceb63b71d2957"
 ORIGINAL_IDS = (
     "C-audit-dqa-json", "C-audit-dqa-text", "C-audit-frozen-json", "C-audit-live-json", "C-doctor-fixture-json", "C-evals-all-json",
     "C-fmt-check-dqa-json", "C-fmt-check-live-json", "C-install-dqa-claude", "C-new-en", "C-new-full", "C-new-full-vi", "C-new-vi", "C-package-dqa",
@@ -65,6 +69,14 @@ class GoldenBeforeFrozenTests(unittest.TestCase):
         self.assertEqual("53c2d76", strict["recorded_at_commit"])
         self.assertTrue(set(ORIGINAL_IDS) <= set(strict["cases"]), "an original case left strict.json")
         self.assertEqual(STRICT_BEFORE_DIGEST, before_digest(strict["cases"], ORIGINAL_IDS))
+
+    def test_added_cases_before_frozen(self):
+        """bắt-lỗi (red at 5a24145: hand-editing `before` of a case added by --add-case moved no digest): RF-1.2 golden and strict `before` of the SPR-04 cases are locked."""
+        golden = json.loads(runner.GOLDEN_FILE.read_text(encoding="utf-8"))["cases"]
+        strict = json.loads(runner.STRICT_FILE.read_text(encoding="utf-8"))["cases"]
+        self.assertTrue(set(ADDED_IDS) <= set(golden) and set(ADDED_IDS) <= set(strict))
+        self.assertEqual(ADDED_BEFORE_DIGEST, before_digest(golden, ADDED_IDS))
+        self.assertEqual(ADDED_STRICT_BEFORE_DIGEST, before_digest(strict, ADDED_IDS))
 
     def test_a_changed_answer_has_exactly_changed_by_before_after(self):
         """tương-đương: SC6 a wrapped golden entry carries `changed_by`, `before` and `after` and no other key."""

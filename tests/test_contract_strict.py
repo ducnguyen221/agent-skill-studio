@@ -17,6 +17,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import contract_runner as runner  # noqa: E402
 
+ROOT = Path("/zz-no-such-root")
 OTHER_EOL = "\n" if os.linesep == "\r\n" else "\r\n"  # the line end this OS does not write by default
 
 
@@ -74,6 +75,16 @@ class StderrAndEolTests(unittest.TestCase):
             self.assertEqual("ERROR: <ROOT> is bad\nsee <ROOT>/x\n", got)
             self.assertEqual("at <ROOT>/q\n", runner.stderr_norm("at %s/q\n" % str(root).replace("\\", "/").upper(), root))
 
+    def test_stderr_norm_hides_the_argparse_wording_of_python_3_9_and_3_12_but_keeps_the_error_line(self):
+        """bắt-lỗi (red at 5a24145: CI python 3.9 differed from the 3.12 recording): usage block and `choose from` list are folded; the error line of Studio's parser is not."""
+        py312 = ("usage: studio.py [-h] [--version]\n                 {new,check}\n                 ...\n"
+                 "studio.py: error: argument command: invalid choice: 'x' (choose from new, check)\n")
+        py39 = ("usage: studio.py [-h] [--version]\n                 {new,check}\n                 ...\n"
+                "studio.py: error: argument command: invalid choice: 'x' (choose from 'new', 'check')\n")
+        self.assertEqual(runner.stderr_norm(py312, ROOT), runner.stderr_norm(py39, ROOT))
+        self.assertIn("studio.py: error: argument command: invalid choice: 'x' (choose from <CHOICES>)", runner.stderr_norm(py39, ROOT))
+        self.assertNotEqual(runner.stderr_norm(py312, ROOT), runner.stderr_norm(py312.replace("invalid choice", "unknown choice"), ROOT))
+
     def test_eol_map_names_lf_crlf_mixed_and_ignores_missing(self):
         """tương-đương: one word per file, folders skipped, a missing path is empty."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,7 +114,13 @@ class StderrAndEolTests(unittest.TestCase):
         """tương-đương: recorded_at_commit is the commit the strict answers were taken at, and every case of golden.json that existed then has an entry."""
         raw = json.loads(runner.STRICT_FILE.read_text(encoding="utf-8"))
         self.assertEqual("53c2d76", raw["recorded_at_commit"])
-        self.assertEqual({"stderr", "eol"}, set(next(iter(raw["cases"].values()))))
+        for cid, entry in raw["cases"].items():  # every entry: flat {stderr, eol}, or wrapped {changed_by, before: {stderr, eol}, after}
+            with self.subTest(case=cid):
+                if "changed_by" in entry:
+                    self.assertEqual({"changed_by", "before", "after"}, set(entry))
+                    self.assertEqual({"stderr", "eol"}, set(entry["before"]))
+                else:
+                    self.assertEqual({"stderr", "eol"}, set(entry))
         self.assertLessEqual(len(raw["cases"]), len(runner.load_golden()))
         self.assertGreaterEqual(len(raw["cases"]), 96)
 
@@ -175,8 +192,19 @@ class FileBackedTests(unittest.TestCase):
         code, _err = self.call(runner.cmd_record_after, "old-case", "SPR-04/TK9", self.tmp)
         self.assertEqual(0, code)
         self.assertEqual({"changed_by": "SPR-04/TK9", "before": self.old, "after": self.new}, self.read(self.golden_file)["cases"]["old-case"])
-        self.assertEqual({"changed_by": "SPR-04/TK9", "before": self.entry, "after": self.fake_strict}, self.read(self.strict_file)["cases"]["old-case"])
-        self.assertEqual(self.fake_strict, runner.expected_result({"changed_by": "x", "before": self.entry, "after": self.fake_strict}))
+        after = {"stderr": "ERROR: new\n", "eol": {"<TMP>/out/f.md": "native", "<TMP>/out/g.md": "mixed"}}  # f.md was native before and is still the OS default: stays native
+        self.assertEqual({"changed_by": "SPR-04/TK9", "before": self.entry, "after": after}, self.read(self.strict_file)["cases"]["old-case"])
+        self.assertEqual(after, runner.expected_result({"changed_by": "x", "before": self.entry, "after": after}))
+
+    def test_record_after_stores_a_pinned_line_end_raw(self):
+        """bắt-lỗi (red at 5a24145): RF-1.1 a file that was native and now has the line end this OS does NOT write by default is stored raw, not native; one that was not native is never turned into native."""
+        other = "lf" if runner.native_eol() == "crlf" else "crlf"
+        self.fake_strict["eol"] = {"<TMP>/out/f.md": other, "<TMP>/out/h.md": runner.native_eol()}
+        self.entry["eol"]["<TMP>/out/h.md"] = "lf" if runner.native_eol() == "crlf" else "crlf"  # h.md was pinned, f.md was native
+        self.write(self.strict_file, {"recorded_at_commit": "abc1234", "cases": {"old-case": copy.deepcopy(self.entry)}})
+        self.call(runner.cmd_record_after, "old-case", "SPR-04/TK9", self.tmp)
+        eol = self.read(self.strict_file)["cases"]["old-case"]["after"]["eol"]
+        self.assertEqual({"<TMP>/out/f.md": other, "<TMP>/out/h.md": runner.native_eol()}, eol)
 
     def test_record_strict_is_refused_when_the_file_exists_and_needs_a_commit(self):
         """bắt-lỗi (red at 53c2d76): --record-strict never rewrites strict.json; `main` demands --at-commit."""
