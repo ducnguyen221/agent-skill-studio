@@ -12,6 +12,8 @@ Chặng 2 (agent-skill-studio:SPR-03): repo gọn sáu thư mục, luật nạp 
 | `new --output` không `--eval-root` | eval ghi vào `<repo engine>/evals` → theo `--output` (`<cha>/evals` khi tên là `skills`, ngược lại `<output>/evals`); gốc ổ đĩa hoặc đường có link bị từ chối (thoát 2) | ca `new` dùng `--output` | Không |
 | `new` khi file eval đã có | ghi đè → giữ, in `kept existing <đường>` | người chạy `new` lại | Có (chỉ bớt ghi) |
 | `is_link` gặp `OSError` | `False` → `True` (từ chối, có báo) với mọi lỗi trừ không tồn tại / không phải thư mục | 23 nơi gọi | Không với đường không dò được |
+| `check`/`validate`/`audit` trên thư mục có `SKILL.md` là symlink hoặc junction | đọc xuyên link → `ERROR INPUT`, thoát 1, không mở file | người chạy kiểm trên cây có link | Không |
+| stderr khi cổng bị bỏ qua | im lặng → `note: model_evaluated gate skipped: installed engine (…)` ở `evals --all` của engine cài; `WARN: --all skipped <đường> (<lý do>); it is not checked` ở `validate --all` / `audit --all` | CI và người đọc stderr; mã thoát không đổi | Có (chỉ thêm dòng) |
 | `fmt --all` | quét `tests/fixtures/`, `evals/*/fixtures/` → bỏ qua | CI, người chạy `fmt --all` | Có |
 | File luật gốc | `CLAUDE.md` gốc giữ chỗ, trỏ `AGENTS.md`; `AGENTS.md`/`GEMINI.md` trỏ đường sống; `templates/project/` → `templates/starter-project/` nạp luật ba agent | người dùng Claude Code trong repo | Có |
 | `VI5` | một mục tiếng Anh dài bị báo trong mọi thân Việt → không báo khi các mục có tỉ lệ chữ có dấu dưới 1 % chiếm quá 70 % chữ cái văn xuôi (`VI5_ENGLISH_BODY_SHARE`; code và bảng không tính) | skill thân chủ yếu tiếng Anh có nhãn Việt | Có (chỉ bớt báo) |
