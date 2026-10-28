@@ -208,7 +208,7 @@ def check_process_shape(text: str) -> list:
 
 
 def classify_md(path: Path, root: Path | None) -> str:
-    """skill (SKILL.md, SKILL.vi.md), process (*PROCESS*.md, *_WORKFLOW.md), studio-doc (standards/*.md, content/*.md, templates/README.md
+    """skill (SKILL.md, SKILL.vi.md), process (*PROCESS*.md, *_WORKFLOW.md), studio-doc (standards/*.md, examples/*.md, templates/README.md
     of the repo `root`) or other."""
     name = path.name
     if name in ("SKILL.md", "SKILL.vi.md"):
@@ -221,7 +221,7 @@ def classify_md(path: Path, root: Path | None) -> str:
             parts = tuple(x.casefold() for x in Path(os.path.abspath(path)).relative_to(os.path.abspath(root)).parts)
         except ValueError:
             return "other"
-        if len(parts) == 2 and parts[0] in ("standards", "content") and parts[1].endswith(".md"):
+        if len(parts) == 2 and parts[0] in ("standards", "examples") and parts[1].endswith(".md"):
             return "studio-doc"
         if parts == ("templates", "readme.md"):
             return "studio-doc"
@@ -240,10 +240,22 @@ def _crosses_link(path) -> bool:
     return False
 
 
+def _is_fixture_dir(path: Path, root: Path | None) -> bool:
+    """True for a folder that is deliberately broken test data: `tests/fixtures` or `evals/<skill>/fixtures`, counted from the repo `root` (a
+    `fixtures` folder anywhere else is documentation like any other)."""
+    if root is None:
+        return False
+    try:
+        parts = [x.casefold() for x in path.relative_to(Path(os.path.abspath(root))).parts]
+    except ValueError:
+        return False
+    return any(len(parts) == len(shape) and all(want in ("*", got) for want, got in zip(shape, parts)) for shape in C.FMT_FIXTURE_PATHS)
+
+
 def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None = None) -> list[Path]:
     """The Markdown files to format: each given file, plus every *.md under each given folder (and under `root` with all_repo). Never
-    entered or opened: links, cloud placeholders, cloud/secret zones, .git, .tmp, .worktrees, dist, node_modules, evals/**/runs. A file or
-    folder left out is appended to `skipped` as {path, reason}."""
+    entered or opened: links, cloud placeholders, cloud/secret zones, .git, .tmp, .worktrees, dist, node_modules, evals/**/runs. With all_repo also not tests/fixtures and
+    evals/*/fixtures wherever a walk meets them (a fixture folder itself named on the command line is still read whole). A file or folder left out is appended to `skipped` as {path, reason}."""
     skipped = skipped if skipped is not None else []
     files: list[Path] = []
     seen: set = set()
@@ -318,6 +330,8 @@ def iter_md(paths: list, all_repo: bool, root: Path | None, skipped: list | None
                             skip(child, "link")
                             continue
                         if entry.name in C.FMT_PRUNE_DIRS or (entry.name == "runs" and "evals" in (x.casefold() for x in child.parts)):
+                            continue
+                        if all_repo and _is_fixture_dir(child, root):
                             continue
                         if fs.zone_named(entry.name):
                             skip(child, "cloud-or-secret-zone")

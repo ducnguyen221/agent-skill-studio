@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import re
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 PORTABLE_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 TARGETS = ("portable", "claude-code")
 # Claude Code extension keys beyond the portable set (code.claude.com/docs/en/skills, read 2026-10-22).
@@ -41,6 +41,7 @@ VI_ACCENT_RATIO = 0.03  # FR16: at least this share of prose letters with a Viet
 VI_SENTENCE_MAX = 40  # VI3 ceiling in words; 25 is advice only (VIETNAMESE_SKILL_WRITING.md V03)
 VI5_SECTION_MIN_LETTERS = 80
 VI5_ACCENT_MIN = 0.01
+VI5_ENGLISH_BODY_SHARE = 0.7  # FR14.1: sections under VI5_ACCENT_MIN holding more than this share of the prose letters -> mostly English body, no VI5 per section
 NON_ISO_DATE_RE = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b")
 VI_TRIGGER_RE = re.compile(r"(?i)\buse (this skill )?when\b")
 VI_OK_MARK = "<!-- studio:vi-ok -->"
@@ -95,6 +96,7 @@ FMT_STEP_LABELS = tuple(
     (re.compile(r"(?i)^\s*(?:[-*+]\s+)?(?:\*\*)?(?:%s):" % names), label)
     for names, label in (("Command|Lệnh", "Command:"), ("Expect|Kỳ vọng", "Expect:"), ("Stop if|Dừng nếu", "Stop if:")))
 FMT_PRUNE_DIRS = frozenset({".git", ".tmp", ".worktrees", "dist", "node_modules", "__pycache__", ".venv", ".pytest_cache", ".mypy_cache"})
+FMT_FIXTURE_PATHS = (("tests", "fixtures"), ("evals", "*", "fixtures"))  # fmt --all skips these deliberately broken test data folders (repo-relative; "*" = any one name)
 FMT_FRONT_SEARCH_LINES = 60  # a frontmatter block that starts later than this is not looked for
 FMT_BLOCKING_REASONS = frozenset({"would-change-text", "not-utf8", "unreadable", "too-many-folders", "limit"})  # skipped for these: exit 1 even inside a folder
 WIN_DEVICE_NAMES = frozenset(["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$"]

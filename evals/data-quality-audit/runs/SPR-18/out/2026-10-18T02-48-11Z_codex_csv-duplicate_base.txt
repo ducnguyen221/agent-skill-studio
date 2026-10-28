@@ -1,4 +1,0 @@
-`fixtures/duplicates.csv` has two failures:
-
-- **Duplicate transaction ID `1`** — CSV rows **2** and **4**.
-- **Missing amount** — CSV row **3**, transaction ID `2`.

@@ -1,6 +1,0 @@
-I updated [skill-creator-studio](~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T17-06-31Z_creator-edge-2_with/.agents/skills/skill-creator-studio/SKILL.md) and added a [Claude-field migration guide](~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T17-06-31Z_creator-edge-2_with/.agents/skills/skill-creator-studio/references/CLAUDE_FIELD_MIGRATION.md).
-
-- `context: fork`: remove it from shared frontmatter. Use a host-specific adapter if isolated execution is essential; the portable Skill can’t guarantee it.
-- `disable-model-invocation: true`: remove it from shared frontmatter. Document manual invocation or use a host-specific control where available; portable metadata can’t guarantee manual-only activation on Codex or Antigravity. This matches their documented Skill formats: [OpenAI](https://developers.openai.com/api/docs/guides/tools-skills) and [Antigravity](https://www.antigravity.google/docs/skills). Claude’s field behavior is documented [here](https://code.claude.com/docs/en/skills).
-
-The workspace had no separate Claude-only source Skill to convert; the only Skill present was already portable. So I added reusable conversion guidance rather than claiming to have converted a missing source. Validation passed: **0 errors, 0 warnings**. No temporary files were created.

@@ -1,5 +1,0 @@
-**Audit result: blocked — target folder not found.**
-
-`./missing-skill` does not exist in the workspace, so I couldn’t inspect its `SKILL.md`, linked references, scripts, or assets, or run the static audit. The available `skill-creator-studio` checklist requires those files as evidence.
-
-No files were modified. `git status` was unavailable because this workspace is not a Git repository.

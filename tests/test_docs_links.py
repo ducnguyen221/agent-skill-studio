@@ -1,4 +1,4 @@
-"""Check local Markdown links outside code blocks as a repository hygiene gate."""
+"""Check local Markdown links outside code blocks as a repository hygiene gate (evals/*.md and evals/<skill>/*.md included, fixtures left out)."""
 import re
 import unittest
 from pathlib import Path
@@ -11,7 +11,10 @@ class LinkTests(unittest.TestCase):
     def test_local_markdown_links_resolve(self):
         failures = []
         for file in ROOT.rglob("*.md"):
-            if any(x in file.parts for x in (".git", "dist", "evals")):
+            if any(x in file.parts for x in (".git", "dist")):
+                continue
+            rel = file.relative_to(ROOT).parts
+            if rel[0] == "evals" and (len(rel) > 3 or "fixtures" in rel):  # evals/*.md and evals/<skill>/*.md only; fixtures and anything deeper are data
                 continue
             in_fence = False
             for i, line in enumerate(file.read_text(encoding="utf-8").splitlines(), start=1):

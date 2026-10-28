@@ -1,1 +1,0 @@
-**Check failed:** `fixtures/missing_column.csv` has no `customer_id` column, so its rows cannot be checked for customer IDs. The `id` values present (`1`, `2`, `3`) are unique. Don’t load it until the required `customer_id` field is added.

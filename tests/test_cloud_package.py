@@ -121,7 +121,7 @@ class CloudTagTests(unittest.TestCase):
 
 def make_skill(base: Path) -> Path:
     dest = base / "data-quality-audit"
-    shutil.copytree(ROOT / "skills" / "data-quality-audit", dest)
+    shutil.copytree(ROOT / "examples" / "data-quality-audit", dest)
     return dest
 
 

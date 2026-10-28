@@ -1,0 +1,83 @@
+{
+  "ab": {},
+  "batch": "studio-SPR-02",
+  "logs": [
+    {
+      "case_id": "creator-new-skill",
+      "file": "2026-10-27T16-26-06Z_claude-code_creator-new-skill_with.json",
+      "kind": "typical",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": true,
+      "with_skill": true
+    },
+    {
+      "case_id": "creator-audit-broken",
+      "file": "2026-10-27T16-26-38Z_claude-code_creator-audit-broken_with.json",
+      "kind": "typical",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": true,
+      "with_skill": true
+    },
+    {
+      "case_id": "creator-refine-no-regression",
+      "file": "2026-10-27T16-27-17Z_claude-code_creator-refine-no-regression_with.json",
+      "kind": "edge",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "creator-negative-task",
+      "file": "2026-10-27T16-27-34Z_claude-code_creator-negative-task_with.json",
+      "kind": "near-miss",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "creator-edge-2",
+      "file": "2026-10-27T16-28-01Z_claude-code_creator-edge-2_with.json",
+      "kind": "edge",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "creator-input-error",
+      "file": "2026-10-27T16-28-24Z_claude-code_creator-input-error_with.json",
+      "kind": "input-error",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "creator-near-miss-install",
+      "file": "2026-10-27T16-28-44Z_claude-code_creator-near-miss-install_with.json",
+      "kind": "near-miss",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "creator-near-miss-list",
+      "file": "2026-10-27T16-29-05Z_claude-code_creator-near-miss-list_with.json",
+      "kind": "near-miss",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    }
+  ],
+  "schema": 1,
+  "skill": "skill-creator-studio",
+  "smoke": [],
+  "source": "ledger/agent-skill-studio/evidence/studio-SPR-02/skill-creator-studio/",
+  "source_sha256": "2af4ba2f67a0632e36c75906df1b3034586c7d3c1c47a6eca81b3146b1e0f249"
+}

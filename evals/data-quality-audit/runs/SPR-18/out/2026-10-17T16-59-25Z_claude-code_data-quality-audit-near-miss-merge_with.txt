@@ -1,9 +1,0 @@
-Đã gộp (left join trên `customer_id`), cả 3 đơn đều khớp khách hàng:
-
-| order_id | customer_id | amount | name |
-|---|---|---|---|
-| 1 | c1 | 10 | Alice |
-| 2 | c2 | 20 | Bob |
-| 3 | c1 | 30 | Alice |
-
-Tôi gộp bằng tay vì dữ liệu chỉ có 3 dòng, và không tạo hay ghi file nào. Bạn cần xuất ra CSV thì nói tôi biết.

@@ -1,3 +1,0 @@
-**Audit passed:** [fixtures/clean.csv]([PATH]) has the required `id` and `amount` columns. All 3 rows have unique IDs and numeric amounts; the validator reported no issues (exit code 0).
-
-It meets the requested checks for Power BI import.

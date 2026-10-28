@@ -1,8 +1,0 @@
-`fixtures/duplicates.csv` có 2 lỗi. Cột ID là `id` (không phải `transaction_id`), nên tôi coi `id` là mã giao dịch.
-
-| Lỗi | Dòng (tính cả dòng tiêu đề) | Chi tiết |
-|---|---|---|
-| ID trùng | 2 và 4 | `id` = `1` xuất hiện 2 lần (amount `150.0` và `90.0`) |
-| Thiếu amount | 3 | `id` = `2`, ô `amount` để trống |
-
-Dòng 5 chỉ là dòng trống cuối file, không phải bản ghi. Tôi chưa sửa file.

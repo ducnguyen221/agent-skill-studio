@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine as E  # noqa: E402
 
 ROOT = E.ROOT
-SKILL = "skills/data-quality-audit"
+SKILL = "examples/data-quality-audit"
 BROKEN = "evals/skill-creator-studio/fixtures/broken-skill"
 
 
@@ -69,7 +69,10 @@ class CheckSkillTests(unittest.TestCase):
         code_c, out_c, err_c = run_engine("check", "--all", "--require-evals", "--json")
         self.assertEqual((code_v, err_c), (code_c, ""))
         self.assertEqual(with_type(out_v), json.loads(out_c))
-        self.assertGreaterEqual(len(json.loads(out_c)["reports"]), 2)
+        # SPR-03 FR15.1: `--all` walks skills/ only and one skill ships, so one report (it was 2 while the CSV sample lived in skills/)
+        reports = json.loads(out_c)["reports"]
+        self.assertEqual(1, len(reports))
+        self.assertTrue(all(r.get("type") == "skill" for r in reports), reports)
 
     def test_check_text_mode_is_validate_text_mode(self):
         """bắt-lỗi (red at 395e621: exit 2): FR5.2 the text mode of `check` prints exactly what `validate` prints and ends with the same exit code."""
@@ -197,7 +200,7 @@ class CheckOtherTypesTests(unittest.TestCase):
 
     def test_resolve_check_path_unit(self):
         """đơn-vị-hàm-mới: `resolve_check_path` maps a folder or SKILL.md to the skill folder and leaves a missing path to `validate`."""
-        folder = ROOT / "skills" / "data-quality-audit"
+        folder = ROOT / "examples" / "data-quality-audit"
         self.assertEqual(folder, E.validate.resolve_check_path(str(folder)))
         self.assertEqual(folder, E.validate.resolve_check_path(str(folder / "SKILL.md")))
         missing = self.tmp / "no-such-skill"

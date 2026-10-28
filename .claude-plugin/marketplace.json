@@ -10,7 +10,7 @@
     {
       "name": "agent-skill-studio",
       "description": "Group 2 studio, the foundation workshop (Skill Factory): create, audit and refine portable Agent Skills.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "./",
       "license": "MIT",
       "author": {

@@ -4,15 +4,15 @@ These instructions apply to agents editing this repository. They are **repo guid
 
 ## Objective
 
-Maintain a portable, testable library for creating, auditing, refining and packaging Agent Skills. Preserve one shared authoring standard and document vendor differences in `adapters/`.
+Maintain a portable, testable library for creating, auditing, refining and packaging Agent Skills. Preserve one shared authoring standard and document vendor differences in `standards/HARNESSES.md`.
 
 ## Read only what is needed
 
-1. For skill authoring: read `standards/CORE_STANDARD.md` and `standards/SKILL_AUTHORING_STANDARD.md`.
+1. For skill authoring: read `standards/SKILL_AUTHORING_STANDARD.md`; for what a skill, a workflow and a rules file must contain, read `standards/DOC_TYPES.md`.
 2. For a new or audited skill: read `skills/skill-creator-studio/SKILL.md`; follow its NEW, AUDIT or REFINE branch, opening only needed reference files.
 3. For risk or side effects: read `standards/SECURITY_AND_PERMISSIONS.md`.
 4. For evals: read `standards/EVALUATION_STANDARD.md` and `evals/RUNBOOK.md`.
-5. For agent-specific claims: read exactly one relevant `adapters/*_ADAPTER.md` and consult official docs.
+5. For agent-specific claims: read the one relevant section of `standards/HARNESSES.md` and consult official docs.
 
 ## Operating agreement
 
@@ -31,6 +31,8 @@ Maintain a portable, testable library for creating, auditing, refining and packa
 python3 studio.py validate --all --require-evals
 python3 studio.py evals --all
 python3 -m unittest discover -s tests -v
+python3 studio.py doctor                # scans skills/; add --roots "<dir>" for another skill root
+python3 studio.py fmt --check --all     # house style of every Markdown file; report only
 ```
 
 Templates live only in `skills/skill-creator-studio/assets/`; edit them there and rerun tests. If a check fails, fix its cause and rerun; report any remaining limitations explicitly.

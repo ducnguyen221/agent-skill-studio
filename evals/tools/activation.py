@@ -7,6 +7,8 @@ Python 3.9+, standard library only. Read-only.
   activation.py hash <skill-dir>                    # LF-normalised tree hash
   activation.py freeze|verify --eval-dir D --main-skill-dir M --cache-skill-dir C --manifest F
   activation.py summarize <runs-dir>                # runtime x (positive x/n, negative x/m)
+  activation.py compact <runs-dir> --skill S --batch B --out F    # raw batch folder -> the one compact evidence file the gate reads
+  activation.py compact --verify <runs-dir> F       # exit 0 when the rebuild is byte for byte F, 1 when not
 
 Only agent tool calls count. System / user / developer messages (where the skill catalogue
 appears in every session) are never scanned, so a catalogue entry is not an activation.
@@ -39,6 +41,7 @@ ARRAY_ASSIGN = re.compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*\[')
 USE_MAP = re.compile(r"(?<![\w$])([\w$]+)(?=\s*\.\s*(?:map|forEach)\b)")
 ASSIGN_RUN = re.compile(r"(?<![\w$])([\w$]+)\s*=\s*\[")
 USE_OF = re.compile(r"\bof\s+(?=([\w$]+))")
+ENGINE_DIR = Path(__file__).resolve().parents[2] / "skills" / "skill-creator-studio" / "scripts"
 SCRIPTS = {"data-quality-audit": ("validate_csv.py",), "skill-creator-studio": ("studio.py",)}
 
 
@@ -374,17 +377,136 @@ def verify(manifest, eval_dir, main_skill_dir, cache_skill_dir):
     return problems
 
 
-def summarize(runs_dir):
-    """Table from run logs: per runtime, positive/negative triggered counts of with_skill runs.
+class EngineMismatch(Exception):
+    """The `studio_evals` module that was loaded does not come from this repository's engine folder."""
 
-    The counting rule lives once, in the engine (`studio_evals.summarize`, which the `evals --all` gate also uses). The engine is
-    found by a fixed path from this file, `<repo>/skills/skill-creator-studio/scripts/`, never from the cwd or an environment variable.
+
+def _engine():
+    """The engine module `studio_evals` of THIS repository, or EngineMismatch.
+
+    The counting rule lives once, in the engine (`studio_evals.summarize_logs`, which the `evals --all` gate also uses). The engine folder is
+    found by a fixed path from this file, `<repo>/skills/skill-creator-studio/scripts/`, never from the cwd or an environment variable: it is
+    put first on sys.path (any other entry for it is dropped), and the module that was loaded must sit in that folder (RF-S8).
     """
-    engine_dir = str(Path(__file__).resolve().parents[2] / "skills" / "skill-creator-studio" / "scripts")
-    if engine_dir not in sys.path:
-        sys.path.insert(0, engine_dir)
+    engine_dir = ENGINE_DIR.resolve()
+    sys.path[:] = [entry for entry in sys.path if entry != str(engine_dir)]
+    sys.path.insert(0, str(engine_dir))
     import studio_evals
-    return studio_evals.summarize(runs_dir)
+    found = Path(studio_evals.__file__).resolve().parent
+    if found != engine_dir:
+        raise EngineMismatch("loaded engine module studio_evals from %s, expected %s; nothing was counted" % (found, engine_dir))
+    return studio_evals
+
+
+def summarize(runs_dir):
+    """Table from run logs: per runtime, positive/negative triggered counts of with_skill runs (the engine's `summarize`)."""
+    return _engine().summarize(runs_dir)
+
+
+AB_NAME = re.compile(r"ab-([0-9]{4}-[0-9]{2}-[0-9]{2})\.json")
+
+
+def source_sha256(runs_dir):
+    """SHA-256 over the lines `<POSIX path>\\0<sha256 of the content, CRLF -> LF>\\n`, sorted by path, for EVERY file of the raw batch (logs, out/, blind/,
+    smoke/, ab-*, manifest, notes). A link, a cloud placeholder or a folder past the walk limits makes it ValueError: nothing is read through them."""
+    engine = _engine()
+    runs = Path(runs_dir)
+    found, links, _dirs, cloud, cut = engine.fs.walk_files(runs)
+    if links or cloud or cut:
+        raise ValueError("%s holds a link, a cloud placeholder or more files than the walk limit: %s" % (runs, sorted(links | cloud)[:1] or "limit"))
+    lines = []
+    for path in found:
+        if path.is_file():
+            lines.append(("%s\0%s\n" % (path.relative_to(runs).as_posix(), file_sha256_lf(path))).encode("utf-8"))
+    return hashlib.sha256(b"".join(sorted(lines))).hexdigest()
+
+
+def file_sha256_lf(path):
+    return hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def _entry(name, log, smoke):
+    """The compact-evidence entry of one raw log; ValueError when a field the gate reads has a type the schema refuses."""
+    runtime, with_skill = log["runtime"], log["with_skill"]
+    if not isinstance(runtime, str):
+        raise ValueError("%s: runtime is not a string" % name)
+    if with_skill is not None and not isinstance(with_skill, bool):
+        raise ValueError("%s: with_skill is not a bool or null" % name)
+    entry = {"file": name, "runtime": runtime, "with_skill": with_skill is True}
+    if smoke:
+        return entry
+    status = log.get("status")
+    entry["status"] = status if isinstance(status, str) else ""
+    for key, kind in (("case_id", str), ("kind", str), ("triggered", bool)):
+        value = log.get(key)
+        if value is not None and not isinstance(value, kind):
+            raise ValueError("%s: %s is not a %s or null" % (name, key, kind.__name__))
+        entry[key] = value
+    return entry
+
+
+def raw_batch(runs_dir, skill, batch, skipped=None):
+    """The compact evidence of a raw batch folder as a dict (what `compact` writes). `skipped` collects the names of files that could not be read."""
+    engine = _engine()
+    runs = Path(runs_dir)
+    if not runs.is_dir():
+        raise ValueError("%s is not a folder" % runs)
+    sha = source_sha256(runs)
+    logs, smoke, ab = [], [], {}
+    for name, log in engine.read_logs(runs, skipped):
+        match = AB_NAME.fullmatch(name)
+        if match:
+            ab[match.group(1)] = log
+        elif "runtime" in log and "with_skill" in log:
+            logs.append(_entry(name, log, False))
+    for name, log in engine.read_logs(runs / "smoke", skipped):
+        if "runtime" in log and "with_skill" in log:
+            smoke.append(_entry("smoke/" + name, log, True))
+    return {"schema": 1, "skill": skill, "batch": batch, "source": "ledger/agent-skill-studio/evidence/%s/%s/" % (batch, skill),
+            "source_sha256": sha, "logs": sorted(logs, key=lambda e: e["file"]), "smoke": sorted(smoke, key=lambda e: e["file"]), "ab": ab}
+
+
+def compact_text(runs_dir, skill, batch, skipped=None):
+    """The exact text of the compact evidence file: sorted keys, indent 2, LF, no time stamp, so the same raw folder gives the same bytes."""
+    return json.dumps(raw_batch(runs_dir, skill, batch, skipped), sort_keys=True, indent=2, ensure_ascii=False) + "\n"
+
+
+def _compact(a, parser):
+    engine = _engine()
+    skipped = []
+    if a.verify:
+        if a.out or not a.file:
+            parser.error("compact --verify takes <runs-dir> and the compact file, and no --out")
+        try:
+            held = json.loads(Path(a.file).read_text(encoding="utf-8"))
+            text = compact_text(a.runs_dir, held["skill"], held["batch"], skipped)
+            same = Path(a.file).read_bytes() == text.encode("utf-8")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print("compact differs: cannot rebuild %s from %s: %s" % (a.file, a.runs_dir, exc))
+            return 1
+        print("compact OK" if same else "compact differs: %s is not what %s gives" % (a.file, a.runs_dir))
+        return 0 if same else 1
+    if a.file or not (a.skill and a.batch and a.out):
+        parser.error("compact needs <runs-dir> --skill S --batch B --out F")
+    try:
+        text = compact_text(a.runs_dir, a.skill, a.batch, skipped)
+    except ValueError as exc:
+        print("ERROR: %s" % exc, file=sys.stderr)
+        return 2
+    if skipped:
+        print("WARNING: left out (unreadable or not a JSON object): %s" % ", ".join(sorted(skipped)), file=sys.stderr)
+    out = Path(a.out)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with engine.fs.create_exclusive(out) as handle:
+            handle.write(text.encode("utf-8"))
+    except FileExistsError:
+        print("ERROR: %s already exists; it is never overwritten" % out, file=sys.stderr)
+        return 2
+    except OSError as exc:
+        print("ERROR: cannot write %s: %s" % (out, exc), file=sys.stderr)
+        return 2
+    return 0
 
 
 def main(argv=None):
@@ -405,7 +527,22 @@ def main(argv=None):
         f.add_argument("--manifest", required=True)
     s = sub.add_parser("summarize")
     s.add_argument("runs_dir")
+    k = sub.add_parser("compact", help="write (or with --verify, rebuild and compare) the compact evidence file of a raw batch folder")
+    k.add_argument("runs_dir")
+    k.add_argument("file", nargs="?", help="with --verify: the compact file to compare with")
+    k.add_argument("--skill")
+    k.add_argument("--batch")
+    k.add_argument("--out", help="the compact file to create; exit 2 when it already exists")
+    k.add_argument("--verify", action="store_true")
     a = ap.parse_args(argv)
+    try:
+        return _dispatch(a, ap)
+    except EngineMismatch as exc:
+        print("ERROR: %s" % exc, file=sys.stderr)
+        return 2
+
+
+def _dispatch(a, ap):
     if a.cmd == "count":
         print(json.dumps(count(a.transcript, a.skill, a.runtime), ensure_ascii=False, indent=2))
     elif a.cmd == "hash":
@@ -418,6 +555,8 @@ def main(argv=None):
         problems = verify(json.loads(Path(a.manifest).read_text(encoding="utf-8")), a.eval_dir, a.main_skill_dir, a.cache_skill_dir)
         print("\n".join(problems) if problems else "manifest OK")
         return 1 if problems else 0
+    elif a.cmd == "compact":
+        return _compact(a, ap)
     else:
         rows = summarize(a.runs_dir)
         print("| runtime | positive triggered | negative triggered |")

@@ -3,9 +3,17 @@
   "source": "git archive 1211bfa",
   "cases": {
     "R-version": {
-      "exit": 0,
-      "stdout_text": "0.1.0\n",
-      "stderr": ""
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 0,
+        "stdout_text": "0.1.0\n",
+        "stderr": ""
+      },
+      "after": {
+        "exit": 0,
+        "stdout_text": "0.2.0\n",
+        "stderr": ""
+      }
     },
     "R-validate-all-require-evals-json": {
       "exit": 1
@@ -172,86 +180,171 @@
       "stderr": ""
     },
     "R-doctor-fixture-json": {
-      "exit": 1,
-      "stdout_json": {
-        "schema": 1,
-        "generated_at": "<TS>",
-        "studio_version": "0.1.0",
-        "roots": [
-          "<REPO>/tests/fixtures/doctor"
-        ],
-        "skills": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
-            "name": "bad-dir",
-            "lang": "en",
-            "errors": 0,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST8",
-                "level": "WARN",
-                "file": "examples",
-                "line": 0,
-                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
-              }
-            ]
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.1.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
           },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-key",
-            "name": "bad-key",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 0,
-            "codes": [
-              {
-                "code": "FM4",
-                "level": "ERROR",
-                "file": "SKILL.md",
-                "line": 4,
-                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
-              }
-            ]
-          },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
-            "name": "bad-long-ref",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST4",
-                "level": "WARN",
-                "file": "references/LONG.md",
-                "line": 0,
-                "message": "reference Markdown is not directly linked from SKILL.md"
-              },
-              {
-                "code": "ST5",
-                "level": "ERROR",
-                "file": "references/LONG.md",
-                "line": 1,
-                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
-              }
-            ]
-          }
-        ],
-        "skipped": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
-            "reason": "excluded"
-          }
-        ],
-        "totals": {
-          "skills": 3,
-          "errors": 2,
-          "warnings": 2,
-          "notes": 0
+          "new_vs_baseline": []
         },
-        "new_vs_baseline": []
+        "stderr": ""
       },
-      "stderr": ""
+      "after": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.2.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
+          },
+          "new_vs_baseline": []
+        },
+        "stderr": ""
+      }
     },
     "R-fmt-check-live-json": {
       "exit": 0
@@ -440,9 +533,17 @@
       }
     },
     "C-version": {
-      "exit": 0,
-      "stdout_text": "0.1.0\n",
-      "stderr": ""
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 0,
+        "stdout_text": "0.1.0\n",
+        "stderr": ""
+      },
+      "after": {
+        "exit": 0,
+        "stdout_text": "0.2.0\n",
+        "stderr": ""
+      }
     },
     "C-validate-all-require-evals-json": {
       "exit": 1
@@ -609,86 +710,171 @@
       "stderr": ""
     },
     "C-doctor-fixture-json": {
-      "exit": 1,
-      "stdout_json": {
-        "schema": 1,
-        "generated_at": "<TS>",
-        "studio_version": "0.1.0",
-        "roots": [
-          "<REPO>/tests/fixtures/doctor"
-        ],
-        "skills": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
-            "name": "bad-dir",
-            "lang": "en",
-            "errors": 0,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST8",
-                "level": "WARN",
-                "file": "examples",
-                "line": 0,
-                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
-              }
-            ]
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.1.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
           },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-key",
-            "name": "bad-key",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 0,
-            "codes": [
-              {
-                "code": "FM4",
-                "level": "ERROR",
-                "file": "SKILL.md",
-                "line": 4,
-                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
-              }
-            ]
-          },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
-            "name": "bad-long-ref",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST4",
-                "level": "WARN",
-                "file": "references/LONG.md",
-                "line": 0,
-                "message": "reference Markdown is not directly linked from SKILL.md"
-              },
-              {
-                "code": "ST5",
-                "level": "ERROR",
-                "file": "references/LONG.md",
-                "line": 1,
-                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
-              }
-            ]
-          }
-        ],
-        "skipped": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
-            "reason": "excluded"
-          }
-        ],
-        "totals": {
-          "skills": 3,
-          "errors": 2,
-          "warnings": 2,
-          "notes": 0
+          "new_vs_baseline": []
         },
-        "new_vs_baseline": []
+        "stderr": ""
       },
-      "stderr": ""
+      "after": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.2.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
+          },
+          "new_vs_baseline": []
+        },
+        "stderr": ""
+      }
     },
     "C-fmt-check-live-json": {
       "exit": 0
@@ -877,9 +1063,17 @@
       }
     },
     "E-version": {
-      "exit": 0,
-      "stdout_text": "0.1.0\n",
-      "stderr": ""
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 0,
+        "stdout_text": "0.1.0\n",
+        "stderr": ""
+      },
+      "after": {
+        "exit": 0,
+        "stdout_text": "0.2.0\n",
+        "stderr": ""
+      }
     },
     "E-validate-all-require-evals-json": {
       "exit": 1
@@ -1046,86 +1240,171 @@
       "stderr": ""
     },
     "E-doctor-fixture-json": {
-      "exit": 1,
-      "stdout_json": {
-        "schema": 1,
-        "generated_at": "<TS>",
-        "studio_version": "0.1.0",
-        "roots": [
-          "<REPO>/tests/fixtures/doctor"
-        ],
-        "skills": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
-            "name": "bad-dir",
-            "lang": "en",
-            "errors": 0,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST8",
-                "level": "WARN",
-                "file": "examples",
-                "line": 0,
-                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
-              }
-            ]
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.1.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
           },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-key",
-            "name": "bad-key",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 0,
-            "codes": [
-              {
-                "code": "FM4",
-                "level": "ERROR",
-                "file": "SKILL.md",
-                "line": 4,
-                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
-              }
-            ]
-          },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
-            "name": "bad-long-ref",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST4",
-                "level": "WARN",
-                "file": "references/LONG.md",
-                "line": 0,
-                "message": "reference Markdown is not directly linked from SKILL.md"
-              },
-              {
-                "code": "ST5",
-                "level": "ERROR",
-                "file": "references/LONG.md",
-                "line": 1,
-                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
-              }
-            ]
-          }
-        ],
-        "skipped": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
-            "reason": "excluded"
-          }
-        ],
-        "totals": {
-          "skills": 3,
-          "errors": 2,
-          "warnings": 2,
-          "notes": 0
+          "new_vs_baseline": []
         },
-        "new_vs_baseline": []
+        "stderr": ""
       },
-      "stderr": ""
+      "after": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.2.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
+          },
+          "new_vs_baseline": []
+        },
+        "stderr": ""
+      }
     },
     "E-fmt-check-live-json": {
       "exit": 0
@@ -1331,9 +1610,17 @@
       }
     },
     "S-version": {
-      "exit": 0,
-      "stdout_text": "0.1.0\n",
-      "stderr": ""
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 0,
+        "stdout_text": "0.1.0\n",
+        "stderr": ""
+      },
+      "after": {
+        "exit": 0,
+        "stdout_text": "0.2.0\n",
+        "stderr": ""
+      }
     },
     "S-validate-self-json": {
       "exit": 0
@@ -1454,86 +1741,171 @@
       "exit": 0
     },
     "S-doctor-fixture-json": {
-      "exit": 1,
-      "stdout_json": {
-        "schema": 1,
-        "generated_at": "<TS>",
-        "studio_version": "0.1.0",
-        "roots": [
-          "<REPO>/tests/fixtures/doctor"
-        ],
-        "skills": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
-            "name": "bad-dir",
-            "lang": "en",
-            "errors": 0,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST8",
-                "level": "WARN",
-                "file": "examples",
-                "line": 0,
-                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
-              }
-            ]
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.1.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
           },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-key",
-            "name": "bad-key",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 0,
-            "codes": [
-              {
-                "code": "FM4",
-                "level": "ERROR",
-                "file": "SKILL.md",
-                "line": 4,
-                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
-              }
-            ]
-          },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
-            "name": "bad-long-ref",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST4",
-                "level": "WARN",
-                "file": "references/LONG.md",
-                "line": 0,
-                "message": "reference Markdown is not directly linked from SKILL.md"
-              },
-              {
-                "code": "ST5",
-                "level": "ERROR",
-                "file": "references/LONG.md",
-                "line": 1,
-                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
-              }
-            ]
-          }
-        ],
-        "skipped": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
-            "reason": "excluded"
-          }
-        ],
-        "totals": {
-          "skills": 3,
-          "errors": 2,
-          "warnings": 2,
-          "notes": 0
+          "new_vs_baseline": []
         },
-        "new_vs_baseline": []
+        "stderr": ""
       },
-      "stderr": ""
+      "after": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.2.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
+          },
+          "new_vs_baseline": []
+        },
+        "stderr": ""
+      }
     },
     "S-fmt-check-self-json": {
       "exit": 0
@@ -1571,9 +1943,17 @@
       "stderr": ""
     },
     "Z-version": {
-      "exit": 0,
-      "stdout_text": "0.1.0\n",
-      "stderr": ""
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 0,
+        "stdout_text": "0.1.0\n",
+        "stderr": ""
+      },
+      "after": {
+        "exit": 0,
+        "stdout_text": "0.2.0\n",
+        "stderr": ""
+      }
     },
     "Z-validate-self-json": {
       "exit": 0
@@ -1694,86 +2074,171 @@
       "exit": 0
     },
     "Z-doctor-fixture-json": {
-      "exit": 1,
-      "stdout_json": {
-        "schema": 1,
-        "generated_at": "<TS>",
-        "studio_version": "0.1.0",
-        "roots": [
-          "<REPO>/tests/fixtures/doctor"
-        ],
-        "skills": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-dir",
-            "name": "bad-dir",
-            "lang": "en",
-            "errors": 0,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST8",
-                "level": "WARN",
-                "file": "examples",
-                "line": 0,
-                "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
-              }
-            ]
+      "changed_by": "SPR-03/TK11",
+      "before": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.1.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
           },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-key",
-            "name": "bad-key",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 0,
-            "codes": [
-              {
-                "code": "FM4",
-                "level": "ERROR",
-                "file": "SKILL.md",
-                "line": 4,
-                "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
-              }
-            ]
-          },
-          {
-            "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
-            "name": "bad-long-ref",
-            "lang": "en",
-            "errors": 1,
-            "warnings": 1,
-            "codes": [
-              {
-                "code": "ST4",
-                "level": "WARN",
-                "file": "references/LONG.md",
-                "line": 0,
-                "message": "reference Markdown is not directly linked from SKILL.md"
-              },
-              {
-                "code": "ST5",
-                "level": "ERROR",
-                "file": "references/LONG.md",
-                "line": 1,
-                "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
-              }
-            ]
-          }
-        ],
-        "skipped": [
-          {
-            "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
-            "reason": "excluded"
-          }
-        ],
-        "totals": {
-          "skills": 3,
-          "errors": 2,
-          "warnings": 2,
-          "notes": 0
+          "new_vs_baseline": []
         },
-        "new_vs_baseline": []
+        "stderr": ""
       },
-      "stderr": ""
+      "after": {
+        "exit": 1,
+        "stdout_json": {
+          "schema": 1,
+          "generated_at": "<TS>",
+          "studio_version": "0.2.0",
+          "roots": [
+            "<REPO>/tests/fixtures/doctor"
+          ],
+          "skills": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-dir",
+              "name": "bad-dir",
+              "lang": "en",
+              "errors": 0,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST8",
+                  "level": "WARN",
+                  "file": "examples",
+                  "line": 0,
+                  "message": "folder 'examples' is outside references/, scripts/, assets/, agents/ and tests/; move it or drop it from the skill"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-key",
+              "name": "bad-key",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 0,
+              "codes": [
+                {
+                  "code": "FM4",
+                  "level": "ERROR",
+                  "file": "SKILL.md",
+                  "line": 4,
+                  "message": "unknown frontmatter key 'triggers' for target portable; allowed keys: allowed-tools, compatibility, description, license, metadata, name; use metadata or a target adapter"
+                }
+              ]
+            },
+            {
+              "path": "<REPO>/tests/fixtures/doctor/bad-long-ref",
+              "name": "bad-long-ref",
+              "lang": "en",
+              "errors": 1,
+              "warnings": 1,
+              "codes": [
+                {
+                  "code": "ST4",
+                  "level": "WARN",
+                  "file": "references/LONG.md",
+                  "line": 0,
+                  "message": "reference Markdown is not directly linked from SKILL.md"
+                },
+                {
+                  "code": "ST5",
+                  "level": "ERROR",
+                  "file": "references/LONG.md",
+                  "line": 1,
+                  "message": "reference >100 lines needs a '## Contents' (or '## Mục lục') in its first 25 lines"
+                }
+              ]
+            }
+          ],
+          "skipped": [
+            {
+              "path": "<REPO>/tests/fixtures/doctor/.claude/skills",
+              "reason": "excluded"
+            }
+          ],
+          "totals": {
+            "skills": 3,
+            "errors": 2,
+            "warnings": 2,
+            "notes": 0
+          },
+          "new_vs_baseline": []
+        },
+        "stderr": ""
+      }
     },
     "Z-fmt-check-self-json": {
       "exit": 0

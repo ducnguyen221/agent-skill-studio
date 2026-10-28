@@ -1,0 +1,83 @@
+{
+  "ab": {},
+  "batch": "studio-SPR-02",
+  "logs": [
+    {
+      "case_id": "csv-clean",
+      "file": "2026-10-27T16-21-43Z_claude-code_csv-clean_with.json",
+      "kind": "typical",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": true,
+      "with_skill": true
+    },
+    {
+      "case_id": "csv-duplicate",
+      "file": "2026-10-27T16-22-12Z_claude-code_csv-duplicate_with.json",
+      "kind": "typical",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "csv-invalid-numeric",
+      "file": "2026-10-27T16-22-49Z_claude-code_csv-invalid-numeric_with.json",
+      "kind": "edge",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": true,
+      "with_skill": true
+    },
+    {
+      "case_id": "csv-negative",
+      "file": "2026-10-27T16-23-06Z_claude-code_csv-negative_with.json",
+      "kind": "near-miss",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "data-quality-audit-edge-2",
+      "file": "2026-10-27T16-23-26Z_claude-code_data-quality-audit-edge-2_with.json",
+      "kind": "edge",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "data-quality-audit-input-error",
+      "file": "2026-10-27T16-23-47Z_claude-code_data-quality-audit-input-error_with.json",
+      "kind": "input-error",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "data-quality-audit-near-miss-convert",
+      "file": "2026-10-27T16-24-06Z_claude-code_data-quality-audit-near-miss-convert_with.json",
+      "kind": "near-miss",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    },
+    {
+      "case_id": "data-quality-audit-near-miss-merge",
+      "file": "2026-10-27T16-24-24Z_claude-code_data-quality-audit-near-miss-merge_with.json",
+      "kind": "near-miss",
+      "runtime": "claude-code",
+      "status": "ran",
+      "triggered": false,
+      "with_skill": true
+    }
+  ],
+  "schema": 1,
+  "skill": "data-quality-audit",
+  "smoke": [],
+  "source": "ledger/agent-skill-studio/evidence/studio-SPR-02/data-quality-audit/",
+  "source_sha256": "aaee686ec7e18b2257391adcbafbf60a900e9810b989c30397b8393acb44ed62"
+}

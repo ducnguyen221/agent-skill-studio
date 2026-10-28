@@ -1,1 +1,0 @@
-Added [sort_integers.py](~/OpcOS/workspaces/spr18-eval/codex/2026-10-17T17-06-00Z_creator-negative-task_with/sort_integers.py), which returns a new list sorted in ascending order and leaves the input unchanged.

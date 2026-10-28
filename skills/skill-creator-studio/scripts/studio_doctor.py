@@ -32,6 +32,18 @@ def _is_excluded(parts: tuple, include_cache: bool) -> bool:
     return not include_cache and "cache" in low[-1]
 
 
+def _real_link(path: Path) -> bool:
+    """True for a link that can be read (a symlink or junction): the only kind of root that is resolved. A path that cannot be probed (`fs.is_link`
+    says True for it, FR13.1) is not: nothing is asked about where it leads, it ends as «root not found» like any root that is not a folder."""
+    if not fs.is_link(path):
+        return False
+    try:
+        os.lstat(path)
+    except OSError:
+        return False
+    return True
+
+
 def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, skip_markers: tuple = ()) -> list[Path]:
     """Absolute root paths from --roots (`;` separated) and --roots-file (one per line; `#` starts a comment, also after a path).
     Without either, the repo's skills/ is the root; outside the repo that is an error. A path in a cloud or secret zone is
@@ -68,7 +80,7 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
         if fs.root_too_broad(path, markers):
             raise ValueError("root too broad; pass narrower roots (not a drive root, the home folder or a folder above it): %s" % label)
         if not fs.zone_reason(path, markers):  # decided from the name, before anything touches the path
-            probe = Path(os.path.realpath(path)) if fs.is_link(path) else path  # a root given as a link is the user's explicit choice: judged by what it resolves to, as iter_skill_dirs does
+            probe = Path(os.path.realpath(path)) if _real_link(path) else path  # a root given as a link is the user's explicit choice: judged by what it resolves to, as iter_skill_dirs does
             if not (fs.path_is_cloud(probe) or fs._is_dir_quiet(probe)):  # a cloud placeholder root exists: iter_skill_dirs skips it with reason cloud
                 raise ValueError("root not found or not a directory: %s" % label)
         found.append(path)

@@ -27,12 +27,20 @@ jobs:
       - name: Check portability manifests and external eval metadata
         run: python studio.py validate --all --require-evals
       - name: Validate eval manifests (not model execution)
-        run: python studio.py evals --all
+        run: |
+          status=0
+          python studio.py evals --all 2> "$RUNNER_TEMP/evals.err" || status=$?
+          cat "$RUNNER_TEMP/evals.err" >&2
+          if grep -q "model_evaluated gate skipped" "$RUNNER_TEMP/evals.err"; then
+            echo "::error::the model_evaluated gate was skipped on the Studio repository; it must run here"
+            exit 1
+          fi
+          exit "$status"
       - name: Unit and local link tests
         run: python -m unittest discover -s tests -v
-      - name: Package runtime Skill samples (exclude evals)
-        run: |
-          python studio.py package skills/skill-creator-studio --out "${{ runner.temp }}/ass-ci"
-          python studio.py package skills/data-quality-audit --out "${{ runner.temp }}/ass-ci"
+      - name: Package the shipped skill (exclude evals)
+        run: python studio.py package skills/skill-creator-studio --out "${{ runner.temp }}/ass-ci"
+      - name: Validate the CSV sample skill (examples/, not shipped)
+        run: python studio.py validate examples/data-quality-audit --require-evals
       - name: Explicit model-evaluation disclaimer
         run: echo 'Static CI does NOT execute model-dependent evaluations; use evals/RUNBOOK.md.'

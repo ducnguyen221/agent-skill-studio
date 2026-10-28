@@ -1,9 +1,0 @@
-Ghép `fixtures/orders.csv` với `fixtures/customers.csv` theo `customer_id`:
-
-| order_id | customer_id | amount | name |
-|---|---|---:|---|
-| 1 | c1 | 10 | Alice |
-| 2 | c2 | 20 | Bob |
-| 3 | c1 | 30 | Alice |
-
-Đã ghép 3 đơn hàng; không có đơn nào thiếu khách hàng tương ứng. CSV nguồn không bị sửa.

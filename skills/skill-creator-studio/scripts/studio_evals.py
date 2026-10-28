@@ -266,7 +266,16 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     stats.update({"exported": len(evals), "excluded_negative": len(cases) - len(positive), "path": str(target)})
     return 0, [], stats
 
-# --- the `model_evaluated` gate of registry/catalog.json (SPR-02 TK6, FR6, RQ-018; moved as it was from tests/test_studio.py) ---
+# --- the `model_evaluated` gate of evals/catalog.json and the compact evidence it reads (SPR-02 TK6 FR6; SPR-03 TK1 FR2, FR3) ---
+
+CATALOG_REL = "evals/catalog.json"
+EVIDENCE_KEYS = ("schema", "skill", "batch", "source", "source_sha256", "logs", "smoke", "ab")
+LOG_TYPES = {"file": str, "runtime": str, "with_skill": bool, "status": str, "case_id": (str, type(None)), "kind": (str, type(None)),
+             "triggered": (bool, type(None))}
+LOG_REQUIRED = ("file", "runtime", "with_skill", "status")  # the other three keys of a log entry may be left out (read as null)
+SMOKE_TYPES = {"file": str, "runtime": str, "with_skill": bool}
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+
 
 def engine_repo_root() -> Path | None:
     """The repository this engine file sits in (never the cwd), or None for an engine copied out of any repository."""
@@ -286,24 +295,49 @@ def _load_json(path):
     return json.loads(_read_text(path))
 
 
+INSTALL_DIR_NAMES = (".claude", ".agents", ".codex", ".gemini")  # the folders an installed copy of the engine lives under (SPR-03 FR13.3)
+
+
+def installed_engine(engine_file=None) -> bool:
+    """True when a folder above the engine file is named exactly `.claude`, `.agents`, `.codex` or `.gemini` (case-insensitive: those file systems
+    are): an installed copy, whose surrounding tree is not the Studio repository. Names only; nothing is stat-ed."""
+    parents = Path(os.path.abspath(__file__ if engine_file is None else engine_file)).parents
+    return any(parent.name.casefold() in INSTALL_DIR_NAMES for parent in parents)
+
+
 def gate_root() -> Path | None:
     """The repository the `model_evaluated` gate runs in: the engine's own repository when it has an evals/ folder (a plain one), else None
-    (an engine copied out of a repository, or one installed into a tree without evals/, has nothing to count)."""
+    (an engine installed under `.claude`/`.agents`/`.codex`/`.gemini`, copied out of a repository, or put in a tree without evals/, has nothing to
+    count: an installed copy never reads the catalog of the tree around it, FR13.3)."""
+    if installed_engine():
+        return None
     root = engine_repo_root()
     if root is None or not fs._is_dir_quiet(root / "evals"):
         return None
     return root
 
 
-def summarize(runs_dir) -> dict:
-    """Per runtime, the with-skill run logs that ran: {runtime: {pos, pos_trig, neg, neg_trig}}. The one counting rule of the gate and of
-    evals/tools/activation.py (which calls this). Logs are read without following a link, up to DOCTOR_MAX_FILE_BYTES; an unreadable one is skipped."""
-    rows: dict = {}
+def read_logs(runs_dir, skipped=None) -> list[tuple[str, dict]]:
+    """[(file name, parsed JSON object)] of the `*.json` files directly in `runs_dir`, sorted by name. Files are read without following a link, up
+    to DOCTOR_MAX_FILE_BYTES; one that cannot be read or is not a JSON object is left out (its name goes to `skipped` when a list is given)."""
+    out = []
     for f in sorted(Path(runs_dir).glob("*.json")):
         try:
             log = _load_json(f)
         except (ValueError, OSError):
-            continue
+            log = None
+        if isinstance(log, dict):
+            out.append((f.name, log))
+        elif skipped is not None:
+            skipped.append(f.name)
+    return out
+
+
+def summarize_logs(logs) -> dict:
+    """Per runtime, the with-skill logs that ran: {runtime: {pos, pos_trig, neg, neg_trig}}. The one counting rule of the gate and of
+    evals/tools/activation.py; a raw run folder (`summarize`) and a compact evidence file (the gate) both go through it."""
+    rows: dict = {}
+    for log in logs:
         if not isinstance(log, dict) or "runtime" not in log or "with_skill" not in log or log.get("status") != "ran":
             continue
         if log["with_skill"] is not True:
@@ -314,6 +348,20 @@ def summarize(runs_dir) -> dict:
         if log.get("triggered"):
             r["pos_trig" if positive else "neg_trig"] += 1
     return rows
+
+
+def ran_logs(logs):
+    """{runtime: {"with": [logs], "base": [logs]}} for every log with status ran (baseline logs included)."""
+    out = {}
+    for log in logs:
+        if isinstance(log, dict) and "runtime" in log and "with_skill" in log and log.get("status") == "ran":
+            out.setdefault(log["runtime"], {"with": [], "base": []})["with" if log["with_skill"] is True else "base"].append(log)
+    return out
+
+
+def summarize(runs_dir) -> dict:
+    """`summarize_logs` of the run logs in a raw folder (for evals/tools/activation.py summarize)."""
+    return summarize_logs([log for _name, log in read_logs(runs_dir)])
 
 
 def _relative_problem(value) -> str | None:
@@ -332,32 +380,136 @@ def _relative_problem(value) -> str | None:
     return None
 
 
-def _runs_unsafe(runs_root: Path) -> str | None:
-    """Why the runs/ tree cannot be counted safely (a link, a cloud placeholder, or more than the walk limits), else None. Nothing is opened."""
-    if fs.is_link(runs_root) or fs.path_is_cloud(runs_root):
-        return "%s is a link or a cloud placeholder" % runs_root
-    _found, links, _dirs, cloud, cut = fs.walk_files(runs_root)
+def _plain_tree(folder: Path) -> tuple[str | None, list[Path]]:
+    """(why the folder cannot be read safely: a link, a cloud placeholder, or more than the walk limits, else None; the files and folders in it). Nothing is opened."""
+    if fs.is_link(folder) or fs.path_is_cloud(folder):
+        return "%s is a link or a cloud placeholder" % folder, []
+    found, links, _dirs, cloud, cut = fs.walk_files(folder)
     if links:
-        return "link %s" % sorted(links)[0]
+        return "link %s" % sorted(links)[0], []
     if cloud:
-        return "cloud placeholder %s" % sorted(cloud)[0]
+        return "cloud placeholder %s" % sorted(cloud)[0], []
     if cut:
-        return "more than %d entries or %d levels under %s" % (C.DOCTOR_MAX_FILES_PER_SKILL, C.DOCTOR_MAX_SKILL_DEPTH, runs_root)
+        return "more than %d entries or %d levels under %s" % (C.DOCTOR_MAX_FILES_PER_SKILL, C.DOCTOR_MAX_SKILL_DEPTH, folder), []
+    return None, found
+
+
+def _link_below(path, root) -> Path | None:
+    """The first link among `path` and its parents below `root` (`root` itself being a link is not counted), else None."""
+    link = fs.link_in_chain(path, root)
+    return None if link is None or Path(link) == Path(root) else Path(link)
+
+
+def _log_entry_problem(entry, types, required, where) -> str | None:
+    if not isinstance(entry, dict):
+        return "%s entry is not an object" % where
+    if set(entry) - set(types):
+        return "%s entry has unknown key(s) %s" % (where, sorted(set(entry) - set(types)))
+    if [k for k in required if k not in entry]:
+        return "%s entry lacks key(s) %s" % (where, [k for k in required if k not in entry])
+    for key, kind in types.items():
+        if key in entry and not isinstance(entry[key], kind):
+            return "%s entry %r: %s has the wrong type (%s)" % (where, entry.get("file"), key, type(entry[key]).__name__)
     return None
 
 
+def _batch_problem(data, skill: str, batch: str) -> str | None:
+    """Why a parsed compact evidence file is not acceptable for `skill` / `batch` (schema 1), else None."""
+    if not isinstance(data, dict):
+        return "is not a JSON object"
+    if set(data) - set(EVIDENCE_KEYS):
+        return "has unknown key(s) %s" % sorted(set(data) - set(EVIDENCE_KEYS))
+    if [k for k in EVIDENCE_KEYS if k not in data]:
+        return "lacks key(s) %s" % [k for k in EVIDENCE_KEYS if k not in data]
+    if type(data["schema"]) is not int or data["schema"] != 1:
+        return "schema %r is not 1" % (data["schema"],)
+    if data["skill"] != skill:
+        return "skill %r is not %r" % (data["skill"], skill)
+    if data["batch"] != batch:
+        return "batch %r is not %r" % (data["batch"], batch)
+    if data["source"] != "ledger/agent-skill-studio/evidence/%s/%s/" % (batch, skill):
+        return "source %r does not name the ledger folder of this batch" % (data["source"],)
+    if not isinstance(data["source_sha256"], str) or not SHA256_RE.fullmatch(data["source_sha256"]):
+        return "source_sha256 is not 64 lowercase hex"
+    if not isinstance(data["logs"], list) or not isinstance(data["smoke"], list):
+        return "logs and smoke must be lists"
+    seen = set()
+    for where, entries, types, required in (("logs", data["logs"], LOG_TYPES, LOG_REQUIRED), ("smoke", data["smoke"], SMOKE_TYPES, tuple(SMOKE_TYPES))):
+        for entry in entries:
+            bad = _log_entry_problem(entry, types, required, where)
+            if bad:
+                return bad
+            name = entry["file"]
+            reason = _relative_problem(name)
+            slash = name.count("/")
+            if reason or (where == "logs" and slash) or (where == "smoke" and not (slash == 1 and name.startswith("smoke/"))):
+                return "%s file %r is not a path inside the batch (%s)" % (where, name, reason or "expected %s" % ("x.json" if where == "logs" else "smoke/x.json"))
+            if name in seen:
+                return "file %r appears twice" % name
+            seen.add(name)
+    if not isinstance(data["ab"], dict):
+        return "ab must be an object"
+    for date, block in data["ab"].items():
+        if not DATE_RE.fullmatch(date) or not isinstance(block, dict):
+            return "ab key %r must be YYYY-MM-DD with an object value" % date
+        per = block.get("per_runtime", {})
+        if not isinstance(per, dict) or any(not isinstance(row, dict) for row in per.values()):
+            return "ab %s per_runtime must be an object of objects" % date
+    return None
+
+
+def load_batch(path, root, skill: str, batch: str) -> dict:
+    """The compact evidence file `path` of `skill`'s batch `batch` as a dict. Read without following a link and never when a link lies between it and `root`
+    or it is a cloud placeholder; up to DOCTOR_MAX_FILE_BYTES. ValueError (the reason) for anything else: unreadable, not JSON, wrong schema or type."""
+    path = Path(path)
+    link = _link_below(path, root)
+    if link is not None:
+        raise ValueError("link %s lies on its path; it is not read" % link)
+    if fs.path_is_cloud(path):
+        raise ValueError("is a cloud placeholder; it is not read")
+    try:
+        data = _load_json(path)
+    except OSError as exc:
+        raise ValueError("cannot be read: %s: %s" % (type(exc).__name__, exc))
+    except ValueError as exc:  # also json.JSONDecodeError, UnicodeDecodeError and the size limit
+        raise ValueError("cannot be read: %s" % exc)
+    bad = _batch_problem(data, skill, batch)
+    if bad:
+        raise ValueError(bad)
+    return data
+
+
+def _scan_evidence(root, evals_rel: str, skill: str):
+    """(batches {file stem: dict}, stems that failed to load, problems, readable) for evals/<x>/evidence/*.json. A missing folder is empty and readable."""
+    ev_dir = Path(root) / evals_rel / "evidence"
+    batches, failed, problems = {}, set(), []
+    if not os.path.lexists(ev_dir):
+        return batches, failed, problems, True
+    reason, found = _plain_tree(ev_dir)
+    link = _link_below(ev_dir, root)
+    if reason or link is not None:
+        return batches, failed, ["evidence dir not safe to read: %s" % (reason or "link %s" % link)], False
+    for path in sorted(p for p in found if p.parent == ev_dir and p.suffix == ".json" and not fs._is_dir_quiet(p)):
+        try:
+            batches[path.stem] = load_batch(path, root, skill, path.stem)
+        except ValueError as exc:
+            failed.add(path.stem)
+            problems.append("evidence %s: %s" % (path.relative_to(root).as_posix(), exc))
+    return batches, failed, problems, True
+
+
 def catalog_problems(root) -> list[str]:
-    """Every reason registry/catalog.json of the repository at `root` is not backed by counted run logs; a missing catalog or tool is a reason too."""
+    """Every reason evals/catalog.json of the repository at `root` is not backed by counted evidence; a missing catalog or tool is a reason too."""
     root = Path(root)
-    catalog = root / "registry" / "catalog.json"
+    catalog = root / CATALOG_REL
     if not catalog.is_file():
-        return ["registry/catalog.json is missing in the repository %s; the model_evaluated gate cannot run" % root]
+        return ["%s is missing in the repository %s; the model_evaluated gate cannot run" % (CATALOG_REL, root)]
     if fs.is_link(catalog) or fs.path_is_cloud(catalog):
-        return ["registry/catalog.json is a link or a cloud placeholder; it is not read"]
+        return ["%s is a link or a cloud placeholder; it is not read" % CATALOG_REL]
     try:
         return model_evaluated_problems(catalog, root)
     except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
-        return ["registry/catalog.json or its evidence cannot be read: %s: %s" % (type(exc).__name__, exc)]
+        return ["%s or its evidence cannot be read: %s: %s" % (CATALOG_REL, type(exc).__name__, exc)]
 
 
 RESULT_VALUES = ("passed", "below-threshold", "partial", "not_run")
@@ -368,9 +520,10 @@ AB_THRESHOLDS = (("positive_triggered", lambda v: v >= 4, ">= 4"), ("negative_tr
 
 
 def model_evaluated_problems(catalog_path, root):
-    """Return the list of reasons the catalog's model_evaluated / status claims are not backed by counted run logs."""
+    """Return the list of reasons the catalog's model_evaluated / status claims are not backed by counted evidence."""
     problems = []
     catalog = _load_json(Path(catalog_path))
+    declared = set()
     for skill in catalog["skills"]:
         name, targets = skill["name"], set(skill["targets"])
         flag, ev = skill.get("model_evaluated"), skill.get("evaluated")
@@ -383,20 +536,17 @@ def model_evaluated_problems(catalog_path, root):
         if bad:  # catalog values name folders below the repository; nothing outside it is walked or read (FR6.4)
             problems.append("%s evals %r must be a plain relative folder name: it %s" % (tag, skill["evals"], bad))
             continue
-        runs_root = Path(root) / skill["evals"] / "runs"
-        if runs_root.is_dir():  # nothing under runs/ is opened, listed further or counted until the whole tree is known to be plain files (FR6.4)
-            reason = _runs_unsafe(runs_root)
-            if reason:
-                problems.append("%s runs dir not safe to count: %s" % (tag, reason))
-                continue
-        # every runtime that appears in any run log must be a declared target
-        for f in sorted(list(runs_root.glob("*/*.json")) + list(runs_root.glob("*/smoke/*.json"))) if runs_root.is_dir() else []:
-            try:
-                log = _load_json(f)
-            except (ValueError, OSError):
-                continue
-            if isinstance(log, dict) and "runtime" in log and "with_skill" in log and log["runtime"] not in targets:
-                problems.append("%s log %s has runtime %r not in targets %s" % (tag, f.name, log["runtime"], sorted(targets)))
+        evals_rel = skill["evals"].replace("\\", "/").rstrip("/")
+        declared.add(evals_rel)
+        # nothing under evidence/ is opened until the folder is known to hold plain files; every runtime in any batch must be a declared target
+        batches, failed, scan_problems, readable = _scan_evidence(root, evals_rel, name)
+        problems.extend("%s %s" % (tag, p) for p in scan_problems)
+        if not readable:
+            continue
+        for stem, data in sorted(batches.items()):
+            for entry in data["logs"] + data["smoke"]:
+                if entry["runtime"] not in targets:
+                    problems.append("%s log %s/%s has runtime %r not in targets %s" % (tag, stem, entry["file"], entry["runtime"], sorted(targets)))
         if ev is None:
             if flag is True:
                 problems.append("%s model_evaluated=true without an `evaluated` block" % tag)
@@ -417,42 +567,42 @@ def model_evaluated_problems(catalog_path, root):
         if bad:
             problems.append("%s evaluated.sprint %r must be a plain relative folder name: it %s" % (tag, sprint, bad))
             continue
+        evidence, expected = ev.get("evidence"), "%s/evidence/%s.json" % (evals_rel, sprint)
+        bad = "is required" if evidence is None else _relative_problem(evidence)
+        if bad is not None or str(evidence).replace("\\", "/") != expected:
+            problems.append("%s evaluated.evidence %r must be %s: it %s" % (tag, evidence, expected, bad or "names another file"))
+            continue
         if flag is True and set(harnesses) != targets:
             problems.append("%s evaluated.harnesses keys %s != targets %s" % (tag, sorted(harnesses), sorted(targets)))
         if set(harnesses) - targets:
             problems.append("%s evaluated.harnesses has harness outside targets: %s" % (tag, sorted(set(harnesses) - targets)))
-        runs_dir = runs_root / sprint
-        if runs_dir.is_dir():  # the folder that is counted is walked itself, and no link may lie between it and the repository
-            reason = _runs_unsafe(runs_dir)
-            link = fs.link_in_chain(runs_dir, root)
-            if link is not None and Path(link) == Path(root):
-                link = None
-            if reason or link is not None:
-                problems.append("%s runs dir not safe to count: %s" % (tag, reason or "link %s" % link))
-                continue
-        counted = summarize(runs_dir) if runs_dir.is_dir() else {}
-        ran_logs = _ran_logs(runs_dir) if runs_dir.is_dir() else {}
+        if sprint in failed:  # its reason is already listed above
+            continue
+        if sprint not in batches:
+            problems.append("%s %s is missing" % (tag, expected))
+            continue
+        batch = batches[sprint]
+        counted, ran = summarize_logs(batch["logs"]), ran_logs(batch["logs"])
         cases_file = Path(root) / skill["evals"] / "cases.json"
         cases = _load_json(cases_file).get("cases", []) if cases_file.is_file() else []
         n_pos = sum(1 for c in cases if c.get("should_trigger") is True)
         n_neg = sum(1 for c in cases if c.get("should_trigger") is False)
         ab_report = ev.get("ab_report")
-        if ab_report is not None and not str(ab_report).replace("\\", "/").startswith("%s/runs/%s/" % (str(skill["evals"]).rstrip("/"), sprint)):
-            problems.append("%s ab_report %r must be under %s/runs/%s/" % (tag, ab_report, str(skill["evals"]).rstrip("/"), sprint))
+        if ab_report is not None and str(ab_report).replace("\\", "/") != expected:
+            problems.append("%s ab_report %r must equal evaluated.evidence %s" % (tag, ab_report, expected))
         elif flag is True and ab_report is None:
             problems.append("%s model_evaluated=true needs evaluated.ab_report" % tag)
         date = ev.get("date")
         if (date is not None or any(v == "ran" for v in harnesses.values())) and not (isinstance(date, str) and DATE_RE.fullmatch(date)):
-            problems.append("%s evaluated.date %r must be a string YYYY-MM-DD (it names ab-<date>.json)" % (tag, date))
+            problems.append("%s evaluated.date %r must be a string YYYY-MM-DD (it names the ab block of the evidence)" % (tag, date))
             continue
         ab_name = "ab-%s.json" % (date or "")
-        ab_path = runs_dir / ab_name
         ab = None
         if any(v == "ran" for v in harnesses.values()):
-            if not ab_path.is_file():
-                problems.append("%s %s missing under %s" % (tag, ab_name, runs_dir.as_posix()))
+            if date not in batch["ab"]:
+                problems.append("%s %s missing under %s" % (tag, ab_name, expected))
             else:
-                ab = _load_json(ab_path).get("per_runtime", {})
+                ab = batch["ab"][date].get("per_runtime", {})
         for h, state in sorted(harnesses.items()):
             if state == "ran":
                 row = (ab or {}).get(h)
@@ -468,7 +618,7 @@ def model_evaluated_problems(catalog_path, root):
                             below = True
                             if flag is True:  # flag false drops only this threshold application, never the integrity checks below
                                 problems.append("%s %s %s=%r required %s" % (tag, h, key, row.get(key), text))
-                    mine_logs = ran_logs.get(h, {"with": [], "base": []})
+                    mine_logs = ran.get(h, {"with": [], "base": []})
                     pos = [l for l in mine_logs["with"] if l.get("kind") != "near-miss"]
                     neg = [l for l in mine_logs["with"] if l.get("kind") == "near-miss"]
                     if len(pos) != n_pos:
@@ -490,8 +640,8 @@ def model_evaluated_problems(catalog_path, root):
             elif isinstance(state, str) and state.startswith("not_run:") and len(state) > len("not_run:"):
                 if ab is not None and h in ab:
                     problems.append("%s harness %s is %r but %s has per_runtime numbers for it" % (tag, h, state, ab_name))
-                if h in ran_logs:
-                    problems.append("%s harness %s is %r but %s has a ran log for it" % (tag, h, state, runs_dir.as_posix()))
+                if h in ran:
+                    problems.append("%s harness %s is %r but %s has a ran log for it" % (tag, h, state, expected))
             else:
                 problems.append("%s harness %s state %r must be 'ran' or 'not_run:<reason>'" % (tag, h, state))
         # `result` must equal the value recomputed from the harness states + threshold outcome. Priority when several apply:
@@ -507,17 +657,11 @@ def model_evaluated_problems(catalog_path, root):
             problems.append("%s model_evaluated=false but evaluated.result is 'passed' (recomputed %r)" % (tag, recomputed))
         elif result in RESULT_VALUES and result != recomputed:
             problems.append("%s evaluated.result %r != recomputed %r" % (tag, result, recomputed))
+    evals_dir = Path(root) / "evals"
+    if fs.is_link(evals_dir):  # a link, or a folder that cannot be probed (FR13.1): its evidence/ folders cannot be compared with the catalog, and that is said
+        problems.append("evals/ is a link or cannot be probed; its evidence folders are not checked against the catalog")
+    elif evals_dir.is_dir():  # an evidence/ folder whose skill the catalog does not name is never skipped silently
+        with os.scandir(evals_dir) as scan:
+            folders = sorted(e.name for e in scan if e.is_dir(follow_symlinks=False) and os.path.lexists(evals_dir / e.name / "evidence"))
+        problems.extend("evals/%s/evidence has no catalog entry with evals: evals/%s" % (n, n) for n in folders if "evals/%s" % n not in declared)
     return problems
-
-
-def _ran_logs(runs_dir):
-    """{runtime: {"with": [logs], "base": [logs]}} for every top-level run log with status ran (baseline logs included)."""
-    out = {}
-    for f in sorted(Path(runs_dir).glob("*.json")):
-        try:
-            log = _load_json(f)
-        except (ValueError, OSError):
-            continue
-        if isinstance(log, dict) and "runtime" in log and "with_skill" in log and log.get("status") == "ran":
-            out.setdefault(log["runtime"], {"with": [], "base": []})["with" if log["with_skill"] is True else "base"].append(log)
-    return out
