@@ -312,7 +312,7 @@ class ProbeErrorTests(unittest.TestCase):
         import errno
         return mock.patch.object(Path, "is_symlink", side_effect=OSError(errno.ENAMETOOLONG, "File name too long"))
 
-    def test_bat_loi_is_link_treats_oserror_as_not_a_link(self):
+    def test_bat_loi_is_link_treats_oserror_as_a_link(self):
         """bắt-lỗi, LẬT ở SPR-03 TK9 (1a RF-T6 asserted False; now True): fs.is_link returns True when pathlib raises ENAMETOOLONG for the path
         (CI ubuntu on 138cbfa: it raised). Why flipped: a path that cannot be probed is no longer «not a link» — that failed open, and the callers
         (doctor, fmt, validate, package, install) went on as if it were an ordinary path (RQ-025 / RF-S4, SPEC FR13.1). Fails closed: the callers

@@ -165,14 +165,14 @@ class SkillDirsSymlinkedManifestTests(unittest.TestCase):
             write_skill(root / "skills" / "good", "good")
             write_skill(root / "skills" / "bad", "bad")
             bad = os.path.normcase(str(root / "skills" / "bad" / "SKILL.md"))
-            real_lexists = os.path.lexists
+            real_lstat = os.lstat
 
-            def lexists(path):
-                if os.path.normcase(os.fspath(path)) == bad:
+            def lstat(path, *args, **kwargs):  # SPR-03 TK9: skill_dirs asks lstat (is_link, fails closed), no longer os.path.lexists, which answered False for this error
+                if not isinstance(path, int) and os.path.normcase(os.fspath(path)) == bad:
                     raise PermissionError("denied")
-                return real_lexists(path)
+                return real_lstat(path, *args, **kwargs)
 
-            with mock.patch.object(os.path, "lexists", lexists):
+            with mock.patch.object(os, "lstat", lstat):
                 self.assertEqual(["good"], [p.name for p in E.fs.skill_dirs(root)])
 
 

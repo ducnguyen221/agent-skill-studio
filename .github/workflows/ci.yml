@@ -27,7 +27,15 @@ jobs:
       - name: Check portability manifests and external eval metadata
         run: python studio.py validate --all --require-evals
       - name: Validate eval manifests (not model execution)
-        run: python studio.py evals --all
+        run: |
+          status=0
+          python studio.py evals --all 2> "$RUNNER_TEMP/evals.err" || status=$?
+          cat "$RUNNER_TEMP/evals.err" >&2
+          if grep -q "model_evaluated gate skipped" "$RUNNER_TEMP/evals.err"; then
+            echo "::error::the model_evaluated gate was skipped on the Studio repository; it must run here"
+            exit 1
+          fi
+          exit "$status"
       - name: Unit and local link tests
         run: python -m unittest discover -s tests -v
       - name: Package the shipped skill (exclude evals)

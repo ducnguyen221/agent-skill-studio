@@ -43,7 +43,11 @@ def find_skills(args):
     if args.all:
         if root is None:
             raise ValueError("--all requires Studio repository; use an explicit Skill path")
-        return fs.skill_dirs(root)
+        skipped: list = []
+        found = fs.skill_dirs(root, skipped)
+        for item in skipped:  # a skill that was not looked at is said, never left out silently (FR13.1); the exit code is not changed by it
+            print("WARN: --all skipped %s (%s); it is not checked" % (item["path"], item["reason"]), file=sys.stderr)
+        return found
     if not args.skill:
         raise ValueError("provide a skill path or --all")
     if getattr(args, "typed", False):

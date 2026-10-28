@@ -120,31 +120,54 @@ def repo_root(start: Path) -> Path | None:
     return None
 
 
-def skill_dirs(root: Path) -> list[Path]:
-    """The folders under `root/skills` that hold a SKILL.md. A link (symlink, junction), a cloud placeholder and a `skills` folder that is
-    itself a link are neither listed nor entered, and nothing is stat-ed through a link (SPR-02 FR7.1: the pattern of walk_files)."""
+def skill_dirs(root: Path, skipped: list | None = None) -> list[Path]:
+    """The folders under `root/skills` that hold a SKILL.md. A link (symlink, junction), a path that cannot be probed (`is_link` is True for it, FR13.1),
+    a cloud placeholder and a `skills` folder that is itself a link are neither listed nor entered, and nothing is stat-ed through a link (SPR-02 FR7.1:
+    the pattern of walk_files). Each one left out is appended to `skipped` as {path, reason} (`link`, `cloud`, `unreadable`) when a list is given, so a
+    caller can say that a skill was not looked at instead of reporting «all good» without it."""
+    def skip(path, reason: str) -> None:
+        if skipped is not None:
+            skipped.append({"path": os.fspath(path), "reason": reason})
+
     base = root / "skills"
-    if is_link(base) or path_is_cloud(base):
+    if is_link(base):
+        skip(base, "link")
+        return []
+    if path_is_cloud(base):
+        skip(base, "cloud")
         return []
     try:
         with os.scandir(base) as scan:
             entries = list(scan)
+    except (FileNotFoundError, NotADirectoryError):
+        return []
     except OSError:
+        skip(base, "unreadable")
         return []
     found = []
     for entry in entries:
         path = Path(entry.path)
         try:
-            if entry.is_symlink() or entry_is_cloud(entry) or not entry.is_dir(follow_symlinks=False) or is_link(path):
-                continue
+            if entry.is_symlink():
+                skip(path, "link")
+            elif entry_is_cloud(entry):
+                skip(path, "cloud")
+            elif not entry.is_dir(follow_symlinks=False):
+                pass  # a plain file in skills/ is not a skill candidate
+            elif is_link(path):
+                skip(path, "link")
+            else:
+                manifest = path / "SKILL.md"
+                if is_link(manifest):  # lstat, never stat: a SKILL.md that is a link is not a skill and its target is not asked about (FR11.1)
+                    skip(manifest, "link")
+                else:
+                    try:
+                        if stat.S_ISREG(os.lstat(manifest).st_mode):
+                            found.append(path)
+                    except (FileNotFoundError, NotADirectoryError):
+                        pass  # no SKILL.md: not a skill
         except OSError:
-            continue
-        manifest = path / "SKILL.md"
-        try:  # lstat, never stat: a SKILL.md that is a link is not a skill and its target is not asked about (FR11.1)
-            if os.path.lexists(manifest) and not is_link(manifest) and stat.S_ISREG(os.lstat(manifest).st_mode):
-                found.append(path)
-        except OSError:
-            continue
+            skip(path, "unreadable")
     return sorted(found)
 
 

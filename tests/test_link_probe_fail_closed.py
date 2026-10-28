@@ -176,6 +176,78 @@ class CallersReportUnprobeablePathTests(unittest.TestCase):
             self.assertEqual([], list(skills.iterdir()), "nothing was installed")
 
 
+SKILL_TEXT = "---\nname: %s\ndescription: Checks a toy example. Use when testing the probe guards.\n---\n\n# Title\n\nShort body.\n"
+
+
+class SkillListSaysWhatItSkipsTests(unittest.TestCase):
+    """`--all` never answers «all good» for a skill it did not look at (FR13.1: not left out silently)."""
+
+    def make_repo(self, t):
+        root = Path(t) / "repo"
+        for name in ("good", "odd"):
+            (root / "skills" / name).mkdir(parents=True)
+            (root / "skills" / name / "SKILL.md").write_text(SKILL_TEXT % name, encoding="utf-8")
+        return root
+
+    def test_skill_dirs_lists_what_it_skipped_when_skill_md_cannot_be_probed(self):
+        """FR13.1: a SKILL.md that cannot be probed leaves its skill out of the list AND in `skipped` with reason `link` and the path."""
+        with tempfile.TemporaryDirectory() as t:
+            root = self.make_repo(t)
+            odd = root / "skills" / "odd" / "SKILL.md"
+            skipped = []
+            with lstat_denied(odd):
+                found = E.fs.skill_dirs(root, skipped)
+            self.assertEqual(["good"], [p.name for p in found])
+            self.assertEqual([{"path": os.fspath(odd), "reason": "link"}], skipped)
+
+    def test_skill_dirs_lists_folder_that_cannot_be_probed(self):
+        """FR13.1: the same for the skill folder itself (reason `link`), and a missing SKILL.md is not a skip (it is not a skill)."""
+        with tempfile.TemporaryDirectory() as t:
+            root = self.make_repo(t)
+            (root / "skills" / "empty").mkdir()
+            skipped = []
+            with lstat_denied(root / "skills" / "odd"):
+                found = E.fs.skill_dirs(root, skipped)
+            self.assertEqual(["good"], [p.name for p in found])
+            self.assertEqual([{"path": os.fspath(root / "skills" / "odd"), "reason": "link"}], skipped)
+
+    def test_skill_dirs_without_skipped_list_is_unchanged(self):
+        """The old call `skill_dirs(root)` keeps working and gives the same list."""
+        with tempfile.TemporaryDirectory() as t:
+            root = self.make_repo(t)
+            self.assertEqual(["good", "odd"], [p.name for p in E.fs.skill_dirs(root)])
+
+    def test_validate_all_warns_on_stderr_for_a_skipped_skill(self):
+        """FR13.1: `validate --all` writes one WARN line per skipped path to stderr, the path in it; the exit code is the one without the warning."""
+        manifest = E.ROOT / "skills" / "skill-creator-studio" / "SKILL.md"
+        out, err = io.StringIO(), io.StringIO()
+        with lstat_denied(manifest), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            E.engine.main(["validate", "--all"])
+        lines = [line for line in err.getvalue().splitlines() if line.startswith("WARN: --all skipped")]
+        self.assertEqual(1, len(lines), err.getvalue())
+        self.assertIn(os.fspath(manifest), lines[0])
+        self.assertIn("(link)", lines[0])
+
+    def test_validate_all_no_warn_when_nothing_is_skipped(self):
+        """FR13.1 (regression): on the intact repository `validate --all` prints no skip line."""
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            E.engine.main(["validate", "--all"])
+        self.assertNotIn("WARN: --all skipped", err.getvalue())
+
+    def test_validate_skill_md_that_cannot_be_probed_is_input_error(self):
+        """FR13.1: `validate` on a folder whose SKILL.md cannot be probed refuses it: one ERROR `INPUT`, the file is not read."""
+        with tempfile.TemporaryDirectory() as t:
+            folder = Path(t).resolve() / "sk"
+            folder.mkdir()
+            manifest = folder / "SKILL.md"
+            manifest.write_text(SKILL_TEXT % "sk", encoding="utf-8")
+            with lstat_denied(manifest), mock.patch.object(E.fs, "read_capped", side_effect=AssertionError("must not be read")):
+                findings = E.validate.validate_skill(folder)
+            self.assertEqual(["INPUT"], [f["code"] for f in findings])
+            self.assertEqual("ERROR", findings[0]["level"])
+
+
 class GateEvidenceFolderTests(unittest.TestCase):
     def test_evals_folder_that_cannot_be_probed_is_a_problem(self):
         """FR13.1: `evals/` that is a link or cannot be probed is no longer a silent «nothing more to check»: one more line in the gate's problems."""
