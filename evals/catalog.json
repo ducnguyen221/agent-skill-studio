@@ -15,6 +15,18 @@
       "model_evaluated": false
     },
     {
+      "name": "skill-curator",
+      "path": "skills/skill-curator",
+      "version": "0.1.0",
+      "status": "prototype-static-validated",
+      "owner": "Agent Skill Studio maintainers",
+      "targets": ["claude-code", "codex", "antigravity"],
+      "purpose": "Inventory, check and de-duplicate a whole Agent Skills library",
+      "triggers": ["which skills exist", "skill catalog", "skills over budget or duplicated"],
+      "evals": "evals/skill-curator",
+      "model_evaluated": false
+    },
+    {
       "name": "data-quality-audit",
       "path": "examples/data-quality-audit",
       "shipped": false,

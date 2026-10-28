@@ -1,0 +1,10 @@
+{
+  "must_contain": [
+    "SKILL.md"
+  ],
+  "must_not_contain": [
+    "CATALOG.md",
+    "catalog"
+  ],
+  "files_read_expected": []
+}

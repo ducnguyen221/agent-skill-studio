@@ -39,6 +39,42 @@ for _mod in [m for name, m in sorted(sys.modules.items()) if name.startswith("st
         sys.exit(2)
 
 
+def print_json(obj) -> None:
+    """Print `obj` as JSON; on a console or pipe that cannot show every character (cp1252 on Windows) the same text goes out with ASCII escapes."""
+    try:
+        print(json.dumps(obj, ensure_ascii=False, indent=2))
+    except UnicodeEncodeError:
+        print(json.dumps(obj, ensure_ascii=True, indent=2))
+
+
+def load_curator_catalog():
+    """(module, None) for `curator_catalog` of the sibling skill, or (None, why). The folder is fixed from this file, `skills/skill-curator/scripts/`, never from
+    the cwd or the path; the module that loads must sit in it, and so must any `curator_*` module that was already loaded (FR9.2, FR11.1)."""
+    folder = Path(__file__).resolve().parents[2] / "skill-curator" / "scripts"
+    if not (folder / "curator_catalog.py").is_file():
+        return None, "catalog needs the skill-curator skill next to skill-creator-studio"
+    sys.path[:] = [entry for entry in sys.path if entry not in (str(folder), _HERE)]
+    sys.path[:0] = [_HERE, str(folder)]
+    try:
+        import curator_catalog
+    except ImportError as exc:
+        return None, "catalog cannot load skill-curator (%s)" % exc
+    for name, module in sorted(sys.modules.items()):
+        where = getattr(module, "__file__", None)
+        if name.startswith("curator_") and where and Path(where).resolve().parent != folder.resolve():
+            return None, "curator module %s loaded from %s, expected %s" % (name, Path(where).resolve().parent, folder)
+    return curator_catalog, None
+
+
+def cmd_catalog(rest: list) -> int:
+    """`catalog` lives in skill-curator and reads its own flags there, so `catalog --help` works only when that skill is present."""
+    module, problem = load_curator_catalog()
+    if module is None:
+        print("ERROR: %s" % problem, file=sys.stderr)
+        return 2
+    return module.run(module.build_parser("studio.py catalog").parse_args(rest))
+
+
 def find_skills(args):
     root = fs.repo_root(Path(__file__)) or fs.repo_root(Path.cwd())
     if args.all:
@@ -64,7 +100,7 @@ def cmd_check_document(args, kind: str, path: Path) -> int:
         return 2
     findings = doctypes.lint_document(kind, path, text)
     if args.json:
-        print(json.dumps({"audit": False, "reports": [{"skill": str(path), "type": kind, "findings": findings}]}, ensure_ascii=False, indent=2))
+        print_json({"audit": False, "reports": [{"skill": str(path), "type": kind, "findings": findings}]})
     else:
         validate.print_findings(path, findings)
     return 1 if any(f["level"] == "ERROR" for f in findings) else 0
@@ -92,7 +128,7 @@ def cmd_check(args, audit: bool = False, typed: bool = False) -> int:
             report = {"skill": report["skill"], "type": "skill", "findings": findings}
         reports.append(report)
     if args.json:
-        print(json.dumps({"audit": audit, "reports": reports}, ensure_ascii=False, indent=2))
+        print_json({"audit": audit, "reports": reports})
     else:
         for report in reports:
             validate.print_findings(Path(report["skill"]), report["findings"])
@@ -163,6 +199,9 @@ def cmd_evals(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    given = sys.argv[1:] if argv is None else list(argv)
+    if given and given[0] == "catalog":  # its flags are the skill-curator's; argparse REMAINDER cannot pass a leading --flag on, so the word is taken here
+        return cmd_catalog(given[1:])
     parser = argparse.ArgumentParser(description="Agent Skill Studio: create, audit, lint, package and install portable skills")
     parser.add_argument("--version", action="version", version=C.VERSION)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -225,6 +264,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", help="write the JSON report here; the folder must exist; not under skills/, a scanned skill or a scanned root (a folder the scan skips, such as .tmp, is fine); not a secret-looking name")
     p.add_argument("--fail-on", choices=C.DOCTOR_FAIL_ON, default="error", help="what makes the exit code 1 (default error; new needs --baseline)")
     p.set_defaults(func=doctor.cmd_doctor)
+    p = sub.add_parser("catalog", add_help=False, help="read-only catalog of a skill library: one row per source skill, root states, JSON and CATALOG.md (the code is in skills/skill-curator; `catalog --help` lists the flags)")
+    p.add_argument("rest", nargs=argparse.REMAINDER)
+    p.set_defaults(func=lambda args: cmd_catalog(args.rest))
     p = sub.add_parser("fmt", help="check (default) or fix the house style of Markdown files: line endings, key order, quoted metadata (never edits the words of the body)")
     p.add_argument("paths", nargs="*", help="files or folders (*.md); --fix only touches what is named")
     p.add_argument("--all", action="store_true", help="every *.md of the repo, report only (not with --fix)")

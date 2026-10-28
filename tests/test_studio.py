@@ -332,8 +332,8 @@ class StudioTests(unittest.TestCase):
                 self.assertNotIn("sync-template", run.stderr.split("choose from")[-1])
 
     def test_shipped_skills(self):
-        """FR15.1: only skill-creator-studio is shipped from skills/; the CSV sample lives in examples/ and the catalog says it is not shipped."""
-        self.assertEqual(["skill-creator-studio"], [d.name for d in studio_fs.skill_dirs(ROOT)])
+        """FR15.1, FR9.1: skill-creator-studio and skill-curator are shipped from skills/; the CSV sample lives in examples/ and the catalog says it is not shipped."""
+        self.assertEqual(["skill-creator-studio", "skill-curator"], [d.name for d in studio_fs.skill_dirs(ROOT)])
         obj = json.loads((ROOT / "evals" / "catalog.json").read_text(encoding="utf-8"))
         entry = {x["name"]: x for x in obj["skills"]}["data-quality-audit"]
         self.assertEqual("examples/data-quality-audit", entry["path"])

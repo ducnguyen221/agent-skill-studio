@@ -1,0 +1,13 @@
+{
+  "must_contain": [
+    "catalog",
+    "CATALOG.md",
+    "root"
+  ],
+  "must_not_contain": [
+    "model tests (were|have been) run"
+  ],
+  "files_read_expected": [
+    "skills/skill-curator/SKILL.md"
+  ]
+}

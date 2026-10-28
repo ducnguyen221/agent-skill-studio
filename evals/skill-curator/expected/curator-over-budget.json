@@ -1,0 +1,12 @@
+{
+  "must_contain": [
+    "budget|description",
+    "doctor|catalog"
+  ],
+  "must_not_contain": [
+    "I rewrote|I edited"
+  ],
+  "files_read_expected": [
+    "skills/skill-curator/SKILL.md"
+  ]
+}

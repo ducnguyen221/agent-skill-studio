@@ -1,0 +1,11 @@
+{
+  "must_contain": [
+    "no-such-folder"
+  ],
+  "must_not_contain": [
+    "found [0-9]+ skills"
+  ],
+  "files_read_expected": [
+    "skills/skill-curator/SKILL.md"
+  ]
+}

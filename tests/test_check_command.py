@@ -70,9 +70,9 @@ class CheckSkillTests(unittest.TestCase):
         code_c, out_c, err_c = run_engine("check", "--all", "--require-evals", "--json")
         self.assertEqual((code_v, err_c), (code_c, ""))
         self.assertEqual(with_type(out_v), json.loads(out_c))
-        # SPR-03 FR15.1: `--all` walks skills/ only and one skill ships, so one report (it was 2 while the CSV sample lived in skills/)
+        # SPR-03 FR15.1, SPR-04 FR9.1 / FR11.5: `--all` walks skills/ only and two skills ship (skill-creator-studio, skill-curator), so two reports
         reports = json.loads(out_c)["reports"]
-        self.assertEqual(1, len(reports))
+        self.assertEqual(2, len(reports))
         self.assertTrue(all(r.get("type") == "skill" for r in reports), reports)
 
     def test_check_text_mode_is_validate_text_mode(self):
