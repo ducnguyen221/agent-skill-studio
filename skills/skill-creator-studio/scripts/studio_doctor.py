@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -239,9 +240,63 @@ def diff_baseline(current: dict, baseline: dict) -> list[dict]:
             if after > before.get((path, code), 0)]
 
 
+def _key(path) -> str:
+    return os.path.normcase(os.fspath(path))
+
+
+def _pack_name(skill: Path, roots: list, cache: dict, markers: tuple) -> str:
+    """The pack of a skill outside --roots-from: `name` of the nearest `.claude-plugin/plugin.json` at or above it (up to the folder above its root), else the first
+    folder under its root. The manifest is read by studio_roots (size cap, no links, cloud and secret zones refused); an unreadable one counts as absent."""
+    try:
+        skill = Path(skill).resolve()
+    except OSError:
+        return Path(skill).name
+    root = next((r for r in roots if _key(skill).startswith(_key(r) + os.sep)), None)  # `roots` are resolved already (real_roots of doctor_run)
+    if root is None:
+        return skill.name
+    folder = skill.parent
+    stop = _key(root.parent)  # a root such as <plugin>/skills sits one level below its manifest, so the folder above the root is looked at too
+    while _key(folder).startswith(stop):
+        if folder not in cache:
+            name = None
+            try:
+                data = roots_mod._read_json(folder / ".claude-plugin" / "plugin.json", C.MANIFEST_MAX, markers) if (folder / ".claude-plugin").is_dir() else None
+                if isinstance(data, dict) and isinstance(data.get("name"), str) and data["name"].strip():
+                    name = data["name"].strip()[:200]
+            except roots_mod.RootError:
+                pass
+            cache[folder] = name
+        if cache[folder]:
+            return cache[folder]
+        if _key(folder) == stop:
+            break
+        folder = folder.parent
+    try:
+        return skill.relative_to(root).parts[0]
+    except (ValueError, IndexError):
+        return skill.name
+
+
+def _has_evals_dir(skill: Path) -> bool:
+    """True when the skill holds an `evals/` folder (a link does not count): the ST8 that a tightened rule would add (FR6.2)."""
+    try:
+        info = os.lstat(skill / "evals")
+    except OSError:
+        return False
+    return stat.S_ISDIR(info.st_mode)
+
+
+def pack_line(pack: dict) -> str:
+    """One text line of the pack table (PLAN TK7). ST8 = real ST8 findings + skills with an evals/ folder."""
+    by_code = pack["by_code"]
+    return "%s: %d skills, %d errors (ST5 %d), %d warnings (ST8 %d); check exits %d" % (
+        pack["pack"], pack["skills"], pack["errors"], by_code.get("ST5", 0), pack["warnings"], by_code.get("ST8", 0) + pack["st8_evals"], pack["check_exit"])
+
+
 def doctor_run(roots: list, profile: str, target: str, include_cache: bool, baseline: dict | None,
-               skip_markers: tuple = (), scanned: tuple | None = None) -> dict:
+               skip_markers: tuple = (), scanned: tuple | None = None, by_pack: bool = False, pack_of: dict | None = None) -> dict:
     """The doctor report (SPEC 9.11, schema 1). Reads skills, writes nothing. `scanned` = a finished iter_skill_dirs result to reuse.
+    `by_pack` adds `packs`; `pack_of` = {skill path: pack name} when the caller knows it (--roots-from opcos).
     A file above DOCTOR_MAX_FILE_BYTES or a cloud placeholder inside a skill is not read; it is listed in skipped as well as flagged in the skill."""
     skills, skipped = scanned if scanned is not None else iter_skill_dirs(roots, include_cache, skip_markers)
     skipped = list(skipped)
@@ -256,6 +311,8 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
     entries = []
     totals = {"skills": 0, "errors": 0, "warnings": 0, "notes": 0}
     desc_bytes = 0
+    packs: dict = {}
+    manifests: dict = {}
     for skill in skills:
         under = next((r for r in real_roots if fs.valid_resolved_under(skill, r)), None)
         findings = validate.validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under,
@@ -282,11 +339,25 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
         totals["errors"] += errors
         totals["warnings"] += warnings
         totals["notes"] += sum(c["level"] == "NOTE" for c in codes)
+        if by_pack:
+            pack_name = (pack_of or {}).get(_key(skill)) or _pack_name(skill, real_roots, manifests, C.CLOUD_MARKERS + tuple(skip_markers))
+            pack = packs.setdefault(pack_name, {"pack": pack_name, "skills": 0, "errors": 0, "warnings": 0, "by_code": {}, "check_exit": 0, "st8_evals": 0})
+            pack["skills"] += 1
+            pack["errors"] += errors
+            pack["warnings"] += warnings
+            pack["st8_evals"] += _has_evals_dir(skill)
+            for item in codes:
+                if item["level"] in ("ERROR", "WARN"):
+                    pack["by_code"][item["code"]] = pack["by_code"].get(item["code"], 0) + 1
     report = {"schema": C.DOCTOR_SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "studio_version": C.VERSION, "roots": [_posix(r) for r in roots], "skills": entries, "skipped": skipped,
               "totals": totals, "new_vs_baseline": []}
     if profile == "opcos":  # the same verdict as measure-skill-budget.py on the total (SPEC FR5.2)
         report["budget"] = {"desc_bytes_total": desc_bytes, "limit": C.OPCOS_DESC_TOTAL_BYTES, "over": desc_bytes > C.OPCOS_DESC_TOTAL_BYTES}
+    if by_pack:  # `check` exits 1 for a pack with an ERROR, the same rule as the default fail level (FR6.1)
+        for pack in packs.values():
+            pack["check_exit"] = 1 if pack["errors"] else 0
+        report["packs"] = sorted(packs.values(), key=lambda p: p["pack"].casefold())
     if baseline is not None:
         report["new_vs_baseline"] = diff_baseline(report, baseline)
     return report
@@ -449,7 +520,9 @@ def cmd_doctor(args) -> int:
         if problem:
             print("ERROR: %s" % problem, file=sys.stderr)
             return 2
-    report = doctor_run(roots, args.profile, args.target, args.include_cache, baseline, skip_markers, scanned)
+    pack_of = {_key(s["path"]): s["plugin"] for s in found} if opcos is not None else None
+    report = doctor_run(roots, args.profile, args.target, args.include_cache, baseline, skip_markers, scanned,
+                        by_pack=bool(getattr(args, "by_pack", False)), pack_of=pack_of)
     if opcos is not None:
         report["roots_status"] = opcos
     if out is not None:
@@ -471,6 +544,8 @@ def cmd_doctor(args) -> int:
         for skill in report["skills"]:
             if skill["errors"] or skill["warnings"]:
                 print("  %s: %d errors, %d warnings" % (skill["path"], skill["errors"], skill["warnings"]))
+        for pack in report.get("packs", []):
+            print("  " + pack_line(pack))
         for item in report.get("roots_status", []):
             if item["status"] != "ok":
                 print("  root %s: %s (%s)" % (item["area"], item["status"], ", ".join(item["reasons"])))

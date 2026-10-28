@@ -199,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--target", choices=C.TARGETS, default="portable")
     p.add_argument("--include-cache", action="store_true", help="also scan folders whose name contains 'cache'")
     p.add_argument("--skip-marker", action="append", metavar="TEXT", help="skip any path containing TEXT (case-insensitive); repeatable. A synced SharePoint folder need not say 'SharePoint' (for example 'KPIM Joint Stock Company')")
+    p.add_argument("--by-pack", action="store_true", help="also group the findings by pack (the plugin name in its manifest, else the first folder under the root): skills, errors, warnings by code, the ST5 and ST8 counts, and whether `check` would exit 1")
     p.add_argument("--baseline", help="an earlier doctor JSON report; new_vs_baseline lists the (skill, code) pairs that grew")
     p.add_argument("--json", action="store_true", help="print the JSON report (with --out it goes to the file only)")
     p.add_argument("--out", help="write the JSON report here; the folder must exist; not under skills/, a scanned skill or a scanned root (a folder the scan skips, such as .tmp, is fine); not a secret-looking name")
