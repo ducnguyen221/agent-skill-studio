@@ -242,6 +242,10 @@ Tên file giống secret (cùng luật với `--export`, không phân biệt hoa
 
 Không bao giờ đọc nội dung placeholder cloud. `PINNED` một mình (file đã tải sẵn) không còn bị coi là placeholder; `PINNED` kèm `RECALL_ON_DATA_ACCESS`, `RECALL_ON_OPEN`, `OFFLINE` hay `UNPINNED` vẫn là cloud. `validate`/`doctor` giữ `SZ2` ở mức WARN.
 
+## Từ chối đọc `SKILL.md` (`check`, `validate`, `audit`): mã `INPUT`
+
+Khi đầu vào là thư mục, engine quyết định về `SKILL.md` trước khi mở nó. Một ERROR mã `INPUT` (thoát 1, không đọc, không in `name`) báo `SKILL.md` nằm trong vùng cloud hoặc vùng bí mật (theo đường nhập hoặc đường thật), là placeholder cloud, hoặc là symlink/junction. Cách sửa: đưa skill ra khỏi vùng đó, hoặc thay link bằng file thật. Đầu vào là file (không phải thư mục) vẫn bị từ chối bằng `ERROR:` ở stderr, thoát 2.
+
 ## Cổng `model_evaluated` (`evals --all`): mã `EV20`
 
 Khi engine nằm trong repo (tính từ chính file engine, không theo thư mục đang đứng), `evals --all` còn kiểm `evals/catalog.json`: mỗi lời khai `model_evaluated`, `status` và khối `evaluated` phải khớp số đếm lại từ file bằng chứng gọn `evals/<skill>/evidence/<lô>.json` (sinh bằng `evals/tools/activation.py compact`; log thô nằm ở ledger OpcOS). Mỗi vấn đề là một ERROR `EV20` (cả trong `--json`), thoát 1. Engine chép rời ra ngoài repo (skill rời, ZIP) bỏ qua cổng. Luật đếm nằm một chỗ trong engine; không nạp mã từ thư mục đang đứng hay biến môi trường.

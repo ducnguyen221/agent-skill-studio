@@ -63,6 +63,39 @@ class CloudSkillMdNotReadTests(unittest.TestCase):
             self.assertEqual([("ERROR", "INPUT")], [(f["level"], f["code"]) for f in findings])
             self.assertNotIn(SECRET_NAME, repr(findings))
 
+    def test_a_zone_folder_is_not_resolved(self):
+        """The spelling given is checked before `Path.resolve`: a folder in a zone is never resolved (so never followed or stat-ed)."""
+        with tempfile.TemporaryDirectory() as t:
+            folder = write_skill(Path(t) / "OneDriveFake" / "sk", SECRET_NAME)
+            with mock.patch.object(Path, "resolve", side_effect=AssertionError("resolve was called")):
+                findings = E.validate.validate_skill(folder)
+            self.assertEqual([("ERROR", "INPUT")], [(f["level"], f["code"]) for f in findings])
+
+    def test_a_link_manifest_is_refused_not_opened(self):
+        """`is_link` says SKILL.md is a link: one ERROR INPUT, `read_capped` never called (open() would follow the link)."""
+        with tempfile.TemporaryDirectory() as t:
+            folder = write_skill(Path(t) / "plain" / "sk", SECRET_NAME)
+            real_is_link = E.fs.is_link
+            with mock.patch.object(E.fs, "is_link", lambda p: Path(p).name == "SKILL.md" or real_is_link(p)), \
+                    mock.patch.object(E.fs, "read_capped", side_effect=AssertionError("SKILL.md was read")):
+                findings = E.validate.validate_skill(folder)
+            self.assertEqual([("ERROR", "INPUT")], [(f["level"], f["code"]) for f in findings])
+            self.assertIn("symlink or junction", findings[0]["message"])
+            self.assertNotIn(SECRET_NAME, repr(findings))
+
+    def test_a_symlinked_skill_md_is_refused(self):
+        """A real symlink SKILL.md -> file outside: `check` exits non-zero with INPUT and does not print the target's name."""
+        with tempfile.TemporaryDirectory() as t:
+            outside = Path(t) / "outside.md"
+            outside.write_text(SKILL_TEXT % SECRET_NAME, encoding="utf-8")
+            folder = Path(t) / "plain" / "sk"
+            folder.mkdir(parents=True)
+            symlink_or_skip(self, folder / "SKILL.md", outside)
+            code, out, err = run_engine("check", str(folder))
+            self.assertNotEqual(0, code)
+            self.assertIn("INPUT", out)
+            self.assertNotIn(SECRET_NAME, out + err)
+
     def test_a_folder_that_resolves_into_a_zone_is_refused(self):
         """The spelling given is clean but the real path is in a zone (a link to it): refused all the same."""
         with tempfile.TemporaryDirectory() as t:
