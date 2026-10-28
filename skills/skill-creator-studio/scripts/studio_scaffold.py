@@ -37,15 +37,19 @@ def is_drive_root(path: Path) -> bool:
     return path.parent == path
 
 
-def write_new(path: Path, text: str) -> None:
-    """Write `text` to a file that is not there yet; a file or link that is there is kept and named on stdout (FR12.1)."""
+def write_new(path: Path, text: str) -> bool:
+    """Write `text` to a file that is not there yet; a file or link that is there is kept and named on stdout (FR12.1). False (after an ERROR line) when it cannot be written."""
     try:
         handle = fs.create_exclusive(path)
     except FileExistsError:
         print("kept existing %s" % path)
-        return
+        return True
+    except OSError as exc:  # UnsafeOpen (a link raced in), PermissionError, a full disk: say which file, never a traceback
+        print("ERROR: cannot write %s: %s" % (path, exc), file=sys.stderr)
+        return False
     with handle:
         handle.write(text.encode("utf-8"))
+    return True
 
 
 def cmd_new(args) -> int:
@@ -77,11 +81,14 @@ def cmd_new(args) -> int:
             return 2
     else:
         external_eval = (root / "evals") if root else (Path.cwd() / "evals")
-    if args.output:
-        linked = fs.link_in_chain(output, output.anchor) or (None if args.eval_root else fs.link_in_chain(external_eval, external_eval.anchor))
-        if linked:
-            print("ERROR: %s is a symlink or junction (or cannot be probed); nothing was written. Name a path without links" % linked, file=sys.stderr)
-            return 2
+    ef = external_eval / name
+    linked = fs.link_in_chain(output, output.anchor) if args.output else None
+    if args.output and not args.eval_root:  # the eval folder was derived from --output: every part of its path is checked
+        linked = linked or fs.link_in_chain(ef, ef.anchor)
+    linked = linked or next((p for p in (ef, ef / "baselines", ef / "fixtures") if fs.is_link(p)), None)  # the folders written below, a given --eval-root included
+    if linked:
+        print("ERROR: %s is a symlink or junction (or cannot be probed); nothing was written. Name a path without links" % linked, file=sys.stderr)
+        return 2
     target = output / name if args.output else (output / name).resolve()
     if os.path.lexists(target):
         print("ERROR: refusing to overwrite existing %s" % target, file=sys.stderr)
@@ -107,7 +114,6 @@ def cmd_new(args) -> int:
     content = content.replace("# Skill Template", "# " + name.replace("-", " ").title(), 1)
     p.write_text(content, encoding="utf-8")
     # Evals are outside runtime; do not invent test prompts or scores.
-    ef = external_eval / name
     ef.mkdir(parents=True, exist_ok=True)
     (ef / "fixtures").mkdir(exist_ok=True)
     (ef / "baselines").mkdir(exist_ok=True)
@@ -118,8 +124,12 @@ def cmd_new(args) -> int:
     ]
     cases = [{**c, "prompt": "STUDIO-DRAFT: replace with a realistic %s prompt" % c["kind"],
               "expected_behaviors": ["STUDIO-DRAFT: replace with observable behavior"], "fixtures": []} for c in sample]
-    write_new(ef / "cases.json", json.dumps({"skill_name": name, "status": "draft", "cases": cases}, ensure_ascii=False, indent=2) + "\n")
-    write_new(ef / "rubric.md", "# %s — evaluation rubric (draft)\n\nDefine actual success criteria, trigger expectations, and failure cases before release.\n" % name)
-    write_new(ef / "baselines" / "BASELINE.md", "# Baseline: NOT RUN\n\nRecord fresh-session model/runtime, prompt, outputs, score and evidence after real execution.\n")
+    written = [
+        write_new(ef / "cases.json", json.dumps({"skill_name": name, "status": "draft", "cases": cases}, ensure_ascii=False, indent=2) + "\n"),
+        write_new(ef / "rubric.md", "# %s — evaluation rubric (draft)\n\nDefine actual success criteria, trigger expectations, and failure cases before release.\n" % name),
+        write_new(ef / "baselines" / "BASELINE.md", "# Baseline: NOT RUN\n\nRecord fresh-session model/runtime, prompt, outputs, score and evidence after real execution.\n"),
+    ]
+    if not all(written):
+        return 2
     print("Created draft Skill: %s\nExternal evals: %s\nNext: replace STUDIO-DRAFT in the 3 sample eval cases, write real references, then validate." % (target, ef))
     return 0
