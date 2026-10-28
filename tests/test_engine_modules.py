@@ -184,5 +184,62 @@ class Rq029EngineTests(unittest.TestCase):
         self.assertFalse(any("evals/door/evidence" in p for p in problems), problems)
 
 
+    def _linked_evals_root(self):
+        tmp = Path(tempfile.mkdtemp(prefix="studio-evlink-")).resolve()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "evals").mkdir()
+        (tmp / "evals" / "catalog.json").write_text('{"skills": []}', encoding="utf-8")
+        (tmp / "evals" / "elsewhere" / "evidence").mkdir(parents=True)
+        return tmp
+
+    def test_rq029_catalog_gate_says_a_real_symlink(self):
+        """bắt-lỗi (red at 43bfbc5 where the symlink is skipped silently; RED only seen on CI Ubuntu, this machine cannot make a symlink): FR11.2 a real symlink evals/<x> gets its line and is not probed."""
+        tmp = self._linked_evals_root()
+        try:
+            os.symlink(tmp / "evals" / "elsewhere", tmp / "evals" / "door", target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("cannot create a symlink here: %s" % exc)
+        problems = E.evals.model_evaluated_problems(tmp / "evals" / "catalog.json", tmp)
+        self.assertTrue(any("evals/door is a link" in p for p in problems), problems)
+        self.assertFalse(any("evals/door/evidence" in p for p in problems), problems)
+
+    def test_rq029_catalog_gate_says_an_entry_that_reports_a_symlink(self):
+        """bắt-lỗi (red at 43bfbc5: `is_dir(follow_symlinks=False)` False -> skipped, no line): FR11.2 an entry with is_symlink() True and is_dir(follow_symlinks=False) False, as a real symlink answers, is said."""
+        tmp = self._linked_evals_root()
+        (tmp / "evals" / "door").mkdir()
+        real_scandir = os.scandir
+
+        class Entry:
+            def __init__(self, entry):
+                self._entry = entry
+
+            def __getattr__(self, name):
+                return getattr(self._entry, name)
+
+            def is_symlink(self):
+                return True
+
+            def is_dir(self, *, follow_symlinks=True):
+                return follow_symlinks
+
+        class Scan:
+            def __init__(self, path):
+                self._inner = real_scandir(path)
+
+            def __enter__(self):
+                self._inner.__enter__()
+                return self
+
+            def __exit__(self, *exc):
+                return self._inner.__exit__(*exc)
+
+            def __iter__(self):
+                return (Entry(e) if e.name == "door" else e for e in self._inner)
+
+        with mock.patch.object(E.evals.os, "scandir", Scan):
+            problems = E.evals.model_evaluated_problems(tmp / "evals" / "catalog.json", tmp)
+        self.assertTrue(any("evals/door is a link" in p for p in problems), problems)
+
+
 if __name__ == "__main__":
     unittest.main()

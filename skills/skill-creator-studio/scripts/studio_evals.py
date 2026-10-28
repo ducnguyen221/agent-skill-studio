@@ -664,10 +664,10 @@ def model_evaluated_problems(catalog_path, root):
         linked, folders = [], []
         with os.scandir(evals_dir) as scan:
             for e in sorted(scan, key=lambda x: x.name):
-                if not e.is_dir(follow_symlinks=False):
+                if e.is_symlink() or fs.is_link(evals_dir / e.name):  # asked first: is_dir(follow_symlinks=False) is False for a symlink and, from Python 3.12, a junction, and they must be said, not skipped
+                    linked.append(e.name)  # left out; `evidence` is never probed through it
+                elif not e.is_dir(follow_symlinks=False):
                     continue
-                if fs.is_link(evals_dir / e.name):  # a junction passes is_dir(follow_symlinks=False) before Python 3.12: left out, `evidence` is not probed through it
-                    linked.append(e.name)
                 elif os.path.lexists(evals_dir / e.name / "evidence"):
                     folders.append(e.name)
         problems.extend("evals/%s is a link or cannot be probed; it is left out, its evidence folder is not checked" % n for n in linked)
