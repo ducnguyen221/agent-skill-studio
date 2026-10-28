@@ -1,0 +1,10 @@
+{
+  "case_id": "c-pos",
+  "runtime": "codex",
+  "model": "fixture-model",
+  "with_skill": true,
+  "kind": "typical",
+  "triggered": false,
+  "status": "ran",
+  "timestamp": "2026-10-18T01:00:00Z"
+}

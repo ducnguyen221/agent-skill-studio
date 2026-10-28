@@ -123,10 +123,10 @@ def cmd_evals(args) -> int:
         reports.append({"skill": path.name, "findings": findings})
     gate_root, gate_dir = (evals.gate_root() if args.all else None), None  # the gate follows the engine's repository, never the cwd; outside a repository, or in one without evals/, it is skipped (FR6.2)
     if gate_root is not None:
-        catalog = gate_root / "registry" / "catalog.json"
+        catalog = gate_root / evals.CATALOG_REL
         problems = evals.catalog_problems(gate_root)
         if problems:
-            reports.append({"skill": "registry/catalog.json", "findings": [fs.emit("ERROR", "EV20", catalog, 0, p) for p in problems]})
+            reports.append({"skill": evals.CATALOG_REL, "findings": [fs.emit("ERROR", "EV20", catalog, 0, p) for p in problems]})
             gate_dir = catalog
     if args.json:
         print(json.dumps({"reports": reports, "model_runs_performed": 0}, ensure_ascii=False, indent=2))

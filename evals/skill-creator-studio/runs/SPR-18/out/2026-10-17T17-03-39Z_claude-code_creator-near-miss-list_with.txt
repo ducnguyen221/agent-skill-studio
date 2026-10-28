@@ -1,4 +1,0 @@
-`fixtures/skills-dir` có hai thư mục skill:
-
-- `alpha-notes`
-- `beta-notes`

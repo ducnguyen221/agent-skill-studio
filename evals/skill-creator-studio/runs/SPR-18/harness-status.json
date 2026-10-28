@@ -1,4 +1,0 @@
-{
-  "see": "../../../data-quality-audit/runs/SPR-18/harness-status.json",
-  "reason": "harness go/no-go is per harness, not per skill; one canonical file"
-}

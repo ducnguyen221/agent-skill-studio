@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _engine  # noqa: E402
+from _batches import write_compact  # noqa: E402
 
 studio = _engine.engine
 studio_const = _engine.const  # constants live in studio_const (SPR-02 TK4a)
@@ -40,7 +41,8 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
     mutate(runs_dir, ab_dict, harnesses_dict, evaluated_dict) may break the evidence before it is written (gate self-tests)."""
     base = Path(base)
     evals_dir = base / "evals" / "fake-skill"
-    runs = evals_dir / "runs" / "SPR-18"
+    runs = base / "_raw" / "SPR-18"  # the raw run folder lives outside the repository tree; the gate reads its compact file (SPR-03 FR3)
+    evals_dir.mkdir(parents=True)
     runs.mkdir(parents=True)
     cases = [{"id": "pos%d" % i, "kind": "typical", "should_trigger": True} for i in range(5)] + [{"id": "neg%d" % i, "kind": "near-miss", "should_trigger": False} for i in range(3)]
     (evals_dir / "cases.json").write_text(json.dumps({"skill_name": "fake-skill", "cases": cases}), encoding="utf-8")
@@ -63,7 +65,7 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
     if status is None:
         status = "model-evaluated" if model_evaluated else "prototype-static-validated"
     evaluated = {"sprint": "SPR-18", "date": "2026-10-18", "harnesses": harnesses,
-                 "ab_report": "evals/fake-skill/runs/SPR-18/ab-2026-10-18.md",
+                 "ab_report": "evals/fake-skill/evidence/SPR-18.json", "evidence": "evals/fake-skill/evidence/SPR-18.json",
                  "result": result if result is not None else ("passed" if (model_evaluated if flag is None else flag) else "partial"),
                  "batch_sha": batch_sha if batch_sha is not None else "a" * 40,
                  "batch_sha_kind": kind}
@@ -71,6 +73,7 @@ def _fake_evidence(base, write_ab=True, drop_harness=None, extra_runtime=None, s
         mutate(runs, ab, harnesses, evaluated)
     if write_ab:
         (runs / "ab-2026-10-18.json").write_text(json.dumps(ab), encoding="utf-8")
+    write_compact(runs, "fake-skill", "SPR-18", evals_dir / "evidence" / "SPR-18.json")
     catalog = {"skills": [{"name": "fake-skill", "evals": "evals/fake-skill", "status": status, "targets": ["claude-code", "codex", "antigravity"],
                            "model_evaluated": model_evaluated if flag is None else flag,
                            "evaluated": evaluated}]}
@@ -329,7 +332,7 @@ class StudioTests(unittest.TestCase):
                 self.assertNotIn("sync-template", run.stderr.split("choose from")[-1])
 
     def test_registry_matches_skill_folders(self):
-        obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
+        obj = json.loads((ROOT / "evals" / "catalog.json").read_text(encoding="utf-8"))
         catalog_names = {x["name"] for x in obj["skills"]}
         actual_names = {x.name for x in studio_fs.skill_dirs(ROOT)}
         self.assertEqual(actual_names, catalog_names)
@@ -339,7 +342,7 @@ class StudioTests(unittest.TestCase):
 
     def test_model_evaluated_requires_counted_evidence(self, catalog_path=None):
         """`model_evaluated: true` is allowed only with A/B evidence recounted from the run logs in the repo."""
-        problems = studio_evals.model_evaluated_problems(Path(catalog_path) if catalog_path else ROOT / "registry" / "catalog.json", ROOT)
+        problems = studio_evals.model_evaluated_problems(Path(catalog_path) if catalog_path else ROOT / "evals" / "catalog.json", ROOT)
         self.assertEqual([], problems)
 
     # --- gate self-tests: fake catalogs/logs live in a temp dir, never in the repo ---
@@ -512,7 +515,7 @@ class StudioTests(unittest.TestCase):
 
     def test_gate_red_ab_report_of_another_skill(self):
         def m(runs, ab, h, ev):
-            ev["ab_report"] = "evals/other-skill/runs/SPR-18/ab-2026-10-18.md"
+            ev["ab_report"] = "evals/other-skill/evidence/SPR-18.json"
         self._gate_red(m, "ab_report")
 
     def test_gate_red_not_run_harness_with_ran_baseline(self):
@@ -537,14 +540,15 @@ class StudioTests(unittest.TestCase):
 
     def test_gate_blocks_enabling_with_real_numbers(self):
         """Real SPR-18 evidence (better 0, Codex negative 2/3) must not allow flipping data-quality-audit to true."""
-        obj = json.loads((ROOT / "registry" / "catalog.json").read_text(encoding="utf-8"))
+        obj = json.loads((ROOT / "evals" / "catalog.json").read_text(encoding="utf-8"))
         for x in obj["skills"]:
             if x["name"] == "data-quality-audit":
                 x["model_evaluated"] = True
                 x["status"] = "model-evaluated"
                 x["evaluated"] = {"sprint": "SPR-18", "date": "2026-10-18",
                                   "harnesses": {"claude-code": "ran", "codex": "ran", "antigravity": "not_run:headless-no-skill-catalog"},
-                                  "ab_report": "evals/data-quality-audit/runs/SPR-18/ab-2026-10-18.md"}
+                                  "evidence": "evals/data-quality-audit/evidence/SPR-18.json",
+                                  "ab_report": "evals/data-quality-audit/evidence/SPR-18.json"}
         with tempfile.TemporaryDirectory() as t:
             path = Path(t) / "catalog.json"
             path.write_text(json.dumps(obj), encoding="utf-8")

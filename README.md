@@ -97,12 +97,11 @@ Agent Skill Studio/
 │   └── data-quality-audit/
 │       ├── cases.json
 │       ├── rubric.md
-│       ├── expected/, fixtures/, runs/
+│       ├── expected/, fixtures/, evidence/
 │       └── baselines/BASELINE.md
 ├── registry/
 │   ├── README.md
-│   ├── SKILL_CATALOG.md
-│   └── catalog.json
+│   └── SKILL_CATALOG.md
 ├── tests/                      # Unit tests kiểm tra CLI và cấu trúc offline
 └── .github/workflows/ci.yml    # Validation + unit tests + packaging smoke test
 ```
@@ -147,7 +146,7 @@ python3 studio.py package skills/data-quality-audit --out dist
 
 `new` tạo thêm `evals/<name>/cases.json` nếu --output là `skills` ở root repo. Mẫu evals vẫn phải được người viết điền đủ ca kiểm thử thực tế trước production; CLI không tự bịa kết quả model.
 
-Sau khi tạo Skill mới: cập nhật `registry/catalog.json`, thay hướng dẫn mẫu bằng quy trình thực, bổ sung references/assets theo nhu cầu, tạo ít nhất 3 test prompts có positive/negative, kiểm định. `new` chỉ scaffold, **không có nghĩa Skill mới đã đạt chất lượng production**.
+Sau khi tạo Skill mới: cập nhật `evals/catalog.json`, thay hướng dẫn mẫu bằng quy trình thực, bổ sung references/assets theo nhu cầu, tạo ít nhất 3 test prompts có positive/negative, kiểm định. `new` chỉ scaffold, **không có nghĩa Skill mới đã đạt chất lượng production**.
 
 **`new`.** `new <name> --description "..."` nhận thêm `--lang {en,vi}` (mặc định `en`; `vi` viết thân tiếng Việt, frontmatter vẫn tiếng Anh), `--full` (template đầy đủ `references/`, `scripts/`, `assets/`, `agents/`, chỉ tiếng Anh; `--full --lang vi` thoát 2) và `--eval-root` (nơi tạo `evals/<name>/`). Hai template còn dấu `STUDIO-DRAFT` nên `package` từ chối đến khi viết thật. Chi tiết: [templates/README.md](templates/README.md); chuẩn viết thân tiếng Việt: [VIETNAMESE_SKILL_WRITING.md](standards/VIETNAMESE_SKILL_WRITING.md).
 
@@ -261,11 +260,11 @@ Không bao giờ đọc nội dung placeholder cloud. `PINNED` một mình (file
 
 ## Cổng `model_evaluated` (`evals --all`): mã `EV20`
 
-Khi engine nằm trong repo (tính từ chính file engine, không theo thư mục đang đứng), `evals --all` còn kiểm `registry/catalog.json`: mỗi lời khai `model_evaluated`, `status` và khối `evaluated` phải khớp số đếm lại từ log chạy dưới `evals/<skill>/runs/`. Mỗi vấn đề là một ERROR `EV20` (cả trong `--json`), thoát 1. Engine chép rời ra ngoài repo (skill rời, ZIP) bỏ qua cổng. Công cụ đếm là `evals/tools/activation.py` của chính repo đó; không nạp từ thư mục đang đứng hay biến môi trường.
+Khi engine nằm trong repo (tính từ chính file engine, không theo thư mục đang đứng), `evals --all` còn kiểm `evals/catalog.json`: mỗi lời khai `model_evaluated`, `status` và khối `evaluated` phải khớp số đếm lại từ file bằng chứng gọn `evals/<skill>/evidence/<lô>.json` (sinh bằng `evals/tools/activation.py compact`; log thô nằm ở ledger OpcOS). Mỗi vấn đề là một ERROR `EV20` (cả trong `--json`), thoát 1. Engine chép rời ra ngoài repo (skill rời, ZIP) bỏ qua cổng. Luật đếm nằm một chỗ trong engine; không nạp mã từ thư mục đang đứng hay biến môi trường.
 
 | Mã | Nghĩa | Cách sửa |
 |---|---|---|
-| `EV20` | Catalog hỏng hoặc không khớp bằng chứng (`model_evaluated: true` thiếu số đếm đủ ngưỡng, `status` lệch cờ, thiếu `ab-<ngày>.json`...); trong repo thiếu `registry/catalog.json` hoặc `evals/tools/activation.py`; cây `runs/` có symlink/junction, placeholder cloud hoặc vượt trần duyệt (`runs dir not safe to count`, khi đó không đếm gì) | Sửa catalog hoặc bổ sung log đúng; đặt lại file thiếu; bỏ link khỏi `runs/`, tải file cloud thủ công, thu gọn cây |
+| `EV20` | Catalog hỏng hoặc không khớp bằng chứng (`model_evaluated: true` thiếu số đếm đủ ngưỡng, `status` lệch cờ, thiếu `ab-<ngày>.json`...); trong repo thiếu `evals/catalog.json` hoặc file bằng chứng gọn mà khối `evaluated` trỏ tới; file gọn sai schema; thư mục `evidence/` có symlink/junction, placeholder cloud hoặc vượt trần duyệt (`evidence dir not safe to read`, khi đó không đếm gì) | Sửa catalog hoặc bổ sung log đúng; đặt lại file thiếu; bỏ link khỏi `evidence/`, tải file cloud thủ công, thu gọn cây |
 
 ## Phát hành
 

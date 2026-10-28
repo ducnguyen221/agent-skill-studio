@@ -1,9 +1,0 @@
-```python
-def sort_ascending(nums: list[int]) -> list[int]:
-    """Return a new list with the integers in ascending order."""
-    return sorted(nums)
-```
-
-Dùng `sorted()` của Python (Timsort, O(n log n)); hàm trả về list mới và không đổi list gốc. Muốn sắp xếp tại chỗ thì dùng `nums.sort()`.
-
-Ví dụ: `sort_ascending([3, 1, 2])` → `[1, 2, 3]`.

@@ -12,12 +12,27 @@ evals/<skill-name>/
   rubric.md               # tiêu chí chấm độc lập, hard-fail điều kiện
   fixtures/               # dữ liệu synthetic, không có customer data
   baselines/BASELINE.md   # No-skill run, nếu chưa chạy ghi NOT RUN
-  runs/                   # tạo trong lần thực thi thực tế (optional); lô có tên: runs/SPR-18/, runs/SPR-33/
+  evidence/<lô>.json      # bằng chứng gọn mỗi lô (activation.py compact); log thô của lô nằm ở ledger OpcOS, không ở repo
 ```
 
-Công cụ chung nằm ở `evals/tools/` (chỉ thư viện chuẩn): `activation.py` đếm kích hoạt từ transcript (`verify`, `hash`, `count`, `freeze`, `summarize`), `oracle.py` chấm đầu ra theo `expected/<case-id>.json`, `redact.py` làm bản transcript che email và đường dẫn máy để commit được.
+Công cụ chung nằm ở `evals/tools/` (chỉ thư viện chuẩn): `activation.py` đếm kích hoạt từ transcript (`verify`, `hash`, `count`, `freeze`, `summarize`, `compact`), `oracle.py` chấm đầu ra theo `expected/<case-id>.json`, `redact.py` làm bản transcript che email và đường dẫn máy để commit được.
 
 Xuất các ca positive sang định dạng agentskills (không gọi model): `python3 studio.py evals <skill> --export agentskills --out dist/agentskills` ghi `<out>/<skill>/evals/evals.json`; `--out` không được nằm dưới `skills/` hay `evals/`.
+
+## Bằng chứng gọn và kho thô
+
+Từ SPR-03 thư mục `runs/` không còn trong repo. Cổng `model_evaluated` đọc **một file gọn mỗi lô**, `evals/<skill>/evidence/<lô>.json` (schema 1), và khối `evaluated` của
+`evals/catalog.json` trỏ tới nó bằng khoá bắt buộc `evidence` (cùng giá trị với `ab_report`). Bản thô của lô (log, `out/`, `blind/`, `smoke/`, `ab-*`, `manifest.json`) nằm ở repo OpcOS:
+`system/ledger/agent-skill-studio/evidence/<lô>/<skill>/`. Các đường `runs/<lô>/` trong phần lịch sử bên dưới là thư mục thô đó.
+
+Lệnh (đọc `evals/tools/activation.py --help`):
+
+- `activation.py compact <thư mục thô> --skill S --batch B --out evals/S/evidence/B.json` sinh file gọn; thoát 2 khi file đã có, không bao giờ ghi đè.
+- `activation.py compact --verify <thư mục thô> evals/S/evidence/B.json` dựng lại từ thư mục thô và so trùng byte (thoát 0 khi trùng, 1 khi lệch).
+- **Bắt buộc chạy `--verify` trước khi bật `model_evaluated: true`:** file gọn có thể bị sửa tay, cổng không đối chiếu được thô (thô ngoài repo), chỉ `--verify` làm việc đó.
+- `activation.py summarize <thư mục thô>` vẫn dùng cho công cụ đo; cổng và công cụ cùng một luật đếm trong engine (`studio_evals.summarize_logs`).
+
+Chạy lô mới: ghi log vào thư mục thô ở ledger → `compact` → thêm khối `evaluated` (kèm `evidence`) vào `evals/catalog.json` → `python studio.py evals --all`.
 
 ## Trước khi viết Skill
 
@@ -31,7 +46,7 @@ Xuất các ca positive sang định dạng agentskills (không gọi model): `p
 2. Chạy lần 1 trong **fresh session, Skill không có mặt/disable đúng cách**. Lưu prompt, output và log.
 3. Chạy lần 2 trong **fresh session, có Skill**; quan sát activation, files read, scripts executed, permission prompts và output thật.
 4. Dùng `rubric.md` chấm từng tiêu chí và so với baseline. Với side-effect phải dùng mock/staging.
-5. Ghi file `runs/<ISO-UTC>_<runtime>_<case-id>.json` cùng đường dẫn evidence/screenshot/session log.
+5. Ghi file `<thư mục thô của lô>/<ISO-UTC>_<runtime>_<case-id>.json` cùng đường dẫn evidence/screenshot/session log (thư mục thô nằm ở ledger OpcOS, xem «Bằng chứng gọn và kho thô»).
 6. Nếu yếu hơn baseline hoặc fail safety -> REFINE, test lại; đừng chỉ thêm một đoạn "must always".
 
 ## Mẫu run log
@@ -72,7 +87,7 @@ Kiểm trước mỗi lô:
 python -X utf8 evals/tools/activation.py verify --eval-dir evals/<skill> --main-skill-dir <OpcOS>/plugins/agent-skill-studio/skills/<skill> --cache-skill-dir <~/.claude>/plugins/cache/agent-skill-studio/agent-skill-studio/0.1.0/skills/<skill> --manifest evals/<skill>/runs/SPR-18/manifest.json
 python -X utf8 evals/tools/activation.py hash <thư mục skill>          # băm cây skill, đã chuẩn hoá CRLF
 python -X utf8 evals/tools/activation.py count <transcript.jsonl> --skill <skill> --runtime claude-code|codex
-python -X utf8 evals/tools/activation.py summarize evals/<skill>/runs/SPR-18
+python -X utf8 evals/tools/activation.py summarize <thư mục thô của lô>
 ```
 
 Đo thật (17/10/2026) — `runs/SPR-18/harness-status.json` và `runs/SPR-18/smoke/*`:
@@ -124,7 +139,7 @@ Ba luật cứng, rút từ lô SPR-33 (nguồn: `REPORT` SPR-33 mục `RF12`, `
    Che xong mới `git add`; log trong repo chỉ giữ `hits` và băm.
 3. **`SHA lô` = HEAD sau review cuối** (kể cả review bảo mật), không phải HEAD sau task thực thi: mỗi review tìm thấy sửa trong `skills/` là một lô 16 lượt mới
    (SPR-33 chạy ba lần: `f113954` huỷ, `6d47a33`, `b85329d`). Đóng băng rồi ghi 40 ký tự thập lục phân đầy đủ vào `runs/<sprint>/manifest.json` (khoá `batch_sha`) và vào
-   khối `evaluated.batch_sha` của `registry/catalog.json`; sửa `skills/` hay `studio.py` sau đó thì `SHA lô` vô hiệu.
+   khối `evaluated.batch_sha` của `evals/catalog.json`; sửa `skills/` hay `studio.py` sau đó thì `SHA lô` vô hiệu.
 
 **Dao động giữa lô.** Thước kích hoạt không nhạy và n nhỏ: cùng cờ, cùng skill, hai lô khác nhau cho kết quả khác nhau — `data-quality-audit` positive 5/5 (lô `6d47a33`) so với 4/5 (lô
 `b85329d`); `skill-creator-studio` 3/5 so với 2/5 (nguồn: `REPORT` SPR-33 `VR9`). Chỉ khẳng định «không hồi quy» ở mức ngưỡng; đừng suy ra «tốt hơn» hay «kém đi» từ một lô.

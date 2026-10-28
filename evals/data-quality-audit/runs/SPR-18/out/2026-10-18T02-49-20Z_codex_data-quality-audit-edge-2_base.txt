@@ -1,1 +1,0 @@
-`order_id` and `line_no` repeat in rows **2 and 4** of `fixtures/order_lines.csv` (counting the header as row 1). Both have the key `(1, 1)`; their amounts are `10` and `30`.
