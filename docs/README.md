@@ -6,7 +6,7 @@ Thư mục `docs/` là website tĩnh của repo, dựng trên OpcOS Design Syste
 
 | Đường | Vai |
 |---|---|
-| `index.html`, `about/`, `install/`, `guide/`, `flow/`, `principles/` | sáu trang viết tay (Trang chủ, Giới thiệu, Cài đặt, Cách dùng, Luồng & quy trình, Nguyên tắc), sinh bởi `tools/gen-pages.mjs` |
+| `index.html`, `install/`, `guide/`, `flow/`, `principles/` | năm trang viết tay (Trang chủ gồm cả tác giả và giấy phép, Cài đặt, Cách dùng, Luồng & quy trình, Nguyên tắc), sinh bởi `tools/gen-pages.mjs`; `about/` chỉ còn trang chuyển hướng về Trang chủ |
 | `docs/` | trang Docs: các file `.md` của repo dựng thành trang đọc được, do `tools/build-docs.mjs` sinh |
 | `assets/ds/` | bản chép của Design System (`site.css`, `site.js`, `ds-lock.json`) và `site.json` là cấu hình riêng của repo; không sửa tay |
 | `assets/logo.svg` | chỗ đặt logo |
