@@ -249,6 +249,32 @@ class OpcosRootsTests(TmpCase):
         root = R.opcos_roots(self.write_paths([{"id": "plugins", "rel_path": "plugins"}]), include_system_plugins=False)[1]
         self.assertEqual((root["status"], root["reasons"]), ("error", ["link"]))
 
+    def test_link_in_the_middle_of_rel_path_is_an_error(self):
+        """bắt-lỗi: RF-5.1 a junction/symlink between paths.json and the root (sysj/opcos-plugin, sysj a link out of the tree) makes the root an error; nothing is read through it."""
+        base = self.tmp / "tree"
+        outside = self.tmp / "outside"
+        outside.mkdir()
+        make_skill(make_plugin(outside, "opcos-plugin") / "skills" / "x")  # a plugin out of the tree
+        base.mkdir()
+        make_link(self, base / "sysj", outside)
+        path = self.write_paths([{"id": "opcos-plugin", "rel_path": "sysj/opcos-plugin"}, {"id": "plugins", "rel_path": "sysj"}], name="tree/paths.json")
+        seen = []
+        real = os.scandir
+        with mock.patch("os.scandir", side_effect=lambda p, *a, **k: (seen.append(os.fspath(p)), real(p, *a, **k))[1]):
+            roots = R.opcos_roots(path, include_system_plugins=False)
+            R.collect_skills(roots)
+        self.assertEqual([(r["status"], r["reasons"]) for r in roots], [("error", ["link"]), ("error", ["link"])])
+        self.assertFalse([p for p in seen if "outside" in p], seen)
+
+    def test_link_in_the_middle_of_rel_path_with_patched_is_link(self):
+        """bắt-lỗi: RF-5.1 the same on a machine that cannot create links: is_link says the middle folder is a link."""
+        (self.tmp / "sysj" / "opcos-plugin").mkdir(parents=True)
+        path = self.write_paths([{"id": "opcos-plugin", "rel_path": "sysj/opcos-plugin"}])
+        real = _engine.fs.is_link
+        with mock.patch.object(_engine.fs, "is_link", side_effect=lambda p: Path(p).name == "sysj" or real(p)):
+            root = R.opcos_roots(path, include_system_plugins=False)[0]
+        self.assertEqual((root["status"], root["reasons"]), ("error", ["link"]))
+
 
 class CollectSkillsTests(TmpCase):
     def collect(self, **kw):
@@ -370,10 +396,11 @@ class CollectSkillsTests(TmpCase):
         """bắt-lỗi: Trọng tâm 1: an absolute path, a ~ path, a .. path and "../../.secret" in `skills` are manifest-escape; nothing outside the plugin is listed."""
         outside = self.tmp / "outside-secret"
         make_skill(outside / "loot")
-        for bad in (str(outside), str(outside).replace("\\", "/"), "~/x", "../outside-secret", "a/../../outside-secret", "../../.secret",
-                    "skills/../../outside-secret", "C:\\x", "x:stream", "\\\\host\\share", "", "a\x00b", "CON", "name.", "SKILL~1"):
+        bads = (str(outside), str(outside).replace("\\", "/"), "~/x", "../outside-secret", "a/../../outside-secret", "../../.secret",
+                "skills/../../outside-secret", "C:\\x", "x:stream", "\\\\host\\share", "", "a\x00b", "CON", "name.", "SKILL~1")
+        for index, bad in enumerate(bads):  # one folder per case: the first two values are equal on POSIX
             with self.subTest(bad):
-                plugin = make_plugin(self.tmp, "p%d" % abs(hash(bad)), {"name": "p", "skills": bad})
+                plugin = make_plugin(self.tmp, "p%d" % index, {"name": "p", "skills": bad})
                 seen, patch = self.scan_log()
                 with patch:
                     dirs, skipped = R.plugin_skill_dirs(plugin, C.CLOUD_MARKERS)
@@ -494,6 +521,40 @@ class CollectSkillsTests(TmpCase):
                          [("placeholder", "cloud"), ("plugin.json", "unreadable")])
         self.assertEqual(root["skipped_by_rule"], [])
 
+    def test_nested_scan_shares_the_directory_budget(self):
+        """bắt-lỗi: RF-5.2 skills inside skills spend the one DOCTOR_MAX_DIRS budget of the run: past it the rest is left out with `limit` (root partial)."""
+        parent = self.tmp / "plugins"
+        parent.mkdir()
+        plugin = make_plugin(parent, "p")
+        make_skill(plugin / "skills" / "outer")
+        for i in range(8):
+            make_skill(plugin / "skills" / "outer" / ("g%d" % i) / "inner")
+        root = {"path": parent.as_posix(), "kind": "plugin-parent", "area": "plugins", "status": "ok", "reasons": [], "skipped_by_rule": []}
+        with mock.patch.object(C, "DOCTOR_MAX_DIRS", 6):
+            skills, _ = R.collect_skills([root])
+        self.assertLess(len(skills), 9)
+        self.assertEqual((root["status"], root["reasons"]), ("partial", ["limit"]))
+
+    def test_cloud_name_inside_a_plugin_is_by_rule_and_placeholder_is_not(self):
+        """bắt-lỗi: RF-5.3 a folder named like a cloud zone inside a plugin is cloud-name (root stays ok); a real placeholder is cloud (partial)."""
+        parent = self.tmp / "plugins"
+        parent.mkdir()
+        plugin = make_plugin(parent, "p")
+        make_skill(plugin / "skills" / "outer")
+        make_skill(plugin / "skills" / "outer" / "onedrive-sync" / "inner")
+        (plugin / "skills" / "outer" / "grp" / "OneDrive x").mkdir(parents=True)
+        (plugin / "skills" / "outer" / "grp" / "OneDrive x" / "SKILL.md").write_text("x", encoding="utf-8")
+        make_skill(plugin / "skills" / "outer" / "ph" / "inner")
+        root = {"path": parent.as_posix(), "kind": "plugin-parent", "area": "plugins", "status": "ok", "reasons": [], "skipped_by_rule": []}
+        skills, _ = R.collect_skills([root])
+        self.assertEqual((root["status"], root["reasons"]), ("ok", []))
+        self.assertEqual(sorted(x["reason"] for x in root["skipped_by_rule"]), ["cloud-name", "cloud-name"])
+        root = dict(root, status="ok", reasons=[], skipped_by_rule=[])
+        real = _engine.fs.entry_is_cloud
+        with mock.patch.object(_engine.fs, "entry_is_cloud", side_effect=lambda e: e.name == "ph" or real(e)):
+            R.collect_skills([root])
+        self.assertEqual((root["status"], root["reasons"]), ("partial", ["cloud"]))
+
     def test_error_roots_are_not_scanned(self):
         """bắt-lỗi: FR1.3 a root with status error is left alone and gives no skill."""
         root = {"path": (FIX / "plugins").as_posix(), "kind": "plugin-parent", "area": "plugins", "status": "error", "reasons": ["x"], "skipped_by_rule": []}
@@ -536,6 +597,21 @@ class TreeShaTests(TmpCase):
         (skill / "scripts" / "run.py").write_bytes(b"print(1)\n")
         (skill / "B.txt").write_bytes(b"\x00\x01")
         self.assertEqual(R.tree_sha256(skill, C.CLOUD_MARKERS), self.expect(skill))
+
+    def test_tree_sha_is_none_when_a_folder_cannot_be_listed(self):
+        """bắt-lỗi: RF-5.4 a sub-folder that cannot be listed gives None, never the hash of a tree with a hole."""
+        skill = self.skill()
+        (skill / "locked").mkdir()
+        (skill / "locked" / "f.txt").write_text("x", encoding="utf-8")
+        self.assertIsNotNone(R.tree_sha256(skill, C.CLOUD_MARKERS))
+        real = os.scandir
+
+        def scan(path, *a, **k):
+            if Path(os.fspath(path)).name == "locked":
+                raise PermissionError(13, "denied")
+            return real(path, *a, **k)
+        with mock.patch("os.scandir", side_effect=scan):
+            self.assertIsNone(R.tree_sha256(skill, C.CLOUD_MARKERS))
 
     def test_tree_sha_keeps_crlf_and_ignores_pycache(self):
         """bắt-lỗi: bytes are hashed as they are (CRLF counts), __pycache__ and .pyc do not, and the result does not depend on the order files were made."""

@@ -130,7 +130,7 @@ def _new_root(path, kind: str, area: str, status: str = "ok", reasons: list | No
     return {"path": _posix(path) if path else "", "kind": kind, "area": area, "status": status, "reasons": list(reasons or []), "skipped_by_rule": []}
 
 
-def _make_root(path: Path, kind: str, area: str, markers: tuple, optional: bool = False) -> dict | None:
+def _make_root(path: Path, kind: str, area: str, markers: tuple, base: Path, optional: bool = False) -> dict | None:
     """The Root for a folder: `error` unless it is a real local folder that is neither too broad nor in a zone. `optional` and absent: None, not an error."""
     reason = fs.zone_reason(path, markers)
     if reason:
@@ -139,7 +139,7 @@ def _make_root(path: Path, kind: str, area: str, markers: tuple, optional: bool 
         return None
     if fs.root_too_broad(path, markers):
         return _new_root(path, kind, area, "error", ["too-broad"])
-    if fs.is_link(path):
+    if fs.link_in_chain(path, base) is not None:  # a link at the root or anywhere between paths.json and it: unusable as a whole, so error rather than partial
         return _new_root(path, kind, area, "error", ["link"])
     if fs.path_is_cloud(path):
         return _new_root(path, kind, area, "error", ["cloud"])
@@ -171,11 +171,11 @@ def opcos_roots(paths_file: Path, include_system_plugins: bool = True, markers: 
             roots.append(_new_root(None, kind, area, "error", ["area-missing"]))
             continue
         path = _rel_path(base, entry.get("rel_path"))
-        roots.append(_new_root(None, kind, area, "error", ["rel-path-refused"]) if path is None else _make_root(path, kind, area, markers))
+        roots.append(_new_root(None, kind, area, "error", ["rel-path-refused"]) if path is None else _make_root(path, kind, area, markers, base))
     if include_system_plugins and "system" in by_id:
         system = _rel_path(base, by_id["system"].get("rel_path"))
         if system is not None:
-            found = _make_root(system / "plugins", "plugin-parent", "system-plugins", markers, optional=True)
+            found = _make_root(system / "plugins", "plugin-parent", "system-plugins", markers, base, optional=True)
             if found is not None:
                 roots.append(found)
     return roots
@@ -193,6 +193,12 @@ def note_skip(root: dict, path: str, reason: str) -> None:
         root["reasons"].append(reason)
     if root["status"] == "ok":
         root["status"] = "partial"
+
+
+def _rule_names(skipped: list, extra: tuple) -> list:
+    """`skipped` with `cloud` turned into `cloud-name` where the folder's own name carries the marker (a rule: the root stays ok); a placeholder keeps `cloud`."""
+    markers = (*C.CLOUD_MARKERS, *extra)
+    return [dict(item, reason="cloud-name") if item["reason"] == "cloud" and fs.zone_named(item["path"].rsplit("/", 1)[-1], markers) else item for item in skipped]
 
 
 def _declared_dir(plugin: Path, entry, markers: tuple) -> tuple:
@@ -213,12 +219,19 @@ def _declared_dir(plugin: Path, entry, markers: tuple) -> tuple:
     return target, None
 
 
-def _nested_skills(skill: Path, extra: tuple, skipped: list, depth: int = 0) -> list:
+def _nested_skills(skill: Path, extra: tuple, skipped: list, budget: dict, depth: int = 0) -> list:
     """Skills below a skill. iter_skill_dirs stops at the first SKILL.md, but a skill may hold skills (05-forensics holds 05a..05d), so the folders of a skill
-    that are not material (references, scripts, assets, tests, evals, examples, fixtures..., hidden and superseded folders) are scanned one by one."""
+    that are not material (references, scripts, assets, tests, evals, examples, fixtures..., hidden and superseded folders) are scanned one by one.
+    `budget` ({left, cut}) is shared by every call of one scan: each folder listed spends one of DOCTOR_MAX_DIRS and what is left unscanned is reported once as `limit`."""
     found = []
     if depth >= C.DOCTOR_MAX_SKILL_DEPTH:
         return found
+    if budget["left"] <= 0:
+        if not budget["cut"]:
+            budget["cut"] = True
+            skipped.append({"path": _posix(skill), "reason": "limit"})
+        return found
+    budget["left"] -= 1
     try:
         with os.scandir(skill) as scan:
             entries = sorted(scan, key=lambda e: e.name)
@@ -237,24 +250,29 @@ def _nested_skills(skill: Path, extra: tuple, skipped: list, depth: int = 0) -> 
         child = skill / entry.name
         reason = fs.zone_reason(child, (*C.CLOUD_MARKERS, *extra))
         if reason:
-            skipped.append({"path": _posix(child), "reason": reason})
+            skipped.append({"path": _posix(child), "reason": "cloud-name" if reason == "cloud" else reason})
         elif fs.entry_is_cloud(entry):
             skipped.append({"path": _posix(child), "reason": "cloud"})
         elif entry.is_symlink() or fs.is_link(child):
             skipped.append({"path": _posix(child), "reason": "link"})
         else:
+            if budget["left"] <= 0:
+                _nested_skills(child, extra, skipped, budget, depth + 1)  # reports the limit once
+                continue
+            budget["left"] -= 1
             below, skp = doctor.iter_skill_dirs([child], False, extra)
-            skipped.extend(skp)
+            skipped.extend(_rule_names(skp, extra))
             for item in below:
                 found.append(item)
-                found.extend(_nested_skills(item, extra, skipped, depth + 1))
+                found.extend(_nested_skills(item, extra, skipped, budget, depth + 1))
     return found
 
 
-def _plugin_scan(plugin: Path, markers: tuple) -> tuple:
+def _plugin_scan(plugin: Path, markers: tuple, budget: dict | None = None) -> tuple:
     """(plugin name, skill folders, skipped[{path, reason}]) of one plugin folder, read from its `.claude-plugin/plugin.json`."""
     manifest = plugin / ".claude-plugin" / "plugin.json"
     skipped: list = []
+    budget = {"left": C.DOCTOR_MAX_DIRS, "cut": False} if budget is None else budget
     if fs.link_in_chain(manifest, plugin) is not None:
         return plugin.name, [], [{"path": _posix(manifest), "reason": "link"}]
     try:
@@ -302,10 +320,10 @@ def _plugin_scan(plugin: Path, markers: tuple) -> tuple:
                 skipped.append({"path": _posix(target), "reason": "link" if fs.is_link(target) else "unreadable"})
             continue
         found, skp = doctor.iter_skill_dirs([target], False, extra)
-        skipped.extend(skp)
+        skipped.extend(_rule_names(skp, extra))
         for folder in found:
             add(folder)
-            for inner in _nested_skills(folder, extra, skipped):
+            for inner in _nested_skills(folder, extra, skipped, budget):
                 add(inner)
     return name, skills, skipped
 
@@ -367,6 +385,7 @@ def collect_skills(roots: list, markers: tuple = C.CLOUD_MARKERS) -> tuple:
     its manifest, `root` the root's path. `skipped` lists every path left out, as {path, reason}; each root is updated in place (reasons, skipped_by_rule,
     and `partial` when something was left out that no rule asked for). A `plugin` root without a manifest becomes an `error`."""
     skills, skipped, seen, limited = [], [], set(), False
+    budget = {"left": C.DOCTOR_MAX_DIRS, "cut": False}  # one folder budget for the whole run
     for root in roots:
         if root["status"] == "error":
             continue
@@ -381,7 +400,7 @@ def collect_skills(roots: list, markers: tuple = C.CLOUD_MARKERS) -> tuple:
         else:
             plugins = _plugin_children(root, base, markers, skipped)
         for plugin in plugins:
-            name, folders, skp = _plugin_scan(plugin, markers)
+            name, folders, skp = _plugin_scan(plugin, markers, budget)
             for item in skp:
                 note_skip(root, item["path"], item["reason"])
                 skipped.append(item)
@@ -436,6 +455,11 @@ def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
     for path in found:
         if path in dirs:
             if fs.zone_named(path.name, markers):
+                return None
+            try:  # walk_files leaves a folder it cannot list out without a word: the tree would be hashed with a hole
+                with os.scandir(path):
+                    pass
+            except OSError:
                 return None
             continue
         if path.suffix.lower() == ".pyc":
