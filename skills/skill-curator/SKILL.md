@@ -8,7 +8,7 @@ metadata:
 
 # Skill Curator
 
-Shows the whole skill library at once: which source skills exist, in which repo, what `doctor` finds in each, and (as later commands arrive) where they are installed and which ones overlap. It only reads. It writes the two report files you name and nothing else, and it never edits, installs or deletes a skill.
+Shows the whole skill library at once: which source skills exist, in which repo, what `doctor` finds in each, where they are installed and which ones overlap. It only reads. It writes the two report files you name and nothing else, and it never edits, installs or deletes a skill.
 
 ## Critical rules for every run
 

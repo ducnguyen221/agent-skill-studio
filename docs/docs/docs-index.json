@@ -12,7 +12,7 @@
       "src": "CHANGELOG.md",
       "out": "docs/CHANGELOG/index.html",
       "title": "Changelog",
-      "sha256": "fac03c03082ccd806ebfc9e60ce31d1a9c4ec1571f1a2e392d9bb37efebc58b9"
+      "sha256": "df47f79eae56ef987babb5225c741326aecf882f4bbb6f692b7580985448852a"
     },
     {
       "src": "CLAUDE.md",
@@ -36,7 +36,7 @@
       "src": "README.md",
       "out": "docs/README/index.html",
       "title": "Agent Skill Studio",
-      "sha256": "53b51c2d145b038243d17a491e04d037bdf2b5db43777f10830eccf44eba3079"
+      "sha256": "9cd8e8ea6a2d6ca05d4109224629d5ca1b96b5a49ecc3439d453e468b7510665"
     },
     {
       "src": "evals/RUNBOOK.md",
@@ -90,7 +90,7 @@
       "src": "skills/skill-creator-studio/SKILL.md",
       "out": "docs/skills/skill-creator-studio/SKILL/index.html",
       "title": "Skill Creator Studio",
-      "sha256": "355a289e7d3c97c6d633bbfe3a818cf9e2c7ad833e6d76bba50f838a32f44efa"
+      "sha256": "a1129d59e7c9709c178a2796fdaee61da9d2f195997fc113f97a4eb31c361ba4"
     },
     {
       "src": "skills/skill-creator-studio/references/AUDIT_CHECKLIST.md",
@@ -121,6 +121,12 @@
       "out": "docs/skills/skill-creator-studio/references/SOURCE_NOTES/index.html",
       "title": "Source Notes — Source-of-truth discipline",
       "sha256": "5d5218c212e2800ce894487ff8e3101c636a31d092bd6219a1a731c0b0e0d277"
+    },
+    {
+      "src": "skills/skill-curator/SKILL.md",
+      "out": "docs/skills/skill-curator/SKILL/index.html",
+      "title": "Skill Curator",
+      "sha256": "53fb61f8d8bca23dd5b813c3dc481f8fe3882266a384324605eadd58a6f623d2"
     },
     {
       "src": "standards/DOC_TYPES.md",

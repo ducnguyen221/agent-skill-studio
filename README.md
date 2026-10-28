@@ -35,7 +35,7 @@ agent-skill-studio/
 └── docs/        # website tĩnh trên OpcOS Design System (xem docs/README.md); không vào gói phát hành
 ```
 
-Engine nằm một chỗ: `skills/skill-creator-studio/scripts/` (`studio.py` là CLI, kèm chín mô-đun `studio_*.py`). `evals/` và `tests/` không vào gói phát hành. Log thô của lượt đo nằm ở sổ OpcOS; repo chỉ giữ file gọn `evals/<skill>/evidence/<lô>.json` mà cổng đếm lại được.
+Mã dùng chung và CLI nằm ở `skills/skill-creator-studio/scripts/` (`studio.py` cùng các mô-đun `studio_*.py`); mã `catalog` nằm ở `skills/skill-curator/scripts/`. `evals/` và `tests/` không vào gói phát hành. Log thô của lượt đo nằm ở sổ OpcOS; repo chỉ giữ file gọn `evals/<skill>/evidence/<lô>.json` mà cổng đếm lại được.
 
 ## Khởi động trong 5 phút
 
@@ -74,6 +74,7 @@ Cài riêng một skill bằng `install` (sao chép có kiểm tra, không ghi �
 python3 studio.py install skills/skill-creator-studio --agent claude --workspace .
 python3 studio.py install skills/skill-creator-studio --agent codex --workspace .        # .agents/skills/
 python3 studio.py install skills/skill-creator-studio --agent antigravity --user         # ~/.gemini/config/skills/
+python3 studio.py install skills/skill-curator --agent codex --workspace .               # skill thứ hai, cùng cách
 ```
 
 - **Claude Code:** `.claude/skills/<tên>`; `--user` không hỗ trợ (thoát 2), tự chép vào `~/.claude/skills/`.

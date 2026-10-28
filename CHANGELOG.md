@@ -21,18 +21,18 @@ Chặng 3 (agent-skill-studio:SPR-04): skill thứ hai `skill-curator`, lệnh `
 
 ### Hợp đồng
 
-| thay đổi | kiểu | trước → sau | bên dùng bị ảnh hưởng | tương thích ngược |
-|---|---|---|---|---|
-| lệnh `catalog` | thêm | — → `catalog [--roots-from opcos] [--roots …] [--installed …] [--overlap] [--json] [--out] [--md]`, schema JSON `1` | OpcOS `P11a`, `P11b`, SPR-10, SPR-11 | có |
-| `doctor --roots-from opcos`, `--by-pack`, `--docs` | thêm | — → cờ mới; JSON thêm khoá `packs`, `docs`, `budget` khi có cờ hoặc profile | wrapper `P11a` | có (khoá mới chỉ thêm) |
-| `doctor --profile opcos` ngân sách | sửa | không đo 350/8 000 → thêm WARN ngân sách và khoá `budget` | người chạy `--profile opcos`, `--fail-on warn` | không với `--fail-on warn` (thêm WARN có thể làm thoát 1) |
-| `doctor` tìm skill theo manifest plugin | thêm | — → chỉ khi `--roots-from opcos` | wrapper `P11a` | có: `--roots`, `--roots-file` không đổi |
-| `check` file workflow và luật | sửa | thoát 2 «not available yet» → kiểm thật, thoát 0 hoặc 1 | người chạy `check` trên file `type:`; CI repo khác | không (chặt hơn) |
-| `catalog.json` `metadata.opcos_*` | thêm | — | Atlas SPR-11 | có |
-| skill ship | thêm | plugin ship 1 → 2 skill (`skill-curator`) | người cài; `test-opcos.ps1` khối Studio; `registry.json`; junction Antigravity; bước `package` của CI | có |
-| `new` vùng cloud hoặc đường lạ | sửa | ghi được hoặc traceback → `ERROR INPUT` thoát 1 hoặc lời báo | người chạy `new` | không (chặt hơn) |
-| `new --output` dưới `/tmp` macOS | sửa | từ chối → cho phép | người dùng macOS | có (nới đúng chỗ) |
-| phiên bản | sửa | `0.2.0` → `0.3.0` + tag | marketplace, cache | có |
+| thay đổi | kiểu | trước → sau | bên dùng bị ảnh hưởng | tương thích ngược | lộ trình deprecate |
+|---|---|---|---|---|---|
+| lệnh `catalog` | thêm | — → `catalog [--roots-from opcos] [--roots …] [--installed …] [--overlap] [--json] [--out] [--md]`, schema JSON `1` | OpcOS `P11a`, `P11b`, SPR-10, SPR-11 | có | — |
+| `doctor --roots-from opcos`, `--by-pack`, `--docs` | thêm | — → cờ mới; JSON thêm khoá `packs`, `docs`, `budget` khi có cờ hoặc profile | wrapper `P11a` | có (khoá mới chỉ thêm) | — |
+| `doctor --profile opcos` ngân sách | sửa | không đo 350/8 000 → thêm WARN ngân sách và khoá `budget` | người chạy `--profile opcos`, `--fail-on warn` | không với `--fail-on warn` (thêm WARN có thể làm thoát 1) | CHANGELOG ghi |
+| `doctor` tìm skill theo manifest plugin | thêm | — → chỉ khi `--roots-from opcos` | wrapper `P11a` | có: `--roots`, `--roots-file` không đổi | — |
+| `check` file workflow và luật | sửa | thoát 2 «not available yet» → kiểm thật, thoát 0 hoặc 1 | người chạy `check` trên file `type:`; CI repo khác | không (chặt hơn) | `0.3.0` |
+| `catalog.json` `metadata.opcos_*` | thêm | — | Atlas SPR-11 | có | — |
+| skill ship | thêm | plugin ship 1 → 2 skill (`skill-curator`) | người cài; `test-opcos.ps1` khối Studio; `registry.json`; junction Antigravity và `verify-parity`; bước `package` của CI | có | — |
+| `new` vùng cloud hoặc đường lạ | sửa | ghi được hoặc traceback → `ERROR INPUT` thoát 1 hoặc lời báo | người chạy `new` | không (chặt hơn) | — |
+| `new --output` dưới `/tmp` macOS | sửa | từ chối → cho phép | người dùng macOS | có (nới đúng chỗ) | — |
+| phiên bản | sửa | `0.2.0` → `0.3.0` + tag | marketplace, cache | có | Quyết định 4 |
 
 ### Nợ đóng
 

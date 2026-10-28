@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="vi" data-lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill Curator · Docs · Agent Skill Studio</title>
+<meta name="description" content="Tài liệu skills/skill-curator/SKILL.md của Agent Skill Studio.">
+<link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/docs/skills/skill-curator/SKILL/">
+<link rel="icon" href="../../../../assets/logo.svg">
+<link rel="stylesheet" href="../../../../assets/ds/site.css?v=1.1.0">
+</head>
+<body>
+<canvas id="netbg" aria-hidden="true"></canvas>
+<a class="skip" href="#main">Bỏ qua điều hướng</a>
+<header class="site" id="siteHeader">
+  <div class="wrap nav">
+    <a class="brand" href="../../../../index.html"><img src="../../../../assets/logo.svg" alt="">Agent Skill Studio</a>
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="../../../../index.html">Trang chủ</a>
+      <a href="../../../../install/index.html">Cài đặt</a>
+      <a href="../../../../guide/index.html">Cách dùng</a>
+      <a href="../../../../flow/index.html">Luồng &amp; quy trình</a>
+      <a href="../../../../principles/index.html">Nguyên tắc</a>
+      <a href="../../../../docs/index.html" class="active" aria-current="page">Docs</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm gh" href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+    <button class="theme-btn" type="button" data-ds-theme-toggle aria-label="Giao diện"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  </div>
+</header>
+<main id="main">
+<div class="wrap"><div class="doc-layout">
+  <nav class="doc-toc" aria-label="Tài liệu">
+    <b>Tài liệu</b>
+    <ul>
+      <li><a href="../../../../docs/AGENTS/index.html">Agent Skill Studio — Repository Instructions</a></li>
+      <li><a href="../../../../docs/CHANGELOG/index.html">Changelog</a></li>
+      <li><a href="../../../../docs/CLAUDE/index.html">Claude Code adapter for Agent Skill Studio</a></li>
+      <li><a href="../../../../docs/GEMINI/index.html">Antigravity notes for Agent Skill Studio</a></li>
+      <li><a href="../../../../docs/LICENSE_POLICY/index.html">License Policy</a></li>
+      <li><a href="../../../../docs/README/index.html">Agent Skill Studio</a></li>
+    </ul>
+    <p class="dir">evals/</p>
+    <ul>
+      <li><a href="../../../../docs/evals/RUNBOOK/index.html">Evals Runbook — kiểm định Skill bằng model thật</a></li>
+    </ul>
+    <p class="dir">evals/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../../docs/evals/skill-creator-studio/rubric/index.html">Skill Creator Studio — Evaluation rubric</a></li>
+    </ul>
+    <p class="dir">examples/</p>
+    <ul>
+      <li><a href="../../../../docs/examples/README/index.html">Bộ ví dụ mẫu</a></li>
+      <li><a href="../../../../docs/examples/descriptions/index.html">Cặp description tốt và xấu</a></li>
+      <li><a href="../../../../docs/examples/eval-cases/index.html">Mẫu case eval</a></li>
+    </ul>
+    <p class="dir">examples/data-quality-audit/</p>
+    <ul>
+      <li><a href="../../../../docs/examples/data-quality-audit/SKILL/index.html">Data Quality Audit — CSV</a></li>
+    </ul>
+    <p class="dir">examples/exemplar-vi/writing-release-notes/</p>
+    <ul>
+      <li><a href="../../../../docs/examples/exemplar-vi/writing-release-notes/SKILL/index.html">Writing Release Notes</a></li>
+    </ul>
+    <p class="dir">examples/exemplar/writing-commit-messages/</p>
+    <ul>
+      <li><a href="../../../../docs/examples/exemplar/writing-commit-messages/SKILL/index.html">Writing Commit Messages</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/</p>
+    <ul>
+      <li><a href="../../../../docs/skills/skill-creator-studio/SKILL/index.html">Skill Creator Studio</a></li>
+    </ul>
+    <p class="dir">skills/skill-creator-studio/references/</p>
+    <ul>
+      <li><a href="../../../../docs/skills/skill-creator-studio/references/AUDIT_CHECKLIST/index.html">Audit Checklist — Findings before fixes</a></li>
+      <li><a href="../../../../docs/skills/skill-creator-studio/references/CORE_RULES/index.html">Core Rules</a></li>
+      <li><a href="../../../../docs/skills/skill-creator-studio/references/NEW_WORKFLOW/index.html">NEW Workflow — Design a skill with tests first</a></li>
+      <li><a href="../../../../docs/skills/skill-creator-studio/references/REFINE_WORKFLOW/index.html">REFINE Workflow — Test before deleting</a></li>
+      <li><a href="../../../../docs/skills/skill-creator-studio/references/SOURCE_NOTES/index.html">Source Notes — Source-of-truth discipline</a></li>
+    </ul>
+    <p class="dir">skills/skill-curator/</p>
+    <ul>
+      <li><a href="../../../../docs/skills/skill-curator/SKILL/index.html" aria-current="page">Skill Curator</a></li>
+    </ul>
+    <p class="dir">standards/</p>
+    <ul>
+      <li><a href="../../../../docs/standards/DOC_TYPES/index.html">Doc Types — luật cho ba loại tài liệu</a></li>
+      <li><a href="../../../../docs/standards/EVALUATION_STANDARD/index.html">Evaluation Standard — Cách chứng minh Skill hoạt động</a></li>
+      <li><a href="../../../../docs/standards/HARNESSES/index.html">Harnesses — Claude Code, Codex, Antigravity</a></li>
+      <li><a href="../../../../docs/standards/README/index.html">Standards Directory</a></li>
+      <li><a href="../../../../docs/standards/SECURITY_AND_PERMISSIONS/index.html">Security &amp; Permissions Standard</a></li>
+      <li><a href="../../../../docs/standards/SKILL_AUTHORING_STANDARD/index.html">Skill Authoring Standard — SK-00…SK-15</a></li>
+      <li><a href="../../../../docs/standards/SOURCE_TRACEABILITY/index.html">Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15</a></li>
+      <li><a href="../../../../docs/standards/VIETNAMESE_SKILL_WRITING/index.html">Chuẩn viết tiếng Việt cho skill</a></li>
+    </ul>
+    <p class="dir">templates/</p>
+    <ul>
+      <li><a href="../../../../docs/templates/README/index.html">Templates</a></li>
+    </ul>
+    <p class="dir">templates/starter-project/</p>
+    <ul>
+      <li><a href="../../../../docs/templates/starter-project/AGENTS/index.html">Project Agent Instructions (cross-agent starting template)</a></li>
+      <li><a href="../../../../docs/templates/starter-project/README/index.html">Project entrypoint template</a></li>
+    </ul>
+  </nav>
+  <article class="prose">
+    <div class="doc-meta"><a href="../../../../docs/index.html">Docs</a> / <code>skills/skill-curator/SKILL.md</code></div>
+<h1>Skill Curator</h1>
+<p>Shows the whole skill library at once: which source skills exist, in which repo, what <code>doctor</code> finds in each, where they are installed and which ones overlap. It only reads. It writes the two report files you name and nothing else, and it never edits, installs or deletes a skill.</p>
+<h2>Critical rules for every run</h2>
+<ol><li><strong>Read-only.</strong> Run <code>catalog</code> and <code>doctor</code> to look; never change a skill because a report says so. A fix is a separate request, and one skill at a time belongs to <code>skill-creator-studio</code>.</li><li><strong>Reports go outside the library.</strong> <code>--out</code> and <code>--md</code> are refused inside a scanned root, a skill, a harness folder (<code>~/.claude</code>, <code>~/.codex</code>, <code>~/.gemini</code>) or a secret zone; an existing file is replaced only when it is already a catalog.</li><li><strong>A report is a lead, not a verdict.</strong> A root marked <code>partial</code> or <code>error</code> means something was not read; say what, never present the list as complete.</li><li><strong>Never open cloud placeholders or secrets.</strong> The scan skips them and says so; do not work around it by copying files out.</li></ol>
+<h2>Gotchas</h2>
+<ul><li>Exit code 1 from <code>catalog</code> means a root is <code>partial</code> or <code>error</code>, not that the command failed; read the <code>Gốc không ok</code> section before trusting the counts.</li><li><code>catalog --roots-from opcos</code> needs a <code>paths.json</code> (found from <code>$OPCOS_ROOT</code>, else up from the working folder); outside an OpcOS tree pass <code>--roots</code> instead.</li><li><code>--installed claude,codex,antigravity</code> reads the copies in use there (three fixed locators, never a whole <code>cache/</code>); a harness whose locator fails is a root that is not <code>ok</code>, so the exit is 1. <code>--overlap</code> names pairs that may overlap and gives each one of five labels (<code>distribution_copy</code>, <code>version_drift</code>, <code>same_function</code>, <code>same_name_other_role</code>, <code>insufficient_evidence</code>) with its evidence and a fixed suggestion (<code>keep</code>, <code>sync</code>, <code>merge</code>); it is only a suggestion and every pair needs a person. Without <code>--overlap</code>, <code>pairs</code> is null.</li><li>Paths under the home folder are written <code>~/…</code>, so a shared <code>CATALOG.md</code> does not carry a user name.</li></ul>
+<h2>Commands</h2>
+<p>Run from this skill's folder as <code>python3 scripts/curator.py &lt;command&gt;</code>, or as <code>studio.py catalog</code> from a Studio repo root (Python 3.9+, standard library only; <code>--help</code> lists exact flags). <code>scripts/curator.py</code> is the entry point: it finds the shared engine modules, then runs <code>catalog</code> (code in <code>scripts/curator_catalog.py</code>) or hands <code>doctor</code> to the engine. <code>scripts/curator_catalog.py</code>, <code>scripts/curator_installed.py</code> (the locators of installed copies) and <code>scripts/curator_overlap.py</code> (the pair labels of <code>--overlap</code>) are imported by <code>curator.py</code> and <code>studio.py</code>; do not run them directly.</p>
+<table><thead><tr><th>Command</th><th>Use</th><th>Output</th></tr></thead><tbody><tr><td><code>catalog</code></td><td>one row per source skill: name, short description, repo, version, tree hash, <code>doctor</code> errors and warnings, <code>model_evaluated</code>, <code>metadata.opcos_*</code> keys</td><td>table on screen, JSON with <code>--out</code>, <code>CATALOG.md</code> with <code>--md</code></td></tr><tr><td><code>doctor</code></td><td>the engine's report-only scan of many roots (same flags as <code>studio.py doctor</code>)</td><td>findings per skill</td></tr></tbody></table>
+<h2>Steps</h2>
+<ol><li>Pick the roots: <code>--roots-from opcos</code> for an OpcOS tree, or <code>--roots &quot;&lt;dir1&gt;;&lt;dir2&gt;&quot;</code> for plain skill folders.</li><li>Run <code>python3 scripts/curator.py catalog --roots-from opcos --out &lt;folder&gt;/catalog.json --md &lt;folder&gt;/CATALOG.md</code> with a folder outside the library. Done when exit is 0 or the exit-1 roots are named.</li><li>Open <code>CATALOG.md</code>; read <a href="https://github.com/ducnguyen221/agent-skill-studio/blob/main/skills/skill-curator/references/CATALOG_GUIDE.md">references/CATALOG_GUIDE.md</a> for the columns, the root states and the exit codes.</li><li>Report what you found: counts, roots not ok with their reasons, skills with <code>doctor</code> errors. Ask before acting on any of it.</li></ol>
+<h2>Definition of Done</h2>
+<p>A catalog exists (screen, JSON or <code>CATALOG.md</code>) or the exit code explains why not, every root that is not <code>ok</code> is named with its reason, and no skill file was changed.</p>
+  </article>
+</div></div>
+</main>
+<footer class="site">
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="../../../../index.html"><img src="../../../../assets/logo.svg" alt="" width="26" height="26">Agent Skill Studio</a>
+        <p class="foot-tag">Tạo, kiểm, đo và phân phối Agent Skills dùng chung cho Claude Code, Codex và Antigravity.</p>
+      </div>
+      <div class="foot-links">
+        <div class="foot-col">
+          <b>Sản phẩm</b>
+          <a href="../../../../index.html">Trang chủ</a>
+          <a href="../../../../install/index.html">Cài đặt</a>
+          <a href="../../../../guide/index.html">Cách dùng</a>
+          <a href="../../../../flow/index.html">Luồng &amp; quy trình</a>
+          <a href="../../../../principles/index.html">Nguyên tắc</a>
+          <a href="../../../../docs/index.html">Docs</a>
+        </div>
+        <div class="foot-col">
+          <b>Tài nguyên</b>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/ducnguyen221/agent-skill-studio/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Nguyễn Quang Đức · MIT</span>
+      <span class="lic">MIT License · giữ credit tác giả</span>
+    </div>
+  </div>
+</footer>
+<script src="../../../../assets/ds/site.js?v=1.1.0"></script>
+</body>
+</html>

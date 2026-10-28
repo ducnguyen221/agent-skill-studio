@@ -95,7 +95,7 @@ ${sec('Điểm nổi bật', `  <div class="grid-2">
 ${sec('Ai dùng', `  <div class="grid-2">
     ${card('Người viết skill', 'Cho đội hoặc cộng đồng, muốn skill chạy được trên cả ba agent.')}
     ${card('Người quản lý thư viện skill', 'Cần nhìn cả thư viện một lượt: skill nào lỗi, đã cài ở đâu, cặp nào có thể trùng.')}
-    ${card('Agent', 'Khi được nhờ «tạo skill», «kiểm skill», «sửa skill», agent gọi `skill-creator-studio` và làm theo quy trình.')}
+    ${card('Agent', 'Khi được nhờ «tạo skill», «kiểm skill», «sửa skill», agent gọi `skill-creator-studio`; khi được nhờ nhìn cả thư viện skill, agent gọi `skill-curator`.')}
     ${card('Hệ OpcOS', 'Studio là xưởng chuẩn hoá skill (Skill Factory) cho các plugin khác.')}
   </div>`)}
 ${sec('Từ ý tưởng tới skill phát hành', `${ig('Năm bước, lỗi thì sửa rồi kiểm lại', [
@@ -136,7 +136,7 @@ add('install/index.html', 'install/index.html', 'Cài đặt · Agent Skill Stud
   `${hero('Cài đặt', 'Cài theo cách hợp với agent của bạn', 'Yêu cầu: Python 3.9 trở lên, chỉ thư viện chuẩn, không cần `pip install`. Lệnh chạy tại gốc repo (trên Windows có thể gõ `python` thay `python3`).')}
 ${sec('Cách 1 — Cài như plugin', `  <p>Gói plugin chỉ chứa thư mục \`skills/\`. Manifest nằm ở \`.claude-plugin/\` (Claude Code) và \`.codex-plugin/\` (Codex).`.replace(/\\`/g, '`') + `</p>
 ${step(1, 'Claude Code', p('Gõ trong Claude Code:') + code('Claude Code', '/plugin marketplace add ducnguyen221/agent-skill-studio\n/plugin install agent-skill-studio@agent-skill-studio'))}
-${step(2, 'Codex', p('Repo có manifest `.codex-plugin/plugin.json` (tên `agent-skill-studio`, bản 0.3.0). Chạy trong terminal:') + code('Codex CLI', 'codex plugin marketplace add ducnguyen221/agent-skill-studio\ncodex plugin add agent-skill-studio@agent-skill-studio'))}
+${step(2, 'Codex', p('Repo có manifest `.codex-plugin/plugin.json` (tên `agent-skill-studio`). Chạy trong terminal:') + code('Codex CLI', 'codex plugin marketplace add ducnguyen221/agent-skill-studio\ncodex plugin add agent-skill-studio@agent-skill-studio'))}
 ${step(3, 'Antigravity', p('Repo không có manifest plugin cho Antigravity; dùng Cách 2.'))}
 ${note('warn', 'Chưa kiểm:', 'dạng nguồn GitHub `ducnguyen221/agent-skill-studio` chưa chạy thử trên máy viết site; cùng lệnh với nguồn là thư mục checkout đã chạy thật cho cả Claude Code và Codex. Cờ lấy từ `claude plugin --help` và `codex plugin --help`.')}`)}
 ${sec('Cách 2 — Cài riêng một skill bằng studio.py install', `  <p>\`install\` sao chép có kiểm tra, không ghi đè nếu thiếu \`--force\`. \`--workspace\` phải là thư mục có sẵn.`.replace(/\\`/g, '`') + `</p>
