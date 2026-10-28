@@ -348,6 +348,26 @@ class StudioTests(unittest.TestCase):
                 self.assertTrue((ROOT / x["evals"] / "cases.json").is_file(), x["evals"])
         self.assertLessEqual({d.name for d in studio_fs.skill_dirs(ROOT)}, {x["name"] for x in obj["skills"]})
 
+    @staticmethod
+    def shipped_mismatches(entries):
+        """Names whose `shipped: false` does not match 'path is outside skills/' (the two must hold together)."""
+        bad = []
+        for x in entries:
+            outside = not x["path"].replace("\\", "/").startswith("skills/")
+            if (x.get("shipped") is False) != outside:
+                bad.append(x["name"])
+        return bad
+
+    def test_shipped_false_iff_path_outside_skills(self):
+        """Review TK2: `shipped: false` holds exactly when `path` is not under skills/; only skills/ is packaged and installed."""
+        obj = json.loads((ROOT / "evals" / "catalog.json").read_text(encoding="utf-8"))
+        self.assertEqual([], self.shipped_mismatches(obj["skills"]))
+        # the check itself must be able to fail: both ways of breaking the pair are seen
+        moved = [dict(x, path="examples/" + x["name"]) if x["name"] == "skill-creator-studio" else x for x in obj["skills"]]
+        self.assertEqual(["skill-creator-studio"], self.shipped_mismatches(moved), "outside skills/ without shipped: false")
+        flagged = [dict(x, shipped=False) if x["name"] == "skill-creator-studio" else x for x in obj["skills"]]
+        self.assertEqual(["skill-creator-studio"], self.shipped_mismatches(flagged), "shipped: false while under skills/")
+
     def test_model_evaluated_requires_counted_evidence(self, catalog_path=None):
         """`model_evaluated: true` is allowed only with A/B evidence recounted from the run logs in the repo."""
         problems = studio_evals.model_evaluated_problems(Path(catalog_path) if catalog_path else ROOT / "evals" / "catalog.json", ROOT)

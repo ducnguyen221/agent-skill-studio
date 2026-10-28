@@ -1,5 +1,7 @@
 """Shape checks for the documents under standards/ (SPR-33)."""
 import ast
+import inspect
+import os
 import re
 import subprocess
 import sys
@@ -63,6 +65,30 @@ def emitted_codes(source: str) -> set:
     return codes
 
 
+SKIP_DIRS: frozenset = frozenset({".git", ".tmp", ".worktrees", "__pycache__", "dist", "node_modules"})
+
+
+def repo_files() -> list:
+    """Every file of the working tree outside tool folders, in no particular order."""
+    found = []
+    for base, dirs, files in os.walk(ROOT_DIR):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        found.extend(Path(base) / name for name in files)
+    return found
+
+
+def frontmatter_keys(text: str) -> set:
+    """Top-level keys of the first `---` block of a document (empty when it has none)."""
+    m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+    return set(re.findall(r"^([A-Za-z_][\w-]*):", m.group(1), re.M)) if m else set()
+
+
+def section(text: str, heading: str) -> str:
+    """Body of the '## heading' block, up to the next '## ' heading (empty when absent)."""
+    m = re.search(r"^## %s[ \t]*$(.*?)(?=^## |\Z)" % re.escape(heading), text, re.M | re.S)
+    return m.group(1) if m else ""
+
+
 def read_std(name: str) -> str:
     return (STANDARDS_DIR / name).read_text(encoding="utf-8")
 
@@ -92,15 +118,22 @@ OLD_NO_FAKE_PASS: list[tuple[str, str]] = [
      "Nếu chưa chạy model, ghi `not_run` và không gọi production-tested."),
     ("standards/EVALUATION_STANDARD.md",
      "Giữ những trường `null` và `not_run` cho đến khi có test thật; **không tự điền score/pass**."),
-    ("standards/CORE_STANDARD.md",
+    ("standards/SKILL_AUTHORING_STANDARD.md",
      "Kết quả chưa thực thi phải gắn `not_run`."),
     ("README.md",
      'Evals được phép ghi "not_run" nếu chưa thực thi, tuyệt đối không ghi pass giả.'),
     ("evals/RUNBOOK.md",
      "nếu không chạy được, ghi `not_run` thay vì giả kết quả."),
-    ("ECOSYSTEM.md",
+    ("standards/README.md",
      "eval chưa chạy ghi `not_run`, không ghi pass giả."),
+    ("standards/DOC_TYPES.md",
+     "Nếu chưa chạy model, ghi `not_run` và không gọi production-tested."),
+    ("standards/HARNESSES.md",
+     "Nếu chưa chạy model, ghi `not_run` và không gọi production-tested."),
 ]
+
+# DOC_TYPES.md and HARNESSES.md are new (SPR-03 TK5): they must not define the rule, and they replaced no sentence of it, so no link is required there.
+NO_LINK_NEEDED: frozenset = frozenset({"standards/DOC_TYPES.md", "standards/HARNESSES.md"})
 
 
 def github_slug(title: str) -> str:
@@ -109,27 +142,10 @@ def github_slug(title: str) -> str:
 
 
 class StandardsTest(unittest.TestCase):
-    def test_memo_v0_shape(self):
-        p = STANDARDS_DIR / "MEMO-SKILL-V0.md"
-        self.assertTrue(p.exists(), "standards/MEMO-SKILL-V0.md is missing")
-        text = read_std("MEMO-SKILL-V0.md")
-        lines = text.splitlines()
-        self.assertLessEqual(len(lines), 60)
-        self.assertTrue(
-            any(re.fullmatch(r"Date: 2026-10-2\d", ln) for ln in lines),
-            "no standalone 'Date: 2026-10-2x' line",
-        )
-        allowed = {f"[{t}]" for t in SOURCE_TAGS} | {"[nội bộ]"}
-        rows = [ln for ln in lines if ln.startswith(("| (a", "| (b"))]
-        self.assertEqual(len(rows), 18, "expected 9 (a) rows and 9 (b) rows")
-        for ln in rows:
-            last_cell = ln.rstrip().rstrip("|").rsplit("|", 1)[-1]
-            self.assertTrue(
-                any(tag in last_cell for tag in allowed),
-                f"row has no source tag in its last cell: {ln[:40]}",
-            )
-        self.assertIn("SPR-31", text)
-        self.assertIn("SPR-32", text)
+    def test_memo_v0_is_archived_not_in_repo(self):
+        """FR4.5: the v0 memo lives in the OpcOS ledger archive (superseded); no copy stays in the repository."""
+        found = [f.relative_to(ROOT_DIR).as_posix() for f in repo_files() if f.name == "MEMO-SKILL-V0.md"]
+        self.assertEqual([], found, "MEMO-SKILL-V0.md must not be in the repository")
 
     def test_authoring_standard_one_form(self):
         text = read_std("SKILL_AUTHORING_STANDARD.md")
@@ -142,7 +158,11 @@ class StandardsTest(unittest.TestCase):
         for needle in ("Gotchas", "Server:tool", "1 536", "5 000", "25 000"):
             self.assertIn(needle, text)
         self.assertIn("hai tầng", sk_blocks(text).get("SK-02", ""), "SK-02 needs the three cutting questions")
-        self.assertLessEqual(len(text), 5600)
+        # SPR-03 TK5: the standard took the live rules of CORE_STANDARD, RULES_AND_PRECEDENCE and SKILL_LIFECYCLE; budget = 5 599 chars * 1.3 (brief TK5), no more.
+        self.assertLessEqual(len(text), 7278)
+        self.assertIn("overlap", sk_blocks(text).get("SK-05", ""), "SK-05 needs the overlap idea between skill descriptions")
+        self.assertIn("`check` đạt", sk_blocks(text).get("SK-07", ""), "SK-07 needs 'xong = `check` đạt'")
+        self.assertIn("(EVALUATION_STANDARD.md#không-pass-giả-not_run)", text, "the not_run link must reach its section")
         self.assertIn("(EVALUATION_STANDARD.md)", text.split("## Definition of Done")[-1], "DoD must point to the model-eval standard")
 
     def test_sk_blocks_exclude_heading_line(self):
@@ -270,7 +290,7 @@ class StandardsTest(unittest.TestCase):
         )
         slug = github_slug(title)
         link = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
-        for rel in sorted({r for r, _ in OLD_NO_FAKE_PASS} - {"standards/EVALUATION_STANDARD.md"}):
+        for rel in sorted({r for r, _ in OLD_NO_FAKE_PASS} - {"standards/EVALUATION_STANDARD.md"} - NO_LINK_NEEDED):
             file = ROOT_DIR / rel
             ok = False
             for raw in link.findall(file.read_text(encoding="utf-8")):
@@ -285,6 +305,107 @@ class StandardsTest(unittest.TestCase):
                 "%s lacks a link that resolves to standards/EVALUATION_STANDARD.md#%s" % (rel, slug),
             )
 
+    # --- SPR-03 TK5: standards/ shrinks from 11 to 8 files (FR4, FR1.3) ---
+
+    EIGHT = ["DOC_TYPES.md", "EVALUATION_STANDARD.md", "HARNESSES.md", "README.md", "SECURITY_AND_PERMISSIONS.md",
+             "SKILL_AUTHORING_STANDARD.md", "SOURCE_TRACEABILITY.md", "VIETNAMESE_SKILL_WRITING.md"]
+
+    def test_standards_eight_files(self):
+        """FR4.1: standards/ holds exactly these 8 files and each has title, status and updated."""
+        self.assertEqual(self.EIGHT, sorted(p.name for p in STANDARDS_DIR.iterdir()))
+        for name in self.EIGHT:
+            with self.subTest(file=name):
+                self.assertGreaterEqual(frontmatter_keys(read_std(name)), {"title", "status", "updated"})
+
+    def test_frontmatter_keys_helper(self):
+        self.assertEqual({"title", "status"}, frontmatter_keys('---\ntitle: "x"\nstatus: active\n---\n# h\n'))
+        self.assertEqual(set(), frontmatter_keys("# no frontmatter\ntitle: x\n"))
+
+    def test_no_thirteen_rules(self):
+        """FR4.3: the old '13 rules' count is gone from every document (the changelog keeps the history)."""
+        hits = []
+        for f in repo_files():
+            rel = f.relative_to(ROOT_DIR).as_posix()
+            if f.suffix != ".md" or rel == "CHANGELOG.md" or rel.startswith("tests/fixtures/"):
+                continue
+            for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+                if re.search(r"\b13 (rules|quy tắc|luật)\b", line):
+                    hits.append("%s:%d" % (rel, n))
+        self.assertEqual([], hits)
+
+    def test_harnesses_keeps_checked_lines(self):
+        """FR4.3: HARNESSES.md keeps the 4 `Checked:` lines the 4 adapters had (count measured in TK0, evidence/tk0-baseline.txt)."""
+        text = read_std("HARNESSES.md")
+        lines = [ln for ln in text.splitlines() if ln.startswith("Checked:")]
+        self.assertEqual(4, len(lines), lines)
+        for ln in lines:
+            self.assertRegex(ln, r"^Checked: 2026-10-23 · nguồn")
+        for needle in ("Claude Code", "Codex", "Antigravity", "`not_run:chưa mở lại`", "codex-cli 0.163.0"):
+            self.assertIn(needle, text)
+
+    def test_harnesses_antigravity_reads_agents_md_through_gemini_md(self):
+        """Review TK4: one wording across HARNESSES.md and templates/starter-project: Antigravity gets AGENTS.md through GEMINI.md."""
+        text = read_std("HARNESSES.md")
+        self.assertIn("`GEMINI.md` trỏ về `AGENTS.md`", text)
+        self.assertNotIn("`AGENTS.md` hoặc `GEMINI.md`", text)
+
+    def test_evaluated_block_documented(self):
+        """FR4.4: every key the gate reads from the `evaluated` block is in the table of EVALUATION_STANDARD, and the table invents none."""
+        read_by_gate = set(re.findall(r'\bev\.get\("(\w+)"\)', inspect.getsource(_engine.evals.model_evaluated_problems)))
+        self.assertGreaterEqual(read_by_gate, {"result", "batch_sha", "batch_sha_kind", "sprint", "date", "harnesses", "evidence", "ab_report"})
+        body = section(read_std("EVALUATION_STANDARD.md"), "Khối evaluated")
+        self.assertTrue(body, "EVALUATION_STANDARD.md has no '## Khối evaluated'")
+        documented = set(re.findall(r"^\| `(\w+)` \|", body, re.M))
+        self.assertEqual(sorted(read_by_gate), sorted(documented))
+        for value in _engine.evals.RESULT_VALUES:
+            self.assertIn("`%s`" % value, body)
+        for needle in ("40", "`commit`", "`tree`"):
+            self.assertIn(needle, body)
+
+    def test_doc_types_three_types(self):
+        """FR4.2: DOC_TYPES.md has the 3 types, each with how it is recognised, what is required, what is forbidden and a length limit."""
+        text = read_std("DOC_TYPES.md")
+        titles = ["Skill", "Workflow / quy trình", "File luật agent"]
+        self.assertEqual(titles, re.findall(r"^## (.+?)\s*$", text, re.M))
+        for title in titles:
+            for label in ("**Nhận loại:**", "**Bắt buộc:**", "**Cấm:**", "**Giới hạn:**"):
+                self.assertIn(label, section(text, title), "%s lacks %s" % (title, label))
+        self.assertIn("thoát 2", text)
+        self.assertIn("≤ 300 dòng", section(text, "Workflow / quy trình"))
+        self.assertIn("≤ 200 dòng", section(text, "File luật agent"))
+
+    def test_moves_done(self):
+        """FR1.3: each source path of the move table is gone and each target is there; only tests/fixtures may keep a registry/ folder."""
+        moves = [
+            ("adapters", "standards/HARNESSES.md"),
+            ("registry/catalog.json", "evals/catalog.json"),
+            ("registry/SKILL_CATALOG.md", None),
+            ("QA_REPORT.md", None),
+            ("standards/MEMO-SKILL-V0.md", None),
+            ("ECOSYSTEM.md", "standards/README.md"),
+            ("standards/ROBONUGGETS_46_RULE_MAP.md", "standards/SOURCE_TRACEABILITY.md"),
+            ("standards/CORE_STANDARD.md", "standards/SKILL_AUTHORING_STANDARD.md"),
+            ("standards/RULES_AND_PRECEDENCE.md", "standards/SKILL_AUTHORING_STANDARD.md"),
+            ("standards/SKILL_LIFECYCLE.md", "standards/SKILL_AUTHORING_STANDARD.md"),
+            ("templates/project", "templates/starter-project"),
+            ("content", "examples"),
+            ("skills/data-quality-audit", "examples/data-quality-audit"),
+        ]
+        for source, target in moves:
+            with self.subTest(source=source):
+                self.assertFalse((ROOT_DIR / source).exists(), "%s must be gone" % source)
+                if target:
+                    self.assertTrue((ROOT_DIR / target).exists(), "%s must exist" % target)
+        stray = sorted({f.relative_to(ROOT_DIR).parent.as_posix() for f in repo_files() if f.relative_to(ROOT_DIR).parts[0] == "registry"})
+        self.assertEqual([], stray, "no registry/ folder outside tests/fixtures")
+        self.assertTrue(section(read_std("README.md"), "Hệ sinh thái"), "ECOSYSTEM.md became a section of standards/README.md")
+        self.assertIn("FM1", read_std("SOURCE_TRACEABILITY.md"), "the ROBONUGGETS map moved into SOURCE_TRACEABILITY.md")
+
+    def test_security_standard_forbids_loading_code_from_the_repo_it_sits_in(self):
+        """Lesson LN3 of SPR-02: the engine has no way to load code from the repo that holds it (a copied engine cannot know that repo)."""
+        text = read_std("SECURITY_AND_PERMISSIONS.md")
+        self.assertIn("nạp mã", text)
+        self.assertIn("repo chứa nó", text)
 
 
 class SkillCreatorStudioManifestTests(unittest.TestCase):
