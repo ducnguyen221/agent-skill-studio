@@ -252,7 +252,7 @@ class NewOutputTests(unittest.TestCase):
         self.assertFalse(path.exists())
 
     def test_new_exits_2_when_an_eval_file_cannot_be_created(self):
-        """TK10 round 1: `new` ends with exit 2 and the path on stderr when an eval file cannot be written (the other two are still tried)."""
+        """TK10 round 1: `new` ends with exit 2 and the path on stderr when an eval file cannot be written (the other two are still tried, then everything this run made is taken back: FR12.4)."""
         err, out = io.StringIO(), io.StringIO()
         real = E.fs.create_exclusive
 
@@ -264,7 +264,8 @@ class NewOutputTests(unittest.TestCase):
             code = E.scaffold.cmd_new(new_args("no-rubric", self.tmp / "skills", self.tmp / "ev"))
         self.assertEqual(2, code, out.getvalue() + err.getvalue())
         self.assertIn("ERROR: cannot write %s" % (self.tmp / "ev" / "no-rubric" / "rubric.md"), err.getvalue())
-        self.assertTrue((self.tmp / "ev" / "no-rubric" / "cases.json").is_file())
+        self.assertFalse((self.tmp / "ev" / "no-rubric" / "cases.json").exists())  # SPR-04 FR12.4: what this run made is taken back, no orphan SKILL.md either
+        self.assertFalse((self.tmp / "skills" / "no-rubric").exists())
         self.assertNotIn("Created draft Skill", out.getvalue())
 
     def test_new_existing_target_still_exits_1_and_writes_no_evals(self):
