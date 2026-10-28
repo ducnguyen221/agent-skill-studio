@@ -38,8 +38,15 @@ def load_engine(folder: Path) -> str | None:
     complaint, or None. A module found anywhere else would mix two code bases."""
     sys.path[:] = [entry for entry in sys.path if entry != str(folder)]
     sys.path.insert(0, str(folder))
+    complaint = _foreign_module(folder)  # before the imports: a foreign `studio_*` already loaded would be handed back by them, or break them
+    if complaint:
+        return complaint
     for name in ENGINE_MODULES:
         __import__(name)
+    return _foreign_module(folder)
+
+
+def _foreign_module(folder: Path) -> str | None:
     for name, module in sorted(sys.modules.items()):
         where = getattr(module, "__file__", None)
         if name.startswith("studio_") and where and Path(where).resolve().parent != folder.resolve():

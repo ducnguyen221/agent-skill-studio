@@ -21,6 +21,53 @@ import studio_scaffold as scaffold
 import studio_validate as validate
 
 
+ENGINE_DEPS_REL = Path("scripts") / "ENGINE_DEPS"
+ENGINE_DEP_NAME = re.compile(r"^studio_[a-z_]+\.py$")
+ENGINE_DIR = Path(__file__).resolve().parent
+
+
+def engine_extras(folder: Path) -> tuple[list[tuple[Path, Path]], list[dict]]:
+    """The shared engine files a skill that lists them in `scripts/ENGINE_DEPS` takes along (SPR-04 FR9.3): ([(source, path inside the skill)], findings).
+    One `studio_*.py` name per line ('#' comments and blank lines are skipped); each must be one of this running engine's own modules, never a link. The entry
+    point `studio.py` always goes with them, because `doctor` of the packaged skill runs through it. A skill without the file takes nothing."""
+    deps = folder / ENGINE_DEPS_REL
+    if not os.path.lexists(deps):
+        return [], []
+    if os.path.lexists(folder / "scripts" / "_engine"):
+        return [], [fs.emit("ERROR", "PACK", folder / "scripts" / "_engine", 0, "scripts/_engine is made at package time; remove it from the source skill")]
+    problem = "is a symlink or junction; not read" if fs.is_link(deps) else fs.input_file_problem(deps)
+    if problem:
+        return [], [fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS %s; nothing is packaged" % problem)]
+    try:
+        with fs.open_nofollow_read(deps, os.lstat(deps)) as handle:
+            text = handle.read(65536).decode("utf-8")
+    except (fs.UnsafeOpen, OSError, UnicodeError) as exc:
+        return [], [fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS cannot be read: %s" % exc)]
+    names = []
+    for number, line in enumerate(text.splitlines(), 1):
+        name = line.strip()
+        if name and not name.startswith("#") and name not in names:
+            names.append(name)
+    findings, extras = [], []
+    for name in names + ["studio.py"]:
+        source = ENGINE_DIR / name
+        if name != "studio.py" and not ENGINE_DEP_NAME.match(name):
+            findings.append(fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS name %r is not a studio_*.py file name" % name[:80]))
+        elif fs.is_link(source) or not source.is_file():
+            findings.append(fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS names %s, which the running engine does not have" % name))
+        else:
+            try:
+                with fs.open_nofollow_read(source, os.lstat(source)) as handle:
+                    raw = handle.read().decode("utf-8")
+            except (fs.UnsafeOpen, OSError, UnicodeError) as exc:
+                findings.append(fs.emit("ERROR", "PACK", source, 0, "engine file cannot be read: %s" % exc))
+                continue
+            if fs.secret_in_text(raw):
+                findings.append(fs.emit("ERROR", "SEC", source, 0, "possible hardcoded secret in package"))
+            extras.append((source, Path("scripts") / "_engine" / name))
+    return extras, findings
+
+
 def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
     manifest = folder / "SKILL.md"
     # Decided before anything reads SKILL.md (validate_skill and the draft-marker test both do): a link, a cloud placeholder or a file in a
@@ -78,6 +125,7 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
             if fs.secret_in_text(raw):
                 findings.append(fs.emit("ERROR", "SEC", p, 0, "possible hardcoded secret in package"))
         kept.append(p)
+    findings.extend(engine_extras(folder)[1])
     return kept, findings
 
 
@@ -104,12 +152,17 @@ def cmd_package(args) -> int:
                 with fs.open_nofollow_read(p, os.lstat(p)) as handle:  # the file that was checked, never a link put there since
                     data = handle.read()
                 zf.writestr(zipfile.ZipInfo.from_file(p, arcname), data, compress_type=zipfile.ZIP_DEFLATED)
+            for source, inside in engine_extras(folder)[0]:
+                with fs.open_nofollow_read(source, os.lstat(source)) as handle:
+                    zf.writestr(zipfile.ZipInfo.from_file(source, str(Path(folder.name) / inside)), handle.read(), compress_type=zipfile.ZIP_DEFLATED)
     except fs.UnsafeOpen as exc:
         fs._remove_quietly(target)
         print("ERROR: PACK: %s; nothing was packaged" % exc, file=sys.stderr)
         return 1
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
-    print("Packaged %d runtime files -> %s\nSHA256: %s\nExcluded: evals/, tests/ and cache folders (any letter case); a secret-named file stops the package instead. Model evaluation status is unchanged." % (len(files), target, digest))
+    count = len(engine_extras(folder)[0])
+    shared = " (+%d shared engine files)" % count if count else ""  # the line is unchanged for a skill without ENGINE_DEPS
+    print("Packaged %d runtime files%s -> %s\nSHA256: %s\nExcluded: evals/, tests/ and cache folders (any letter case); a secret-named file stops the package instead. Model evaluation status is unchanged." % (len(files), shared, target, digest))
     return 0
 
 
@@ -239,8 +292,7 @@ def cmd_install(args) -> int:
         print("Existing installation backed up to %s" % backup)
     dest.mkdir(parents=True, exist_ok=False)  # creates skill_root itself, never the agent's config parent
     try:
-        for source in files:
-            destination = dest / source.relative_to(folder)
+        for source, destination in [(p, dest / p.relative_to(folder)) for p in files] + [(src, dest / inside) for src, inside in engine_extras(folder)[0]]:
             destination.parent.mkdir(parents=True, exist_ok=True)
             inner = fs.link_in_chain(destination.parent, dest)
             if inner is not None:

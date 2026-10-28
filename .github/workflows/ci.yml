@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     strategy:
@@ -24,6 +27,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -43,6 +48,18 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Package the shipped skill (exclude evals)
         run: python studio.py package skills/skill-creator-studio --out "${{ runner.temp }}/ass-ci"
+      - name: skill-curator runs alone from its ZIP and from install (no skill-creator-studio beside it)
+        run: |
+          fixture="$PWD/tests/fixtures/opcos-tree/plugins/p-default/skills"
+          python studio.py package skills/skill-curator --out "$RUNNER_TEMP/solo-zip"
+          python -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$RUNNER_TEMP/solo-zip/skill-curator.zip" "$RUNNER_TEMP/solo"
+          mkdir -p "$RUNNER_TEMP/solo-ws"
+          python studio.py install skills/skill-curator --agent claude --workspace "$RUNNER_TEMP/solo-ws"
+          cd "$RUNNER_TEMP"
+          for tool in "$RUNNER_TEMP/solo/skill-curator/scripts/curator.py" "$RUNNER_TEMP/solo-ws/.claude/skills/skill-curator/scripts/curator.py"; do
+            python "$tool" catalog --help
+            python "$tool" doctor --roots "$fixture"
+          done
       - name: Validate the CSV sample skill (examples/, not shipped)
         run: python studio.py validate examples/data-quality-audit --require-evals
       - name: Explicit model-evaluation disclaimer
@@ -52,6 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Lint workflows (actionlint 1.7.7, pinned by digest)
         uses: docker://rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9
         with:
