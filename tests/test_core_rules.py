@@ -17,6 +17,19 @@ def read_bytes_text(path: Path) -> str:
     return path.read_bytes().decode("utf-8")
 
 
+def block_body(text: str, sk: str) -> str:
+    """Lines between `### SK-xx ...` and the next `#`-heading, blank edges removed."""
+    lines, grabbing, out = text.split("\n"), False, []
+    for line in lines:
+        if grabbing and line.startswith("#"):
+            break
+        if grabbing:
+            out.append(line)
+        elif line.startswith("### %s " % sk):
+            grabbing = True
+    return "\n".join(out).strip("\n")
+
+
 class CoreRulesTests(unittest.TestCase):
     def test_core_rules_in_sync(self):
         # FR5.1: regenerating from the standard gives the same bytes as the file on disk.
@@ -30,11 +43,29 @@ class CoreRulesTests(unittest.TestCase):
         for head in heads:
             self.assertRegex(head, LEVEL_RE, head)
 
+    def test_bodies_are_verbatim(self):
+        # Coordinator ruling: the full body of every block, not the first sentence (SK-05 and SK-10 lose their point otherwise).
+        std, core = read_bytes_text(STANDARD), read_bytes_text(CORE_RULES)
+        for sk in SK_IDS:
+            self.assertEqual(block_body(core, sk), gen_core_rules._unlink(block_body(std, sk)), sk)
+        for sk in ("SK-05", "SK-10"):
+            self.assertGreater(len(block_body(core, sk).split(". ")), 1, sk)
+
+    def test_relative_links_become_repo_paths(self):
+        # A link out of the skill folder would break; the target stays readable as a repo path.
+        core = read_bytes_text(CORE_RULES)
+        self.assertNotRegex(core, r"\]\((?!https?:|#)")
+        self.assertIn("(`evals/RUNBOOK.md`)", core)
+        self.assertIn("(`standards/EVALUATION_STANDARD.md#", core)
+        self.assertEqual(gen_core_rules._unlink("[a](../x/y.md) [b](B.md#z) [c](https://e.org/q) [d](#h)"),
+                         "a (`x/y.md`) b (`standards/B.md#z`) [c](https://e.org/q) [d](#h)")
+
     def test_file_shape(self):
         text = read_bytes_text(CORE_RULES)
         self.assertNotIn("\r", text)
         self.assertTrue(text.endswith("\n") and not text.endswith("\n\n"))
-        self.assertIn("Generated from standards/SKILL_AUTHORING_STANDARD.md — do not edit", text)
+        self.assertIn("Generated from standards/SKILL_AUTHORING_STANDARD.md of the agent-skill-studio repository — do not edit; edit the standard.", text)
+        self.assertNotIn("gen_core_rules", text)
         front = text.split("---\n")[1]
         self.assertIn("status: generated", front)
         # `updated` comes from the source frontmatter, not from today's date.
@@ -49,7 +80,7 @@ class CoreRulesTests(unittest.TestCase):
             for n in range(60))
         out = gen_core_rules.render(many)
         self.assertIn("\n## Contents\n", out)
-        self.assertNotIn("Second sentence", out)
+        self.assertIn("Second sentence", out)  # the whole body is kept
         # short file: no Contents needed
         self.assertNotIn("\n## Contents\n", gen_core_rules.render(src))
 

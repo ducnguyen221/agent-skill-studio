@@ -3,6 +3,7 @@
 Run `python tests/gen_core_rules.py` from the repo root to rewrite the file. The output is a pure function of the
 standard's text: the `updated` date is copied from the standard's frontmatter, never from the clock.
 """
+import posixpath
 import re
 import sys
 from pathlib import Path
@@ -12,7 +13,6 @@ STANDARD = ROOT / "standards" / "SKILL_AUTHORING_STANDARD.md"
 TARGET = ROOT / "skills" / "skill-creator-studio" / "references" / "CORE_RULES.md"
 CONTENTS_OVER_LINES = 100  # SK-15: a reference longer than this needs a `## Contents`
 HEAD_RE = re.compile(r"^### (SK-\d\d) — (.+? \[[^\]]+\] · kiểm: \S.*)$")
-SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s")
 
 
 def _frontmatter_value(text: str, key: str) -> str:
@@ -22,13 +22,30 @@ def _frontmatter_value(text: str, key: str) -> str:
     return match.group(1)
 
 
-def _first_sentence(block: list) -> str:
-    text = " ".join(line.strip() for line in block if line.strip())
-    return SENTENCE_END_RE.split(text, 1)[0]
+LINK_RE = re.compile(r"\[([^\]]+)\]\((?!https?:|#|mailto:)([^)\s]+)\)")
+
+
+def _unlink(text: str) -> str:
+    """The skill folder cannot reach the repo's files, so a relative link becomes `label (`repo path`)`."""
+    def repl(match):
+        path, _, anchor = match.group(2).partition("#")
+        target = posixpath.normpath(posixpath.join("standards", path)) + ("#" + anchor if anchor else "")
+        return "%s (`%s`)" % (match.group(1), target)
+    return LINK_RE.sub(repl, text)
+
+
+def _body(block: list) -> str:
+    """The block's lines without leading or trailing blank lines; only relative links are rewritten."""
+    lines = list(block)
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return _unlink("\n".join(lines))
 
 
 def _rules(text: str) -> list:
-    """(id, 'title [level] · kiểm: check', first sentence) per `### SK-xx` block, in file order."""
+    """(id, 'title [level] · kiểm: check', body) per `### SK-xx` block, in file order."""
     found, current = [], None
     for line in text.split("\n"):
         if line.startswith("## ") or line.startswith("### ") and not line.startswith("### SK-"):
@@ -41,7 +58,7 @@ def _rules(text: str) -> list:
             found.append(current)
         elif current is not None:
             current[2].append(line)
-    return [(rid, rest, _first_sentence(body)) for rid, rest, body in found]
+    return [(rid, rest, _body(body)) for rid, rest, body in found]
 
 
 def render(standard_text: str) -> str:
@@ -51,8 +68,8 @@ def render(standard_text: str) -> str:
     if not rules:
         raise ValueError("no '### SK-xx' blocks in the standard")
     body = ["## Rules", ""]
-    for rid, rest, sentence in rules:
-        body += ["### %s — %s" % (rid, rest), sentence, ""]
+    for rid, rest, text_body in rules:
+        body += ["### %s — %s" % (rid, rest), text_body, ""]
     head = [
         "---",
         'title: "Core Rules (SK-00…SK-15)"',
@@ -61,11 +78,10 @@ def render(standard_text: str) -> str:
         "---",
         "# Core Rules",
         "",
-        "> Generated from standards/SKILL_AUTHORING_STANDARD.md — do not edit. Full wording and the other standards live in the Studio repo; "
-        "regenerate with `python tests/gen_core_rules.py`.",
+        "> Generated from standards/SKILL_AUTHORING_STANDARD.md of the agent-skill-studio repository — do not edit; edit the standard.",
         "",
     ]
-    contents = ["## Contents", "", "- Rules — each SK rule with its level, check and first sentence", ""]
+    contents = ["## Contents", "", "- Rules — each SK rule with its level, check and full text", ""]
     out = head + body
     if len(out) > CONTENTS_OVER_LINES:
         out = head + contents + body
