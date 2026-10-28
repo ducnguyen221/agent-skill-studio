@@ -95,6 +95,7 @@ FMT_STEP_LABELS = tuple(
     (re.compile(r"(?i)^\s*(?:[-*+]\s+)?(?:\*\*)?(?:%s):" % names), label)
     for names, label in (("Command|Lệnh", "Command:"), ("Expect|Kỳ vọng", "Expect:"), ("Stop if|Dừng nếu", "Stop if:")))
 FMT_PRUNE_DIRS = frozenset({".git", ".tmp", ".worktrees", "dist", "node_modules", "__pycache__", ".venv", ".pytest_cache", ".mypy_cache"})
+FMT_FIXTURE_PATHS = (("tests", "fixtures"), ("evals", "*", "fixtures"))  # fmt --all skips these deliberately broken test data folders (repo-relative; "*" = any one name)
 FMT_FRONT_SEARCH_LINES = 60  # a frontmatter block that starts later than this is not looked for
 FMT_BLOCKING_REASONS = frozenset({"would-change-text", "not-utf8", "unreadable", "too-many-folders", "limit"})  # skipped for these: exit 1 even inside a folder
 WIN_DEVICE_NAMES = frozenset(["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$"]

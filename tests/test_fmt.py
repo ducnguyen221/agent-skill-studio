@@ -306,6 +306,34 @@ class FmtMoreTests(unittest.TestCase):
         self.assertIn("--all only reports", err)
         self.assertEqual(tree_snapshot(base), before)
 
+    def _listed(self, base, *extra):
+        out = run("--all", "--json", *extra, root=base)[1]
+        return sorted(str(Path(f["path"]).relative_to(base).as_posix()) for f in __import__("json").loads(out)["files"])
+
+    def test_fmt_all_skips_fixtures(self):
+        base = self.tmp / "repo"
+        for rel in ("tests/fixtures/x.md", "tests/fixtures/deep/more/z.md", "evals/s/fixtures/y.md", "evals/s/cases.md", "tests/notes.md", "docs/ok.md"):
+            write(base / rel, "# T  \n")
+        self.assertEqual(self._listed(base), ["docs/ok.md", "evals/s/cases.md", "tests/notes.md"])
+        code, out, _ = run("--all", root=base)
+        self.assertNotIn("fixtures", out, "a skipped fixture is not even reported")
+
+    def test_fmt_all_fixtures_rule_is_only_for_tests_and_evals_skill(self):
+        base = self.tmp / "repo"
+        for rel in ("skills/s/fixtures/a.md", "examples/e/fixtures/b.md", "fixtures/c.md", "tests/sub/fixtures/d.md", "evals/fixtures/e.md",
+                    "evals/s/x/fixtures/f.md", "docs/tests/fixtures/g.md"):
+            write(base / rel, "# T  \n")
+        self.assertEqual(self._listed(base), sorted(["skills/s/fixtures/a.md", "examples/e/fixtures/b.md", "fixtures/c.md", "tests/sub/fixtures/d.md",
+                                                     "evals/fixtures/e.md", "evals/s/x/fixtures/f.md", "docs/tests/fixtures/g.md"]),
+                         "'fixtures' elsewhere (skills/, examples/, a deeper tests/ or evals/ path) is documentation like any other")
+
+    def test_fmt_all_scans_examples(self):
+        base = self.tmp / "repo"
+        for rel in ("examples/csv/SKILL.md", "examples/csv/references/r.md", "examples/README.md"):
+            write(base / rel, "# T  \n")
+        self.assertEqual(self._listed(base), sorted(["examples/README.md", "examples/csv/SKILL.md", "examples/csv/references/r.md"]))
+        self.assertEqual(run("--all", root=base)[0], 1, "examples/ is checked like normal docs")
+
     def test_fmt_skips_secret_names_cloud_zone_and_big_files(self):
         base = self.tmp / "repo"
         write(base / ".env.md", "# S  \n")
