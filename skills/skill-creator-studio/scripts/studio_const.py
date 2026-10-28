@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import re
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 PORTABLE_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 TARGETS = ("portable", "claude-code")
 # Claude Code extension keys beyond the portable set (code.claude.com/docs/en/skills, read 2026-10-22).

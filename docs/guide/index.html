@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cách dùng · Agent Skill Studio</title>
-<meta name="description" content="Ba chế độ NEW, AUDIT, REFINE của skill-creator-studio, bảng 9 lệnh studio.py và ba ví dụ đầu-cuối.">
+<meta name="description" content="Ba chế độ NEW, AUDIT, REFINE của skill-creator-studio, các lệnh studio.py, skill skill-curator và ba ví dụ đầu-cuối.">
 <link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/guide/">
 <link rel="icon" href="../assets/logo.svg">
 <link rel="stylesheet" href="../assets/ds/site.css?v=1.1.0">
@@ -41,7 +41,7 @@
 <main id="main">
 <section class="page-hero"><div class="wrap">
   <span class="eyebrow"><span class="dot"></span>Cách dùng</span>
-  <h1>Ba chế độ, chín lệnh, ba ví dụ</h1>
+  <h1>Ba chế độ, bộ lệnh đủ dùng, ví dụ chép được</h1>
   <p class="lead">Khi được gọi, skill <code>skill-creator-studio</code> chọn một trong ba nhánh NEW, AUDIT, REFINE. Bảy luật luôn giữ ở mọi lượt: AUDIT báo trước khi sửa; mặc định portable; hướng dẫn tối thiểu đủ dùng; rủi ro quyết mức tự do; eval nằm ngoài gói chạy; không bịa kết quả test; xin kết luận và bằng chứng, không xin suy luận nội bộ.</p>
 </div></section>
 <section><div class="wrap">
@@ -78,17 +78,19 @@
   <p class="note"><b>Câu không gọi skill</b> (ca âm trong bộ eval): «Write a Python function that sorts a list of integers…», «Explain how a person installs a plugin from a marketplace…», «List the names of the skill folders…».</p>
 </div></section>
 <section><div class="wrap">
-  <div class="sec-head"><h2>Bảng 9 lệnh studio.py</h2></div>
+  <div class="sec-head"><h2>Các lệnh của studio.py</h2></div>
   <div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Lệnh</th><th scope="col">Việc</th><th scope="col">Cờ chính</th><th scope="col">Ví dụ</th></tr></thead>
   <tbody><tr><td class="lbl"><code>new</code></td><td>dựng skill mới + bộ eval rỗng tách riêng</td><td><code>--description</code> (bắt buộc), <code>--output</code>, <code>--eval-root</code>, <code>--lang {en,vi}</code>, <code>--full</code></td><td><code>python3 studio.py new my-skill --output skills --description &quot;Does X. Use when Y.&quot;</code></td></tr>
-<tr><td class="lbl"><code>check</code></td><td>kiểm tĩnh một skill (thư mục hoặc <code>SKILL.md</code>); không sửa file</td><td><code>--all</code>, <code>--require-evals</code>, <code>--eval-root</code>, <code>--target {portable,claude-code}</code>, <code>--json</code></td><td><code>python3 studio.py check skills/skill-creator-studio</code></td></tr>
+<tr><td class="lbl"><code>check</code></td><td>kiểm tĩnh một skill (thư mục hoặc <code>SKILL.md</code>) hoặc file workflow, file luật có <code>type:</code>; không sửa file</td><td><code>--all</code>, <code>--require-evals</code>, <code>--eval-root</code>, <code>--target {portable,claude-code}</code>, <code>--json</code></td><td><code>python3 studio.py check skills/skill-creator-studio</code></td></tr>
 <tr><td class="lbl"><code>validate</code></td><td>bí danh của <code>check</code> (cùng cờ, mã thoát, JSON)</td><td>như <code>check</code></td><td><code>python3 studio.py validate --all --require-evals</code></td></tr>
 <tr><td class="lbl"><code>audit</code></td><td>bí danh của <code>check</code>; đối số chỉ nhận thư mục skill</td><td>như <code>check</code></td><td><code>python3 studio.py audit skills/skill-creator-studio</code></td></tr>
 <tr><td class="lbl"><code>evals</code></td><td>kiểm schema bộ eval (không gọi model); <code>--all</code> thêm cổng <code>model_evaluated</code></td><td><code>--all</code>, <code>--eval-root</code>, <code>--export agentskills</code>, <code>--out</code>, <code>--force</code>, <code>--json</code></td><td><code>python3 studio.py evals --all</code></td></tr>
 <tr><td class="lbl"><code>package</code></td><td>đóng ZIP chỉ gồm file chạy</td><td><code>--out</code>, <code>--force</code></td><td><code>python3 studio.py package skills/skill-creator-studio --out dist</code></td></tr>
 <tr><td class="lbl"><code>install</code></td><td>chép skill vào thư mục khám phá của agent</td><td><code>--agent {claude,codex,antigravity}</code> (bắt buộc), <code>--workspace</code> hoặc <code>--user</code>, <code>--force</code>, <code>--allow-root-link</code></td><td><code>python3 studio.py install skills/skill-creator-studio --agent codex --workspace .</code></td></tr>
 <tr><td class="lbl"><code>doctor</code></td><td>quét nhiều gốc skill, chỉ báo cáo</td><td><code>--roots</code>, <code>--roots-file</code>, <code>--profile {portable,opcos}</code>, <code>--target</code>, <code>--include-cache</code>, <code>--skip-marker</code>, <code>--baseline</code>, <code>--json</code>, <code>--out</code>, <code>--fail-on {error,warn,new}</code></td><td><code>python3 studio.py doctor --roots &quot;~/.claude/skills;.agents/skills&quot;</code></td></tr>
+<tr><td class="lbl"><code>catalog</code></td><td>liệt kê mọi skill nguồn thành một bảng; chỉ đọc</td><td><code>--roots-from opcos</code>, <code>--roots</code>, <code>--installed</code>, <code>--overlap</code>, <code>--json</code>, <code>--out</code>, <code>--md</code></td><td><code>python3 studio.py catalog --roots &quot;.claude/skills;.agents/skills&quot; --overlap</code></td></tr>
 <tr><td class="lbl"><code>fmt</code></td><td>kiểm (mặc định) hoặc sửa kiểu trình bày Markdown; không đổi chữ của thân</td><td><code>--all</code>, <code>--check</code>/<code>--fix</code>, <code>--no-backup</code>, <code>--profile</code>, <code>--json</code></td><td><code>python3 studio.py fmt --check --all</code></td></tr></tbody></table></div>
+  <p>Skill <code>skill-curator</code> dùng lệnh <code>catalog</code> để nhìn cả thư viện: skill nào có, đã cài ở đâu, cặp nào có thể trùng. Khác với <code>skill-creator-studio</code> chỉ lo một skill mỗi lần; <code>skill-curator</code> không sửa, cài hay xoá skill nào.</p>
   <p>Cờ đầy đủ: <code>python studio.py &lt;lệnh&gt; --help</code>. Cờ chung: <code>--version</code> in phiên bản; <code>--help</code> cho mọi lệnh.</p>
   <p class="note warn"><b>Mã lỗi hay gặp:</b> <code>INPUT</code> (file ở vùng cloud/secret, placeholder cloud, hoặc là link), <code>EV20</code> (catalog hỏng hoặc lệch bằng chứng), <code>PACK</code> (gói gặp link, placeholder, cây quá lớn, file trên 25 MB…), <code>SEC</code> (tên file giống secret như <code>.env*</code>, <code>*.pem</code>), <code>EX1</code>–<code>EX13</code> (xuất eval bị từ chối). Mỗi lần từ chối in mã ra stderr và trong <code>--json</code>.</p>
 </div></section>

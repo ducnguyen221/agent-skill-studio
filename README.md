@@ -2,8 +2,8 @@
 
 **Bộ chuẩn và công cụ để tạo, kiểm, cải tiến, đo và phân phối Agent Skills cho Claude Code, OpenAI Codex và Google Antigravity.**
 
-> **Kết luận:** repo có một skill phát hành (`skills/skill-creator-studio`), một engine Python không cần cài thêm gì, tám file chuẩn và một cổng
-> đếm lại bằng chứng đánh giá. Phiên bản **0.2.0**; thay đổi từng bản ở [CHANGELOG.md](CHANGELOG.md). Chạy `python3 studio.py --help` là thấy hết lệnh.
+> **Kết luận:** repo có hai skill phát hành (`skills/skill-creator-studio` viết và sửa từng skill, `skills/skill-curator` nhìn cả thư viện skill), một engine Python không cần cài thêm gì, tám file chuẩn và một cổng
+> đếm lại bằng chứng đánh giá. Phiên bản **0.3.0**; thay đổi từng bản ở [CHANGELOG.md](CHANGELOG.md). Chạy `python3 studio.py --help` là thấy hết lệnh.
 
 ## Repo làm gì
 
@@ -27,7 +27,7 @@ agent-skill-studio/
 ├── studio.py                         # vỏ mỏng gọi engine trong skill
 ├── .claude-plugin/, .codex-plugin/   # manifest plugin; .github/workflows/ci.yml
 ├── standards/   # 8 file chuẩn, bắt đầu từ README.md và SKILL_AUTHORING_STANDARD.md
-├── skills/      # chỉ skill phát hành: skill-creator-studio (SKILL.md, references/, scripts/, assets/)
+├── skills/      # skill phát hành: skill-creator-studio, skill-curator (SKILL.md, references/, scripts/, assets/)
 ├── templates/   # starter-project/ (mẫu luật cho dự án khác); hai khuôn skill nằm ở skills/…/assets/
 ├── examples/    # mẫu để chép: descriptions.md, eval-cases.md, exemplar/, exemplar-vi/, data-quality-audit/
 ├── evals/       # catalog.json, RUNBOOK.md, tools/, <skill>/{cases.json, rubric.md, expected/, fixtures/, evidence/}
@@ -88,12 +88,13 @@ python3 studio.py install skills/skill-creator-studio --agent antigravity --user
 | Lệnh | Việc | Ghi chú |
 |---|---|---|
 | `new` | dựng skill mới và bộ eval rỗng | `--lang vi` thân tiếng Việt, `--full` khuôn đầy đủ; không ghi đè file eval đã có |
-| `check` | kiểm tĩnh một skill (thư mục hoặc `SKILL.md`) | chỉ đọc, không sửa file |
+| `check` | kiểm tĩnh một skill, hoặc một file workflow hay file luật có `type:` | chỉ đọc, không sửa file |
 | `validate`, `audit` | bí danh của `check` | giữ nguyên cờ, mã thoát và JSON |
 | `evals` | kiểm schema eval; `--all` thêm cổng `model_evaluated` | `--export agentskills` xuất ca dương, không gọi model |
 | `package` | đóng gói ZIP chỉ gồm file chạy | bỏ `evals/`, `tests/`; gặp tên giống secret thì dừng |
 | `install` | chép skill vào thư mục khám phá của agent | xem mục trên |
-| `doctor` | quét nhiều gốc skill, chỉ báo cáo | không mở vùng secret, cloud hay link; thoát 0, 1 hoặc 2 |
+| `doctor` | quét nhiều gốc skill, chỉ báo cáo | không mở vùng secret, cloud hay link; `--roots-from opcos`, `--by-pack`, `--docs`; thoát 0, 1 hoặc 2 |
+| `catalog` | bảng một dòng mỗi skill nguồn; `--overlap` gắn nhãn cặp trùng, `--installed` so bản đã cài | chỉ đọc; `--roots-from opcos`, `--json`/`--out`, `--md` (skill `skill-curator`) |
 | `fmt` | kiểm hoặc sửa kiểu trình bày Markdown | `--fix` chép bản `.bak-<ISO>` trước (bỏ bằng `--no-backup`); `--all` quét cả repo, bỏ qua fixture |
 
 ## Mã của engine

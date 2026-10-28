@@ -94,7 +94,7 @@ ${sec('Điểm nổi bật', `  <div class="grid-2">
   </div>`)}
 ${sec('Ai dùng', `  <div class="grid-2">
     ${card('Người viết skill', 'Cho đội hoặc cộng đồng, muốn skill chạy được trên cả ba agent.')}
-    ${card('Người quản lý thư viện skill', 'Cần quét nhiều skill một lượt để biết skill nào lỗi.')}
+    ${card('Người quản lý thư viện skill', 'Cần nhìn cả thư viện một lượt: skill nào lỗi, đã cài ở đâu, cặp nào có thể trùng.')}
     ${card('Agent', 'Khi được nhờ «tạo skill», «kiểm skill», «sửa skill», agent gọi `skill-creator-studio` và làm theo quy trình.')}
     ${card('Hệ OpcOS', 'Studio là xưởng chuẩn hoá skill (Skill Factory) cho các plugin khác.')}
   </div>`)}
@@ -136,7 +136,7 @@ add('install/index.html', 'install/index.html', 'Cài đặt · Agent Skill Stud
   `${hero('Cài đặt', 'Cài theo cách hợp với agent của bạn', 'Yêu cầu: Python 3.9 trở lên, chỉ thư viện chuẩn, không cần `pip install`. Lệnh chạy tại gốc repo (trên Windows có thể gõ `python` thay `python3`).')}
 ${sec('Cách 1 — Cài như plugin', `  <p>Gói plugin chỉ chứa thư mục \`skills/\`. Manifest nằm ở \`.claude-plugin/\` (Claude Code) và \`.codex-plugin/\` (Codex).`.replace(/\\`/g, '`') + `</p>
 ${step(1, 'Claude Code', p('Gõ trong Claude Code:') + code('Claude Code', '/plugin marketplace add ducnguyen221/agent-skill-studio\n/plugin install agent-skill-studio@agent-skill-studio'))}
-${step(2, 'Codex', p('Repo có manifest `.codex-plugin/plugin.json` (tên `agent-skill-studio`, bản 0.2.0). Chạy trong terminal:') + code('Codex CLI', 'codex plugin marketplace add ducnguyen221/agent-skill-studio\ncodex plugin add agent-skill-studio@agent-skill-studio'))}
+${step(2, 'Codex', p('Repo có manifest `.codex-plugin/plugin.json` (tên `agent-skill-studio`, bản 0.3.0). Chạy trong terminal:') + code('Codex CLI', 'codex plugin marketplace add ducnguyen221/agent-skill-studio\ncodex plugin add agent-skill-studio@agent-skill-studio'))}
 ${step(3, 'Antigravity', p('Repo không có manifest plugin cho Antigravity; dùng Cách 2.'))}
 ${note('warn', 'Chưa kiểm:', 'dạng nguồn GitHub `ducnguyen221/agent-skill-studio` chưa chạy thử trên máy viết site; cùng lệnh với nguồn là thư mục checkout đã chạy thật cho cả Claude Code và Codex. Cờ lấy từ `claude plugin --help` và `codex plugin --help`.')}`)}
 ${sec('Cách 2 — Cài riêng một skill bằng studio.py install', `  <p>\`install\` sao chép có kiểm tra, không ghi đè nếu thiếu \`--force\`. \`--workspace\` phải là thư mục có sẵn.`.replace(/\\`/g, '`') + `</p>
@@ -154,7 +154,7 @@ ${table(['Agent', '`--workspace`', '`--user`', 'Gọi skill'], [
 ])}
 ${note('warn', 'Lưu ý:', 'Codex và Antigravity dùng chung `.agents/skills/` trong dự án, nên cài một lần là cả hai thấy. Đừng cài cùng skill hai lần dưới hai tên khác nhau, vì chúng sẽ tranh nhau được gọi.')}`)}
 ${sec('Cách 3 — Mẫu luật cho dự án khác', `  <p>Chép \`templates/starter-project/\` vào dự án đích: \`AGENTS.md\` là bộ luật chung duy nhất; \`CLAUDE.md\` nạp nó bằng dòng \`@AGENTS.md\`; Codex đọc thẳng \`AGENTS.md\`; \`GEMINI.md\` trỏ về \`AGENTS.md\`. Mỗi file có sẵn một dòng \`install\` đúng cờ.`.replace(/\\`/g, '`') + `</p>`)}
-${sec('Kiểm sau khi cài', `${code('Terminal', `python3 studio.py --version                       # in 0.2.0
+${sec('Kiểm sau khi cài', `${code('Terminal', `python3 studio.py --version                       # in 0.3.0
 python3 studio.py doctor                          # quét skills/ của repo, chỉ báo cáo; thoát 0 sạch, 1 có phát hiện, 2 không quét được
 python3 studio.py doctor --roots ".claude/skills" # quét gốc skill khác (ngoài repo bắt buộc --roots hoặc --roots-file)
 python3 studio.py check skills/skill-creator-studio`)}
@@ -181,8 +181,8 @@ ${sec('Giới hạn khi cài', `  <div class="faq">
 // ---- Cách dùng ----------------------------------------------------------
 const modeSteps = (list) => `<ol>${list.map((s) => `<li>${I(s)}</li>`).join('')}</ol>`;
 add('guide/index.html', 'guide/index.html', 'Cách dùng · Agent Skill Studio',
-  'Ba chế độ NEW, AUDIT, REFINE của skill-creator-studio, bảng 9 lệnh studio.py và ba ví dụ đầu-cuối.',
-  `${hero('Cách dùng', 'Ba chế độ, chín lệnh, ba ví dụ', 'Khi được gọi, skill `skill-creator-studio` chọn một trong ba nhánh NEW, AUDIT, REFINE. Bảy luật luôn giữ ở mọi lượt: AUDIT báo trước khi sửa; mặc định portable; hướng dẫn tối thiểu đủ dùng; rủi ro quyết mức tự do; eval nằm ngoài gói chạy; không bịa kết quả test; xin kết luận và bằng chứng, không xin suy luận nội bộ.')}
+  'Ba chế độ NEW, AUDIT, REFINE của skill-creator-studio, các lệnh studio.py, skill skill-curator và ba ví dụ đầu-cuối.',
+  `${hero('Cách dùng', 'Ba chế độ, bộ lệnh đủ dùng, ví dụ chép được', 'Khi được gọi, skill `skill-creator-studio` chọn một trong ba nhánh NEW, AUDIT, REFINE. Bảy luật luôn giữ ở mọi lượt: AUDIT báo trước khi sửa; mặc định portable; hướng dẫn tối thiểu đủ dùng; rủi ro quyết mức tự do; eval nằm ngoài gói chạy; không bịa kết quả test; xin kết luận và bằng chứng, không xin suy luận nội bộ.')}
 ${sec('NEW — tạo skill mới', `  <p><b>Khi nào:</b> có một việc lặp lại mà chưa có skill riêng. <b>Câu nói mẫu:</b> «Create a portable Skill for weekly sales reconciliation with a checklist and separate evaluation tests.»</p>
 ${step(1, 'Xác định', p('Một việc, câu nên gọi, câu không nên gọi, đầu vào/ra, tác dụng phụ. Xong khi giải thích được trong hai câu.'))}
 ${step(2, 'Viết ca thử trước', p('Ít nhất 3 ca thử thật và kế hoạch đo không skill, trước khi viết dài.'))}
@@ -206,17 +206,19 @@ ${step(4, 'Kiểm lại', p('Kiểm tĩnh và eval nhắm đích; sửa liên qu
 ${step(5, 'Báo', p('Danh sách thay đổi, file chạm, kiểm đã chạy, phần chưa đo bằng model, cách hoàn tác.'))}
 ${note('ok', 'Đầu ra:', 'thay đổi nhỏ có kiểm hồi quy và ghi chú phát hành.')}
 ${note('', 'Câu không gọi skill', '(ca âm trong bộ eval): «Write a Python function that sorts a list of integers…», «Explain how a person installs a plugin from a marketplace…», «List the names of the skill folders…».')}`)}
-${sec('Bảng 9 lệnh studio.py', `${table(['Lệnh', 'Việc', 'Cờ chính', 'Ví dụ'], [
+${sec('Các lệnh của studio.py', `${table(['Lệnh', 'Việc', 'Cờ chính', 'Ví dụ'], [
   ['`new`', 'dựng skill mới + bộ eval rỗng tách riêng', '`--description` (bắt buộc), `--output`, `--eval-root`, `--lang {en,vi}`, `--full`', '`python3 studio.py new my-skill --output skills --description "Does X. Use when Y."`'],
-  ['`check`', 'kiểm tĩnh một skill (thư mục hoặc `SKILL.md`); không sửa file', '`--all`, `--require-evals`, `--eval-root`, `--target {portable,claude-code}`, `--json`', '`python3 studio.py check skills/skill-creator-studio`'],
+  ['`check`', 'kiểm tĩnh một skill (thư mục hoặc `SKILL.md`) hoặc file workflow, file luật có `type:`; không sửa file', '`--all`, `--require-evals`, `--eval-root`, `--target {portable,claude-code}`, `--json`', '`python3 studio.py check skills/skill-creator-studio`'],
   ['`validate`', 'bí danh của `check` (cùng cờ, mã thoát, JSON)', 'như `check`', '`python3 studio.py validate --all --require-evals`'],
   ['`audit`', 'bí danh của `check`; đối số chỉ nhận thư mục skill', 'như `check`', '`python3 studio.py audit skills/skill-creator-studio`'],
   ['`evals`', 'kiểm schema bộ eval (không gọi model); `--all` thêm cổng `model_evaluated`', '`--all`, `--eval-root`, `--export agentskills`, `--out`, `--force`, `--json`', '`python3 studio.py evals --all`'],
   ['`package`', 'đóng ZIP chỉ gồm file chạy', '`--out`, `--force`', '`python3 studio.py package skills/skill-creator-studio --out dist`'],
   ['`install`', 'chép skill vào thư mục khám phá của agent', '`--agent {claude,codex,antigravity}` (bắt buộc), `--workspace` hoặc `--user`, `--force`, `--allow-root-link`', '`python3 studio.py install skills/skill-creator-studio --agent codex --workspace .`'],
   ['`doctor`', 'quét nhiều gốc skill, chỉ báo cáo', '`--roots`, `--roots-file`, `--profile {portable,opcos}`, `--target`, `--include-cache`, `--skip-marker`, `--baseline`, `--json`, `--out`, `--fail-on {error,warn,new}`', '`python3 studio.py doctor --roots "~/.claude/skills;.agents/skills"`'],
+  ['`catalog`', 'liệt kê mọi skill nguồn thành một bảng; chỉ đọc', '`--roots-from opcos`, `--roots`, `--installed`, `--overlap`, `--json`, `--out`, `--md`', '`python3 studio.py catalog --roots ".claude/skills;.agents/skills" --overlap`'],
   ['`fmt`', 'kiểm (mặc định) hoặc sửa kiểu trình bày Markdown; không đổi chữ của thân', '`--all`, `--check`/`--fix`, `--no-backup`, `--profile`, `--json`', '`python3 studio.py fmt --check --all`'],
 ])}
+  <p>Skill <code>skill-curator</code> dùng lệnh <code>catalog</code> để nhìn cả thư viện: skill nào có, đã cài ở đâu, cặp nào có thể trùng. Khác với <code>skill-creator-studio</code> chỉ lo một skill mỗi lần; <code>skill-curator</code> không sửa, cài hay xoá skill nào.</p>
   <p>Cờ đầy đủ: <code>python studio.py &lt;lệnh&gt; --help</code>. Cờ chung: <code>--version</code> in phiên bản; <code>--help</code> cho mọi lệnh.</p>
 ${note('warn', 'Mã lỗi hay gặp:', '`INPUT` (file ở vùng cloud/secret, placeholder cloud, hoặc là link), `EV20` (catalog hỏng hoặc lệch bằng chứng), `PACK` (gói gặp link, placeholder, cây quá lớn, file trên 25 MB…), `SEC` (tên file giống secret như `.env*`, `*.pem`), `EX1`–`EX13` (xuất eval bị từ chối). Mỗi lần từ chối in mã ra stderr và trong `--json`.')}`)}
 ${sec('Ba ví dụ đầu-cuối', `  <h3>Ví dụ 1 — Tạo skill mới tiếng Việt, đến lúc đóng gói</h3>

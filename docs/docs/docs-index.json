@@ -12,7 +12,7 @@
       "src": "CHANGELOG.md",
       "out": "docs/CHANGELOG/index.html",
       "title": "Changelog",
-      "sha256": "076ffacc31d1f3fd58a1150b54fa034d2d064d577ba8c028bf00a02b0400a2be"
+      "sha256": "fac03c03082ccd806ebfc9e60ce31d1a9c4ec1571f1a2e392d9bb37efebc58b9"
     },
     {
       "src": "CLAUDE.md",
@@ -36,7 +36,7 @@
       "src": "README.md",
       "out": "docs/README/index.html",
       "title": "Agent Skill Studio",
-      "sha256": "9586f95b444604b51e392b25c0329dd6609027dcf28066d4d4472b46a58ebf62"
+      "sha256": "53b51c2d145b038243d17a491e04d037bdf2b5db43777f10830eccf44eba3079"
     },
     {
       "src": "evals/RUNBOOK.md",
@@ -90,7 +90,7 @@
       "src": "skills/skill-creator-studio/SKILL.md",
       "out": "docs/skills/skill-creator-studio/SKILL/index.html",
       "title": "Skill Creator Studio",
-      "sha256": "66db40bd0f992d7c12210f625c34087e3baa9cc305b3dac0b021117e6fe3ca7d"
+      "sha256": "355a289e7d3c97c6d633bbfe3a818cf9e2c7ad833e6d76bba50f838a32f44efa"
     },
     {
       "src": "skills/skill-creator-studio/references/AUDIT_CHECKLIST.md",
@@ -102,7 +102,7 @@
       "src": "skills/skill-creator-studio/references/CORE_RULES.md",
       "out": "docs/skills/skill-creator-studio/references/CORE_RULES/index.html",
       "title": "Core Rules",
-      "sha256": "25ef0a4f5045092707736f3bf21b7e2cd6f907838ef6906f9deab428c1d2a35c"
+      "sha256": "ec9ede02e0fb8169e000f2774cf377368f14f8440e71088ce9a0af9ca8851804"
     },
     {
       "src": "skills/skill-creator-studio/references/NEW_WORKFLOW.md",
@@ -126,7 +126,7 @@
       "src": "standards/DOC_TYPES.md",
       "out": "docs/standards/DOC_TYPES/index.html",
       "title": "Doc Types — luật cho ba loại tài liệu",
-      "sha256": "20a12edcc8df039e4a0115eff122ca3a04a72c97895d67d2b1ccbb9fe1f34e19"
+      "sha256": "2a1d363186439ce598d030a55d18ef949abc6e76189b0ef4a79034617867a2e3"
     },
     {
       "src": "standards/EVALUATION_STANDARD.md",
@@ -156,13 +156,13 @@
       "src": "standards/SKILL_AUTHORING_STANDARD.md",
       "out": "docs/standards/SKILL_AUTHORING_STANDARD/index.html",
       "title": "Skill Authoring Standard — SK-00…SK-15",
-      "sha256": "c7b012d7670ff402c83f3bbf02fcbdfa61ec150eda3b7275de059dfdce464bea"
+      "sha256": "ca8b96244f11d189ef63342a0d4b49eb732e08fabfcb1df22da47af21e594d8e"
     },
     {
       "src": "standards/SOURCE_TRACEABILITY.md",
       "out": "docs/standards/SOURCE_TRACEABILITY/index.html",
       "title": "Source Traceability — Nguồn gốc và giới hạn của quy tắc SK-00…SK-15",
-      "sha256": "8d7b7b799fe31a92ad48330039b0b76710a4ee9f5f32b07437b3c10b9dac4ae4"
+      "sha256": "c9e090ce8ac6fbb0b7293215efef292083b03da4a483d6ca7f954f4e8dbbe025"
     },
     {
       "src": "standards/VIETNAMESE_SKILL_WRITING.md",

@@ -2,8 +2,15 @@
   "recorded_at_commit": "53c2d76",
   "cases": {
     "R-version": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "R-validate-all-require-evals-json": {
       "stderr": "",
@@ -50,8 +57,15 @@
       "eol": {}
     },
     "R-doctor-fixture-json": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "R-fmt-check-live-json": {
       "stderr": "",
@@ -125,8 +139,15 @@
       "eol": {}
     },
     "C-version": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "C-validate-all-require-evals-json": {
       "stderr": "",
@@ -173,8 +194,15 @@
       "eol": {}
     },
     "C-doctor-fixture-json": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "C-fmt-check-live-json": {
       "stderr": "",
@@ -248,8 +276,15 @@
       "eol": {}
     },
     "E-version": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "E-validate-all-require-evals-json": {
       "stderr": "",
@@ -296,8 +331,15 @@
       "eol": {}
     },
     "E-doctor-fixture-json": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "E-fmt-check-live-json": {
       "stderr": "",
@@ -380,8 +422,15 @@
       "eol": {}
     },
     "S-version": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "S-validate-self-json": {
       "stderr": "",
@@ -440,8 +489,15 @@
       "eol": {}
     },
     "S-doctor-fixture-json": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "S-fmt-check-self-json": {
       "stderr": "",
@@ -452,8 +508,15 @@
       "eol": {}
     },
     "Z-version": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "Z-validate-self-json": {
       "stderr": "",
@@ -512,8 +575,15 @@
       "eol": {}
     },
     "Z-doctor-fixture-json": {
-      "stderr": "",
-      "eol": {}
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
     },
     "Z-fmt-check-self-json": {
       "stderr": "",

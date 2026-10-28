@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.3.0 — 2026-10-29
+
+Chặng 3 (agent-skill-studio:SPR-04): skill thứ hai `skill-curator`, lệnh `catalog`, `doctor` theo gói và ngân sách, `check` cho workflow và file luật, và đóng bảy nợ của chặng 2.
+
+### Thêm
+
+- Skill `skill-curator`: nhìn cả thư viện skill một lượt, chỉ đọc; đóng gói và cài riêng như `skill-creator-studio`.
+- Lệnh `catalog`: một dòng mỗi skill nguồn (repo, phiên bản, băm cây, lỗi `doctor`, `model_evaluated`, khoá `metadata.opcos_*`); ra màn hình, JSON (`--json`, `--out`, schema `1`) hoặc `CATALOG.md` (`--md`).
+- `catalog --installed claude,codex,antigravity` so bản đã cài với bản nguồn; `catalog --overlap` gắn nhãn cặp có thể trùng kèm bằng chứng và gợi ý cố định.
+- `doctor --roots-from opcos` đọc gốc skill từ OpcOS và tìm skill theo manifest plugin; `--by-pack` gom theo gói; `--docs` kiểm tài liệu workflow và file luật; ngân sách chữ cho `--profile opcos`.
+- Mã kiểm `WF1`–`WF4` (workflow), `RL1`–`RL4` (file luật) và `SEC` (secret) theo `standards/DOC_TYPES.md`.
+- Site `docs/`: trang Cách dùng nói về `catalog` và skill `skill-curator`.
+
+### Sửa
+
+- `check` trên file có `type:` kiểm thật, thoát 0 hoặc 1 (trước đó thoát 2).
+- `new` ở vùng cloud hoặc đường lạ báo `ERROR INPUT` thoát 1 thay vì ghi hay in traceback; `new --output` dưới `/tmp` trên macOS được phép.
+- `standards/`: lý do cho «không tự sửa mọi WARN», mã `CT10` khớp luật `SK-14`, `DOC_TYPES.md` khớp máy kiểm; `CORE_RULES.md` sinh lại.
+
+### Hợp đồng
+
+| thay đổi | kiểu | trước → sau | bên dùng bị ảnh hưởng | tương thích ngược |
+|---|---|---|---|---|
+| lệnh `catalog` | thêm | — → `catalog [--roots-from opcos] [--roots …] [--installed …] [--overlap] [--json] [--out] [--md]`, schema JSON `1` | OpcOS `P11a`, `P11b`, SPR-10, SPR-11 | có |
+| `doctor --roots-from opcos`, `--by-pack`, `--docs` | thêm | — → cờ mới; JSON thêm khoá `packs`, `docs`, `budget` khi có cờ hoặc profile | wrapper `P11a` | có (khoá mới chỉ thêm) |
+| `doctor --profile opcos` ngân sách | sửa | không đo 350/8 000 → thêm WARN ngân sách và khoá `budget` | người chạy `--profile opcos`, `--fail-on warn` | không với `--fail-on warn` (thêm WARN có thể làm thoát 1) |
+| `doctor` tìm skill theo manifest plugin | thêm | — → chỉ khi `--roots-from opcos` | wrapper `P11a` | có: `--roots`, `--roots-file` không đổi |
+| `check` file workflow và luật | sửa | thoát 2 «not available yet» → kiểm thật, thoát 0 hoặc 1 | người chạy `check` trên file `type:`; CI repo khác | không (chặt hơn) |
+| `catalog.json` `metadata.opcos_*` | thêm | — | Atlas SPR-11 | có |
+| skill ship | thêm | plugin ship 1 → 2 skill (`skill-curator`) | người cài; `test-opcos.ps1` khối Studio; `registry.json`; junction Antigravity; bước `package` của CI | có |
+| `new` vùng cloud hoặc đường lạ | sửa | ghi được hoặc traceback → `ERROR INPUT` thoát 1 hoặc lời báo | người chạy `new` | không (chặt hơn) |
+| `new --output` dưới `/tmp` macOS | sửa | từ chối → cho phép | người dùng macOS | có (nới đúng chỗ) |
+| phiên bản | sửa | `0.2.0` → `0.3.0` + tag | marketplace, cache | có |
+
+### Nợ đóng
+
+`RQ-013`, `RQ-019`, `RQ-024`, `RQ-026`, `RQ-029`, `RQ-030`, `RQ-031`.
+
 ## Chưa phát hành
 
 - `docs/`: website 7 trang trên OpcOS Design System dùng chung (Trang chủ, Giới thiệu, Cài đặt, Cách dùng, Luồng & quy trình, Nguyên tắc, Docs); thư mục thứ bảy của repo, không vào gói phát hành. `tests/test_layout.py` khoá bảy thư mục thay vì sáu.
