@@ -21,6 +21,7 @@ import studio_evals as evals
 import studio_fs as fs
 import studio_roots as roots_mod
 import curator_installed
+import curator_overlap
 
 SCHEMA = 1
 HARNESSES = ("claude", "codex", "antigravity")
@@ -161,11 +162,22 @@ def _same_trees(a: Path, a_digest, b: Path, markers: tuple) -> tuple:
     return (True, "semantic") if left is not None and left == right else (False, None)
 
 
+def _installed_items(installed: list, markers: tuple) -> list:
+    """The Installed records as items for `curator_overlap`: key "<harness>/<plugin>:<skill>", the description from the copy's SKILL.md and its tree hash."""
+    out = []
+    for item in installed:
+        folder = Path(item["path"])
+        name, desc, _, _ = _read_skill_meta(folder)
+        out.append({"key": "%s/%s:%s" % (item["harness"], item["plugin"], item["skill"]), "plugin": item["plugin"], "skill": item["skill"], "name": name,
+                    "desc": desc, "path": os.fspath(folder), "harness": item["harness"], "sha": roots_mod.tree_sha256(folder, markers)})
+    return out
+
+
 def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tuple | None = None, skip_markers: tuple = (),
           notes: list | None = None) -> dict:
     """The catalog report, schema 1. `roots` are Root records (collect_skills updates them in place) and `installed` the Installed records of the
     harnesses asked for. `scanned` = (skills[{path, repo, plugin, root}], skipped) when the caller has already walked the roots; else the roots are walked
-    here as `--roots-from opcos` does. `overlap` is accepted and `pairs` stays null (the pair labels come with TK11). Notes about what was dropped are
+    here as `--roots-from opcos` does. With `overlap` the pairs are labelled (curator_overlap, FR4); without it `pairs` is null. Notes about what was dropped are
     appended to `notes` when a list is given."""
     markers = C.CLOUD_MARKERS + tuple(skip_markers)
     sources = [r for r in roots if r["kind"] != "harness"]  # a harness root is only reported: it holds copies, not source skills
@@ -179,7 +191,7 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
         by_key.setdefault((item["plugin"], item["skill"]), []).append(item)
     versions: dict = {}
     catalogs: dict = {}
-    rows, used = [], set()
+    rows, used, items = [], set(), []
     for skill in skills:
         folder = Path(skill["path"])
         name, desc, keys, found = _read_skill_meta(folder)
@@ -200,12 +212,16 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
                      "plugin_version": _plugin_version(plugin, markers, versions), "tree_sha256": digest, "installed": state,
                      "doctor": {"errors": entry.get("errors", 0), "warnings": entry.get("warnings", 0)},
                      "model_evaluated": flag, "opcos": keys})
+        items.append({"key": "%s:%s" % (skill["plugin"], folder.name), "plugin": skill["plugin"], "skill": folder.name, "name": name, "desc": desc,
+                      "path": os.fspath(folder), "harness": None, "sha": digest})
     rows.sort(key=lambda r: (r["repo"].casefold(), r["name"].casefold(), r["path"]))
     only = [dict(i, path=home_path(i["path"])) for i in installed if (i["harness"], i["plugin"], i["skill"]) not in used
             and (i["plugin"], i["skill"]) not in {(s["plugin"], Path(s["path"]).name) for s in skills}]
+    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers), markers) if overlap else None
     return {"schema": SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "studio_version": C.VERSION,
-            "roots": [_display_root(r) for r in roots], "skills": rows, "installed_only": only, "pairs": None,
-            "totals": {"skills": len(rows), "repos": len({r["repo"] for r in rows}), "roots_not_ok": sum(r["status"] != "ok" for r in roots), "pairs": 0}}
+            "roots": [_display_root(r) for r in roots], "skills": rows, "installed_only": only, "pairs": pairs,
+            "totals": {"skills": len(rows), "repos": len({r["repo"] for r in rows}), "roots_not_ok": sum(r["status"] != "ok" for r in roots),
+                       "pairs": len(pairs or [])}}
 
 
 def _cell(text) -> str:
@@ -269,7 +285,7 @@ def build_parser(prog: str = "catalog") -> argparse.ArgumentParser:
     p.add_argument("--roots", help="skill roots separated by ';' (default: the repo's skills/; outside the repo --roots or --roots-file is required)")
     p.add_argument("--roots-file", help="file with one root per line, '#' starts a comment")
     p.add_argument("--installed", metavar="HARNESSES", help="comma list of claude,codex,antigravity: read the copies installed there and show khớp/khác/— beside every skill; a harness whose locator fails is a root that is not ok")
-    p.add_argument("--overlap", action="store_true", help="find skills that overlap (not available yet: `pairs` stays null)")
+    p.add_argument("--overlap", action="store_true", help="name pairs of skills that may overlap and give each one of five labels with its evidence and a fixed suggestion (only a suggestion: every pair needs a person); without it `pairs` is null")
     p.add_argument("--json", action="store_true", help="print the JSON report (with --out it goes to the file only)")
     p.add_argument("--out", help="write the JSON report here; the folder must exist; not under skills/, a scanned root or a harness folder; not a secret-looking name")
     p.add_argument("--md", help="write CATALOG.md here, same placement rules; an existing file is replaced only when its first line is <!-- studio catalog -->")
@@ -287,9 +303,31 @@ def _say(text: str, stream=None) -> None:
         print(text.encode("ascii", "backslashreplace").decode("ascii"), file=stream)
 
 
+def _manifest_plugin(folder: Path, top: Path, markers: tuple, cache: dict) -> str | None:
+    """The `name` of the nearest plugin manifest (.claude-plugin/plugin.json) at or above `folder`, climbing no higher than `top` (its parent when `top` is called
+    skills), else None; the manifest is one bounded read through the same reader as the manifests of an OpcOS tree. A manifest that cannot be read gives None."""
+    limit = top.parent if top.name.lower() == "skills" else top
+    for parent in folder.parents:
+        manifest = parent / ".claude-plugin" / "plugin.json"
+        if os.path.lexists(manifest):
+            key = os.path.normcase(os.fspath(parent))
+            if key not in cache:
+                try:
+                    data = roots_mod._read_json(manifest, C.MANIFEST_MAX, markers)
+                    cache[key] = data["name"] if isinstance(data, dict) and isinstance(data.get("name"), str) and data["name"] else None
+                except roots_mod.RootError:
+                    cache[key] = None
+            return cache[key]
+        if parent == limit:
+            break
+    return None
+
+
 def _plain_roots(paths: list, skip_markers: tuple) -> tuple:
     """For --roots / --roots-file: (Root records, skills, skipped) from `iter_skill_dirs`. The repo of a skill is the root's folder name (its parent's when
-    the root is called skills); a skipped path attaches to the root that holds it, and a root that is itself skipped is an `error`."""
+    the root is called skills); its plugin is the `name` of the plugin manifest around it when there is one (so a root that holds several plugins keeps
+    them apart, and a pair or an installed copy is keyed as in an OpcOS tree), else the repo. A skipped path attaches to the root that holds it, and a root
+    that is itself skipped is an `error`."""
     folders, skipped = doctor.iter_skill_dirs(paths, False, skip_markers)
     roots = [roots_mod._new_root(p, "plugin", "roots") for p in paths]
     for item in skipped:
@@ -300,13 +338,13 @@ def _plain_roots(paths: list, skip_markers: tuple) -> tuple:
             continue
         owner = next((r for r in roots if low.startswith(r["path"].lower().rstrip("/") + "/")), roots[0])
         roots_mod.note_skip(owner, item["path"], item["reason"])
-    skills = []
+    skills, manifests = [], {}
     for folder in folders:
         text = _posix(folder).lower()
         owner = next((r for r in roots if text.startswith(r["path"].lower().rstrip("/") + "/")), roots[0])
         base = Path(owner["path"])
         repo = base.parent.name if base.name.lower() == "skills" else base.name
-        skills.append({"path": folder, "repo": repo, "plugin": repo, "root": owner["path"]})
+        skills.append({"path": folder, "repo": repo, "plugin": _manifest_plugin(Path(folder), base, C.CLOUD_MARKERS + tuple(skip_markers), manifests) or repo, "root": owner["path"]})
     return roots, skills, skipped
 
 
@@ -386,8 +424,6 @@ def run(args) -> int:
                 found, harness_root = curator_installed.locate(harness, home, markers)
                 installed.extend(found)
                 records.append(harness_root)
-    if args.overlap:
-        _say("NOTE: --overlap is not available yet; pairs stays null", sys.stderr)
     report = build(records, installed, bool(args.overlap), "opcos" if opcos is not None else "portable", scanned, skip_markers, notes)
     for line in notes:
         _say("NOTE: %s" % line, sys.stderr)

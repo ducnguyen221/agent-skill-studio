@@ -21,12 +21,12 @@ Shows the whole skill library at once: which source skills exist, in which repo,
 
 - Exit code 1 from `catalog` means a root is `partial` or `error`, not that the command failed; read the `Gốc không ok` section before trusting the counts.
 - `catalog --roots-from opcos` needs a `paths.json` (found from `$OPCOS_ROOT`, else up from the working folder); outside an OpcOS tree pass `--roots` instead.
-- `--installed claude,codex,antigravity` reads the copies in use there (three fixed locators, never a whole `cache/`); a harness whose locator fails is a root that is not `ok`, so the exit is 1. `--overlap` is accepted but not available yet: `pairs` stays null.
+- `--installed claude,codex,antigravity` reads the copies in use there (three fixed locators, never a whole `cache/`); a harness whose locator fails is a root that is not `ok`, so the exit is 1. `--overlap` names pairs that may overlap and gives each one of five labels (`distribution_copy`, `version_drift`, `same_function`, `same_name_other_role`, `insufficient_evidence`) with its evidence and a fixed suggestion (`keep`, `sync`, `merge`); it is only a suggestion and every pair needs a person. Without `--overlap`, `pairs` is null.
 - Paths under the home folder are written `~/…`, so a shared `CATALOG.md` does not carry a user name.
 
 ## Commands
 
-Run from this skill's folder as `python3 scripts/curator.py <command>`, or as `studio.py catalog` from a Studio repo root (Python 3.9+, standard library only; `--help` lists exact flags). `scripts/curator.py` is the entry point: it finds the shared engine modules, then runs `catalog` (code in `scripts/curator_catalog.py`) or hands `doctor` to the engine. `scripts/curator_catalog.py` and `scripts/curator_installed.py` (the locators of installed copies) are imported by `curator.py` and `studio.py`; do not run them directly.
+Run from this skill's folder as `python3 scripts/curator.py <command>`, or as `studio.py catalog` from a Studio repo root (Python 3.9+, standard library only; `--help` lists exact flags). `scripts/curator.py` is the entry point: it finds the shared engine modules, then runs `catalog` (code in `scripts/curator_catalog.py`) or hands `doctor` to the engine. `scripts/curator_catalog.py`, `scripts/curator_installed.py` (the locators of installed copies) and `scripts/curator_overlap.py` (the pair labels of `--overlap`) are imported by `curator.py` and `studio.py`; do not run them directly.
 
 | Command | Use | Output |
 |---|---|---|

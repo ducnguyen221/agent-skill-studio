@@ -280,15 +280,16 @@ class RootStatusTests(TmpCase):
 
     def test_installed_and_overlap_flags_are_declared(self):
         """bắt-lỗi: --installed reads the harnesses (an empty home: every locator fails, so each harness root is `error`, exit 1, every copy absent);
-        --overlap is accepted, says it is not available yet, and leaves `pairs` null."""
+        --overlap is accepted (TK11: the pairs are found, so `pairs` is a list, empty over an empty home)."""
         home = self.tmp / "empty-home"
         home.mkdir()
         code, out, err = run_catalog("--roots-from", "opcos", "--installed", "claude,codex", "--home", str(home), "--overlap", "--json", cwd=self.clean_tree())
         self.assertEqual(code, 1, err)
         self.assertNotIn("not read yet", err)
-        self.assertIn("--overlap is not available", err)
+        self.assertNotIn("not available", err)
         report = json.loads(out)
-        self.assertIsNone(report["pairs"])
+        self.assertEqual(report["pairs"], [])
+        self.assertEqual(report["totals"]["pairs"], 0)
         self.assertEqual([(r["area"], r["status"]) for r in report["roots"] if r["kind"] == "harness"], [("claude", "error"), ("codex", "error")])
         self.assertTrue(all(v["state"] == "absent" for r in report["skills"] for v in r["installed"].values()))
 
