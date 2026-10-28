@@ -7,7 +7,7 @@
 <meta name="description" content="Ba cách cài Agent Skill Studio: plugin, studio.py install cho từng agent, và mẫu luật cho dự án khác.">
 <link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/install/">
 <link rel="icon" href="../assets/logo.svg">
-<link rel="stylesheet" href="../assets/ds/site.css?v=1.0.0">
+<link rel="stylesheet" href="../assets/ds/site.css?v=1.0.1">
 </head>
 <body>
 <canvas id="netbg" aria-hidden="true"></canvas>
@@ -51,9 +51,11 @@
   <div class="step"><div class="num">1</div><div class="body"><h3>Claude Code</h3><p>Gõ trong Claude Code:</p>  <div class="code-card"><div class="code-top"><span class="fn">Claude Code</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
   <div class="code-scroll"><pre><code>/plugin marketplace add ducnguyen221/agent-skill-studio
 /plugin install agent-skill-studio@agent-skill-studio</code></pre></div></div></div></div>
-  <div class="step"><div class="num">2</div><div class="body"><h3>Codex</h3><p>Repo có manifest <code>.codex-plugin/plugin.json</code> (tên <code>agent-skill-studio</code>, bản 0.2.0) nhưng lệnh cài plugin cho Codex chưa có trong repo. Dùng Cách 2.</p></div></div>
+  <div class="step"><div class="num">2</div><div class="body"><h3>Codex</h3><p>Repo có manifest <code>.codex-plugin/plugin.json</code> (tên <code>agent-skill-studio</code>, bản 0.2.0). Chạy trong terminal:</p>  <div class="code-card"><div class="code-top"><span class="fn">Codex CLI</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
+  <div class="code-scroll"><pre><code>codex plugin marketplace add ducnguyen221/agent-skill-studio
+codex plugin add agent-skill-studio@agent-skill-studio</code></pre></div></div></div></div>
   <div class="step"><div class="num">3</div><div class="body"><h3>Antigravity</h3><p>Repo không có manifest plugin cho Antigravity; dùng Cách 2.</p></div></div>
-  <p class="note warn"><b>Chưa kiểm:</b> lệnh <code>/plugin marketplace add …</code> chép từ README, chưa chạy thử trong lượt viết site này (cần mạng và Claude Code tương tác).</p>
+  <p class="note warn"><b>Chưa kiểm:</b> dạng nguồn GitHub <code>ducnguyen221/agent-skill-studio</code> chưa chạy thử trên máy viết site; cùng lệnh với nguồn là thư mục checkout đã chạy thật cho cả Claude Code và Codex. Cờ lấy từ <code>claude plugin --help</code> và <code>codex plugin --help</code>.</p>
 </div></section>
 <section><div class="wrap">
   <div class="sec-head"><h2>Cách 2 — Cài riêng một skill bằng studio.py install</h2></div>
@@ -89,9 +91,18 @@ python3 studio.py check skills/skill-creator-studio</code></pre></div></div>
   <div class="sec-head"><h2>Nâng cấp và gỡ</h2></div>
   <div class="grid-2">
     <div class="card reveal"><h3>Nâng cấp</h3><p>Bản cài bằng <code>install</code>: chạy lại với <code>--force</code>; bản cũ chuyển sang <code>.skill-studio-backups/</code> (ngoài gốc skill), rồi bản mới thay vào. Đọc <code>CHANGELOG.md</code> mục 0.2.0 trước khi nâng từ 0.1.0 vì có đổi hợp đồng.</p></div>
-    <div class="card reveal"><h3>Gỡ</h3><p>Bản cài bằng <code>install</code> là một thư mục thường dưới các đường ở bảng trên.</p></div>
+    <div class="card reveal"><h3>Gỡ</h3><p>Bản cài bằng <code>install</code> là một thư mục thường dưới các đường ở bảng trên; xoá thư mục đó là gỡ.</p></div>
   </div>
-  <p class="note warn"><b>Chưa có trong repo:</b> lệnh nâng cấp plugin (Claude Code, Codex) và lệnh gỡ (cho plugin hay cho bản <code>install</code>).</p>
+  <div class="code-card"><div class="code-top"><span class="fn">Plugin — nâng cấp và gỡ</span><button class="copy-btn" type="button"><span class="lbl">Sao chép</span></button></div>
+  <div class="code-scroll"><pre><code><span class="cm"># Claude Code</span>
+claude plugin marketplace update agent-skill-studio
+claude plugin update agent-skill-studio@agent-skill-studio
+claude plugin uninstall agent-skill-studio@agent-skill-studio
+<span class="cm"># Codex</span>
+codex plugin marketplace upgrade agent-skill-studio
+codex plugin add agent-skill-studio@agent-skill-studio      # cài lại bản mới
+codex plugin remove agent-skill-studio@agent-skill-studio</code></pre></div></div>
+  <p class="note warn"><b>Lưu ý:</b> <code>claude plugin update</code> có thể không hạ phiên bản; muốn về bản cũ thì gỡ rồi cài lại từ tag cũ.</p>
 </div></section>
 <section><div class="wrap">
   <div class="sec-head"><h2>Giới hạn khi cài</h2></div>
@@ -133,6 +144,6 @@ python3 studio.py check skills/skill-creator-studio</code></pre></div></div>
     </div>
   </div>
 </footer>
-<script src="../assets/ds/site.js?v=1.0.0"></script>
+<script src="../assets/ds/site.js?v=1.0.1"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@
 <meta name="description" content="Tài liệu templates/README.md của Agent Skill Studio.">
 <link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/docs/templates/README/">
 <link rel="icon" href="../../../assets/logo.svg">
-<link rel="stylesheet" href="../../../assets/ds/site.css?v=1.0.0">
+<link rel="stylesheet" href="../../../assets/ds/site.css?v=1.0.1">
 </head>
 <body>
 <canvas id="netbg" aria-hidden="true"></canvas>
@@ -103,7 +103,7 @@
     <div class="doc-meta"><a href="../../../docs/index.html">Docs</a> / <code>templates/README.md</code></div>
 <h1>Templates</h1>
 <p>Hai template (<code>skill-template/</code> và <code>skill-template-full/</code>, nằm ở <code>skills/skill-creator-studio/assets/</code>, bản duy nhất) là <strong>scaffold</strong> cho Skill mới, không phải Skill sản xuất. Lệnh <code>python3 studio.py new &lt;name&gt; ...</code> copy template, đổi <code>name</code>/<code>description</code> thành hợp lệ và để lại <code>STUDIO-DRAFT</code> để cảnh báo cần cá nhân hóa; <code>package</code> từ chối Skill còn dấu này.</p>
-<table><thead><tr><th>Template</th><th>Chọn bằng</th><th>Nội dung</th></tr></thead><tbody><tr><td><code>skill-template/SKILL.md</code></td><td>mặc định (<code>--lang en</code>)</td><td>Một file 14 dòng không trống: frontmatter, mục đích, <code>## Gotchas</code>, <code>## References</code>. Chỉ <code>SKILL.md</code>, không thư mục con</td></tr><tr><td><code>skill-template/SKILL.vi.md</code></td><td><code>--lang vi</code></td><td>Cùng khung, thân tiếng Việt; frontmatter và nhãn mục giữ tiếng Anh. Viết theo <a href="../../../docs/standards/VIETNAMESE_SKILL_WRITING/index.html">chuẩn tiếng Việt</a></td></tr><tr><td><code>skill-template-full/</code></td><td><code>--full</code></td><td>Bản đầy đủ, chỉ tiếng Anh (<code>--full --lang vi</code> thoát 2): <code>SKILL.md</code> + <code>references/PROCESS_TEMPLATE.md</code> (khuôn file process) + <code>scripts/</code> + <code>assets/</code> + <code>agents/openai.yaml</code> (chỉ Codex, xoá nếu không dùng)</td></tr></tbody></table>
+<table><thead><tr><th>Template</th><th>Chọn bằng</th><th>Nội dung</th></tr></thead><tbody><tr><td><code>skill-template/SKILL.md</code></td><td>mặc định (<code>--lang en</code>)</td><td>Một file 14 dòng không trống: frontmatter, mục đích, <code>## Gotchas</code>, <code>## References</code>. Chỉ <code>SKILL.md</code>, không thư mục con</td></tr><tr><td><code>skill-template/SKILL.vi.md</code></td><td><code>--lang vi</code></td><td>Cùng khung, thân tiếng Việt; frontmatter và nhãn mục giữ tiếng Anh. Viết theo <a href="../../../docs/standards/VIETNAMESE_SKILL_WRITING/index.html">chuẩn tiếng Việt</a></td></tr><tr><td><code>skill-template-full/</code></td><td><code>--full</code></td><td>Bản đầy đủ, tiếng Anh hoặc tiếng Việt (<code>--full --lang vi</code> dùng <code>SKILL.vi.md</code> của bản đầy đủ, thoát 0): <code>SKILL.md</code> + <code>references/PROCESS_TEMPLATE.md</code> (khuôn file process) + <code>scripts/</code> + <code>assets/</code> + <code>agents/openai.yaml</code> (chỉ Codex, xoá nếu không dùng)</td></tr></tbody></table>
 <p>Trong bản đầy đủ:</p>
 <ul><li><code>references/</code>: phương pháp chuyên sâu, đọc theo nhu cầu; <code>PROCESS_TEMPLATE.md</code> là khuôn runbook (<code>Command:</code>, <code>Expect:</code>, <code>Stop if:</code>).</li><li><code>scripts/</code>: Python helper có thể chạy và bắt lỗi, không tự chạy khi chỉ load Skill.</li><li><code>assets/</code>: biểu mẫu, tài liệu, schema, dữ liệu synthetic dùng trực tiếp trong output.</li><li><code>agents/</code>: metadata riêng của host; <code>package</code> đưa thư mục này vào ZIP.</li></ul>
 <p><code>evals/</code> chủ đích <strong>không nằm trong template skill runtime</strong>. Lệnh <code>new</code> tạo <code>evals/&lt;name&gt;/cases.json</code> riêng, rỗng có chủ đích. Phải viết 3 test thật mới đủ điều kiện release.</p>
@@ -143,6 +143,6 @@
     </div>
   </div>
 </footer>
-<script src="../../../assets/ds/site.js?v=1.0.0"></script>
+<script src="../../../assets/ds/site.js?v=1.0.1"></script>
 </body>
 </html>

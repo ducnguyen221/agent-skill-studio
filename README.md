@@ -57,8 +57,15 @@ python3 studio.py new my-skill --output skills --description "Does X. Use when Y
 Cài như plugin (Claude Code, Codex): manifest ở `.claude-plugin/` và `.codex-plugin/`, gói chỉ chứa `skills/`.
 
 ```text
+# Claude Code (trong phiên, hoặc CLI: claude plugin marketplace add … / claude plugin install …)
 /plugin marketplace add ducnguyen221/agent-skill-studio
 /plugin install agent-skill-studio@agent-skill-studio
+# Codex CLI
+codex plugin marketplace add ducnguyen221/agent-skill-studio
+codex plugin add agent-skill-studio@agent-skill-studio
+# Nâng cấp: claude plugin marketplace update agent-skill-studio && claude plugin update agent-skill-studio@agent-skill-studio
+#           codex plugin marketplace upgrade agent-skill-studio && codex plugin add agent-skill-studio@agent-skill-studio
+# Gỡ:       claude plugin uninstall agent-skill-studio@agent-skill-studio · codex plugin remove agent-skill-studio@agent-skill-studio
 ```
 
 Cài riêng một skill bằng `install` (sao chép có kiểm tra, không ghi đè nếu thiếu `--force`):

@@ -1,5 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
-/* OpcOS Design System 1.0.0 — site.css SINH bởi kit/build.mjs từ tokens.json + components/bundle.css. Không sửa tay. */
+/* OpcOS Design System 1.0.1 — site.css SINH bởi kit/build.mjs từ tokens.json + components/bundle.css. Không sửa tay. */
 :root, [data-theme="light"] {
   --bg: #ffffff;
   --bg-tint: #f7f9fc;
@@ -242,7 +242,7 @@ header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--
   border-bottom:1px solid transparent;transition:border-color .25s}
 header.site.scrolled{border-bottom-color:var(--border)}
 .nav{display:flex;align-items:center;gap:20px;height:64px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.01em}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.01em;white-space:nowrap;flex:none}
 .brand img{width:32px;height:32px;border-radius:50%;display:block}
 .nav-links{display:flex;gap:4px;margin-left:auto}
 /* mục menu dạng "pill": trang đang xem có nền màu nhấn, mục khác chỉ hiện nền khi hover */

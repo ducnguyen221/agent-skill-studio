@@ -7,7 +7,7 @@
 <meta name="description" content="Tài liệu README.md của Agent Skill Studio.">
 <link rel="canonical" href="https://ducnguyen.vn/agent-skill-studio/docs/README/">
 <link rel="icon" href="../../assets/logo.svg">
-<link rel="stylesheet" href="../../assets/ds/site.css?v=1.0.0">
+<link rel="stylesheet" href="../../assets/ds/site.css?v=1.0.1">
 </head>
 <body>
 <canvas id="netbg" aria-hidden="true"></canvas>
@@ -133,8 +133,15 @@ python3 studio.py new my-skill --output skills --description &quot;Does X. Use w
 <p><code>new</code> chỉ dựng khung và để dấu <code>STUDIO-DRAFT</code>; <code>package</code> từ chối đến khi bạn viết thật. Sau <code>new</code>: thêm mục vào <code>evals/catalog.json</code>, viết ít nhất 3 ca (có ca dương và ca âm), rồi <code>check</code>. Chi tiết khuôn: <a href="../../docs/templates/README/index.html">templates/README.md</a>.</p>
 <h2>Ba agent và cách cài</h2>
 <p>Cài như plugin (Claude Code, Codex): manifest ở <code>.claude-plugin/</code> và <code>.codex-plugin/</code>, gói chỉ chứa <code>skills/</code>.</p>
-<pre><code class="language-text">/plugin marketplace add ducnguyen221/agent-skill-studio
-/plugin install agent-skill-studio@agent-skill-studio</code></pre>
+<pre><code class="language-text"># Claude Code (trong phiên, hoặc CLI: claude plugin marketplace add … / claude plugin install …)
+/plugin marketplace add ducnguyen221/agent-skill-studio
+/plugin install agent-skill-studio@agent-skill-studio
+# Codex CLI
+codex plugin marketplace add ducnguyen221/agent-skill-studio
+codex plugin add agent-skill-studio@agent-skill-studio
+# Nâng cấp: claude plugin marketplace update agent-skill-studio &amp;&amp; claude plugin update agent-skill-studio@agent-skill-studio
+#           codex plugin marketplace upgrade agent-skill-studio &amp;&amp; codex plugin add agent-skill-studio@agent-skill-studio
+# Gỡ:       claude plugin uninstall agent-skill-studio@agent-skill-studio · codex plugin remove agent-skill-studio@agent-skill-studio</code></pre>
 <p>Cài riêng một skill bằng <code>install</code> (sao chép có kiểm tra, không ghi đè nếu thiếu <code>--force</code>):</p>
 <pre><code class="language-bash">python3 studio.py install skills/skill-creator-studio --agent claude --workspace .
 python3 studio.py install skills/skill-creator-studio --agent codex --workspace .        # .agents/skills/
@@ -191,6 +198,6 @@ python3 studio.py install skills/skill-creator-studio --agent antigravity --user
     </div>
   </div>
 </footer>
-<script src="../../assets/ds/site.js?v=1.0.0"></script>
+<script src="../../assets/ds/site.js?v=1.0.1"></script>
 </body>
 </html>

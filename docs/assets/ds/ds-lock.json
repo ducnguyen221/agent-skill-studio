@@ -1,8 +1,8 @@
 {
   "name": "OpcOS Design System",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "files": {
-    "site.css": "42145481dcbe9614f1acf3b85285e4bf4947b88a79df2da123a5e40ae213dbf5",
+    "site.css": "5b01801720030eaf955c0ddaa3fd88ce405bf62a2b4bc208d83dc9f152a2aca2",
     "site.js": "93ac848e5873b391384bb193a6e63a4424849e652dbfa340b415bdc99549249b"
   }
 }

@@ -173,9 +173,9 @@ add('install/index.html', 'install/index.html', 'Cài đặt · Agent Skill Stud
   `${hero('Cài đặt', 'Cài theo cách hợp với agent của bạn', 'Yêu cầu: Python 3.9 trở lên, chỉ thư viện chuẩn, không cần `pip install`. Lệnh chạy tại gốc repo (trên Windows có thể gõ `python` thay `python3`).')}
 ${sec('Cách 1 — Cài như plugin', `  <p>Gói plugin chỉ chứa thư mục \`skills/\`. Manifest nằm ở \`.claude-plugin/\` (Claude Code) và \`.codex-plugin/\` (Codex).`.replace(/\\`/g, '`') + `</p>
 ${step(1, 'Claude Code', p('Gõ trong Claude Code:') + code('Claude Code', '/plugin marketplace add ducnguyen221/agent-skill-studio\n/plugin install agent-skill-studio@agent-skill-studio'))}
-${step(2, 'Codex', p('Repo có manifest `.codex-plugin/plugin.json` (tên `agent-skill-studio`, bản 0.2.0) nhưng lệnh cài plugin cho Codex chưa có trong repo. Dùng Cách 2.'))}
+${step(2, 'Codex', p('Repo có manifest `.codex-plugin/plugin.json` (tên `agent-skill-studio`, bản 0.2.0). Chạy trong terminal:') + code('Codex CLI', 'codex plugin marketplace add ducnguyen221/agent-skill-studio\ncodex plugin add agent-skill-studio@agent-skill-studio'))}
 ${step(3, 'Antigravity', p('Repo không có manifest plugin cho Antigravity; dùng Cách 2.'))}
-${note('warn', 'Chưa kiểm:', 'lệnh `/plugin marketplace add …` chép từ README, chưa chạy thử trong lượt viết site này (cần mạng và Claude Code tương tác).')}`)}
+${note('warn', 'Chưa kiểm:', 'dạng nguồn GitHub `ducnguyen221/agent-skill-studio` chưa chạy thử trên máy viết site; cùng lệnh với nguồn là thư mục checkout đã chạy thật cho cả Claude Code và Codex. Cờ lấy từ `claude plugin --help` và `codex plugin --help`.')}`)}
 ${sec('Cách 2 — Cài riêng một skill bằng studio.py install', `  <p>\`install\` sao chép có kiểm tra, không ghi đè nếu thiếu \`--force\`. \`--workspace\` phải là thư mục có sẵn.`.replace(/\\`/g, '`') + `</p>
 ${code('Terminal', `# vào một dự án (thư mục khám phá của agent trong dự án)
 python3 studio.py install skills/skill-creator-studio --agent claude --workspace .        # .claude/skills/
@@ -198,9 +198,17 @@ python3 studio.py check skills/skill-creator-studio`)}
   <p>Rồi kiểm trong agent: Claude Code tìm được <code>/skill-creator-studio</code> (và <code>/context</code> cho thấy <code>CLAUDE.md</code> đã nạp <code>@AGENTS.md</code>); Codex liệt kê <code>/skills</code> hoặc gọi <code>$skill-creator-studio</code>; Antigravity kiểm <code>.agents/skills/</code> đã được nhận và tên skill hiện ra. Có thể hỏi agent: «Which repo instruction files and Skill names are active?».</p>`)}
 ${sec('Nâng cấp và gỡ', `  <div class="grid-2">
     ${card('Nâng cấp', 'Bản cài bằng `install`: chạy lại với `--force`; bản cũ chuyển sang `.skill-studio-backups/` (ngoài gốc skill), rồi bản mới thay vào. Đọc `CHANGELOG.md` mục 0.2.0 trước khi nâng từ 0.1.0 vì có đổi hợp đồng.')}
-    ${card('Gỡ', 'Bản cài bằng `install` là một thư mục thường dưới các đường ở bảng trên.')}
+    ${card('Gỡ', 'Bản cài bằng `install` là một thư mục thường dưới các đường ở bảng trên; xoá thư mục đó là gỡ.')}
   </div>
-${note('warn', 'Chưa có trong repo:', 'lệnh nâng cấp plugin (Claude Code, Codex) và lệnh gỡ (cho plugin hay cho bản `install`).')}`)}
+${code('Plugin — nâng cấp và gỡ', `# Claude Code
+claude plugin marketplace update agent-skill-studio
+claude plugin update agent-skill-studio@agent-skill-studio
+claude plugin uninstall agent-skill-studio@agent-skill-studio
+# Codex
+codex plugin marketplace upgrade agent-skill-studio
+codex plugin add agent-skill-studio@agent-skill-studio      # cài lại bản mới
+codex plugin remove agent-skill-studio@agent-skill-studio`)}
+${note('warn', 'Lưu ý:', '`claude plugin update` có thể không hạ phiên bản; muốn về bản cũ thì gỡ rồi cài lại từ tag cũ.')}`)}
 ${sec('Giới hạn khi cài', `  <div class="faq">
     <details><summary>Thư mục skill là symlink hoặc junction?</summary><p><code>install</code> thoát 2 (cờ <code>--allow-root-link</code> cho phép có chủ ý và in đích thật); đích là link thì thoát 1.</p></details>
     <details><summary>Trên macOS, <code>new --output</code> dưới <code>/tmp</code> bị từ chối?</summary><p>Đúng: <code>/tmp</code> và <code>/var</code> là symlink. Dùng thư mục dưới <code>$HOME</code>.</p></details>

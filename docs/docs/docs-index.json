@@ -36,7 +36,7 @@
       "src": "README.md",
       "out": "docs/README/index.html",
       "title": "Agent Skill Studio",
-      "sha256": "8b60be7b56763360e8ada122efd57fe0eac9845f331ecc88078c1ce1652d3f49"
+      "sha256": "9586f95b444604b51e392b25c0329dd6609027dcf28066d4d4472b46a58ebf62"
     },
     {
       "src": "evals/RUNBOOK.md",
@@ -174,7 +174,7 @@
       "src": "templates/README.md",
       "out": "docs/templates/README/index.html",
       "title": "Templates",
-      "sha256": "184a7c77aa1504359f4981849644ce6ae1b8c9cced9eb49c75ca9e99e327ac0e"
+      "sha256": "14ca00956de0a73e6064bc44a52f57d4e101044c821105d259efcba6a8c5ab2c"
     },
     {
       "src": "templates/starter-project/AGENTS.md",

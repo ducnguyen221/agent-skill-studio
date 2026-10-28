@@ -11,7 +11,7 @@ Hai template (`skill-template/` và `skill-template-full/`, nằm ở `skills/sk
 |---|---|---|
 | `skill-template/SKILL.md` | mặc định (`--lang en`) | Một file 14 dòng không trống: frontmatter, mục đích, `## Gotchas`, `## References`. Chỉ `SKILL.md`, không thư mục con |
 | `skill-template/SKILL.vi.md` | `--lang vi` | Cùng khung, thân tiếng Việt; frontmatter và nhãn mục giữ tiếng Anh. Viết theo [chuẩn tiếng Việt](../standards/VIETNAMESE_SKILL_WRITING.md) |
-| `skill-template-full/` | `--full` | Bản đầy đủ, chỉ tiếng Anh (`--full --lang vi` thoát 2): `SKILL.md` + `references/PROCESS_TEMPLATE.md` (khuôn file process) + `scripts/` + `assets/` + `agents/openai.yaml` (chỉ Codex, xoá nếu không dùng) |
+| `skill-template-full/` | `--full` | Bản đầy đủ, tiếng Anh hoặc tiếng Việt (`--full --lang vi` dùng `SKILL.vi.md` của bản đầy đủ, thoát 0): `SKILL.md` + `references/PROCESS_TEMPLATE.md` (khuôn file process) + `scripts/` + `assets/` + `agents/openai.yaml` (chỉ Codex, xoá nếu không dùng) |
 
 Trong bản đầy đủ:
 
