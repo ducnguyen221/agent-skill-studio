@@ -5,7 +5,7 @@ updated: 2026-10-28
 ---
 # Doc Types — luật cho ba loại tài liệu
 
-> **Kết luận:** tài liệu agent đọc thuộc ba loại, mỗi loại một bộ luật: skill, workflow / quy trình, file luật agent. Loại được nhận từ khoá `type:` ở frontmatter (`skill`, `workflow` hay `rules`), rồi từ tên file; không nhận được loại nào thì `check` thoát 2, không đoán. Máy kiểm theo file này thuộc chặng 3; trước đó người soạn và reviewer tự kiểm theo từng dòng dưới đây.
+> **Kết luận:** tài liệu agent đọc thuộc ba loại, mỗi loại một bộ luật: skill, workflow / quy trình, file luật agent. Skill nhận bằng tên file `SKILL.md`; workflow và file luật nhận bằng `type:` ở frontmatter (`workflow`, `rules`) rồi tên file hoặc thư mục; không nhận được loại nào thì `check` thoát 2, không đoán. Máy kiểm theo file này thuộc chặng 3; trước đó người soạn và reviewer tự kiểm theo từng dòng dưới đây.
 
 ## Skill
 
@@ -25,5 +25,5 @@ updated: 2026-10-28
 
 - **Nhận loại:** tên file `AGENTS.md`, `CLAUDE.md` hay `GEMINI.md`; hoặc `type: rules` ở frontmatter cho file luật tên khác (ví dụ trong `.agents/rules/`, `.claude/rules/`).
 - **Bắt buộc:** chỉ luật đang hiệu lực, mỗi luật nêu được lý do hoặc phạm vi; `AGENTS.md` là bản nguồn, `CLAUDE.md` nạp nó bằng `@AGENTS.md` và `GEMINI.md` trỏ về `AGENTS.md` ([HARNESSES.md](HARNESSES.md)); mục kiểm trước khi báo xong nếu repo có lệnh kiểm.
-- **Cấm:** lịch sử đổi luật, ngày «đổi từ bản X», mã commit; khối lệnh dùng để chạy ngay (lệnh thuộc README của thành phần), ngoại lệ duy nhất là mục kiểm trước khi báo xong, tối đa 5 lệnh; secret; luật tắt sandbox hay xác nhận của host.
+- **Cấm:** lịch sử đổi luật, ngày «đổi từ bản X», mã commit; khối lệnh dùng để chạy ngay (lệnh thuộc README của thành phần); ngoại lệ duy nhất là một mục lệnh kiểm chạy trước khi báo xong, không kèm lệnh cài, chạy hay triển khai; secret; luật tắt sandbox hay xác nhận của host.
 - **Giới hạn:** ≤ 200 dòng; file luật dùng chung cho nhiều agent thì giữ một bản và để các file còn lại trỏ về.

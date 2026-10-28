@@ -24,9 +24,7 @@ Không đồng nhất rule nội bộ với normative requirement trong tài li�
 
 ## Hệ sinh thái
 
-Studio thuộc Nhóm 2 của hệ ACD — xưởng nền (Skill Factory): cấp chuẩn viết, kiểm định và đóng gói Agent Skills (quy trình NEW / AUDIT / REFINE, `studio.py validate`, bộ evals ngoại vi) cho mọi repo khác trong hệ nhiều repo.
+Studio là xưởng chuẩn hoá skill của OpcOS: cấp chuẩn viết, kiểm định và đóng gói Agent Skills (quy trình NEW / AUDIT / REFINE, `studio.py validate`, bộ evals ngoại vi) cho các plugin khác. `system/registry.json` của OpcOS xếp nó vào nhóm `engineering`, loại plugin, tuỳ chọn cài.
 
-- **Upstream:** 10 Team phòng ban (Nhóm 1) và 6 Studio sản xuất khác (Nhóm 2). Khi cần skill mới hoặc cần audit hay cải tiến skill đang có, họ lưu `production-brief.md` vào thư mục giao dịch tạm hoặc giao thẳng cho xưởng này.
-- **Downstream:** repo sở hữu skill (Team hoặc Studio đã đặt yêu cầu) nhận skill đã qua validate và eval để tự cài, tự phát hành trong repo của mình. Repo này không sửa trực tiếp vào repo đó.
-- **Bundle khuyến nghị:** Bundle E gồm `agent-skill-studio`, `agent-agile-team` và `agent-operations-team` (repo `agent-operations-team` dự kiến, chưa tạo).
-- **Bàn giao:** đầu vào là `production-brief.md` có `Target Studio` là repo này; mục `Technical Specs` thêm khối Skill Spec 7 trường: Mode (NEW/AUDIT/REFINE) · Target · Owner Team/Studio · Triggers (ít nhất 3 câu kích hoạt đúng + 1 câu không) · Harness Targets · Side Effects & Permissions · Evidence (bắt buộc với REFINE). Đầu ra là báo cáo AUDIT (ERROR/WARN/INFO) hoặc diff cùng kết quả `studio.py validate --all --require-evals` và eval; eval chưa chạy thì theo [Không pass giả](EVALUATION_STANDARD.md#không-pass-giả-not_run).
+- **Bàn giao vào:** `production-brief.md` có `Target Studio` là repo này; mục `Technical Specs` thêm khối Skill Spec 7 trường: Mode (NEW/AUDIT/REFINE) · Target · Owner Team/Studio · Triggers (ít nhất 3 câu kích hoạt đúng + 1 câu không) · Harness Targets · Side Effects & Permissions · Evidence (bắt buộc với REFINE).
+- **Bàn giao ra:** báo cáo AUDIT (ERROR/WARN/INFO) hoặc diff cùng kết quả `studio.py validate --all --require-evals` và eval; eval chưa chạy thì theo [Không pass giả](EVALUATION_STANDARD.md#không-pass-giả-not_run). Repo sở hữu skill tự cài và tự phát hành; Studio không sửa trực tiếp vào repo đó.

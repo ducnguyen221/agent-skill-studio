@@ -351,7 +351,9 @@ class StandardsTest(unittest.TestCase):
 
     def test_evaluated_block_documented(self):
         """FR4.4: every key the gate reads from the `evaluated` block is in the table of EVALUATION_STANDARD, and the table invents none."""
-        read_by_gate = set(re.findall(r'\bev\.get\("(\w+)"\)', inspect.getsource(_engine.evals.model_evaluated_problems)))
+        source = inspect.getsource(_engine.evals.model_evaluated_problems)
+        self.assertNotIn("ev[", source, "the gate reads `evaluated` keys another way than ev.get(...): update the pattern below")
+        read_by_gate = set(re.findall(r'\bev\.get\("(\w+)"\)', source))
         self.assertGreaterEqual(read_by_gate, {"result", "batch_sha", "batch_sha_kind", "sprint", "date", "harnesses", "evidence", "ab_report"})
         body = section(read_std("EVALUATION_STANDARD.md"), "Khối evaluated")
         self.assertTrue(body, "EVALUATION_STANDARD.md has no '## Khối evaluated'")

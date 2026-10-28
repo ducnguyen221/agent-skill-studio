@@ -20,7 +20,7 @@ updated: 2026-10-28
 
 ## Phạm vi và nơi lưu
 
-**Mặc định Studio:** `evals/<skill-name>/cases.json`, `rubric.md`, `fixtures/`, `baselines/`, `runs/` (runs có thể tạo khi thực thi, không phải bằng chứng có sẵn). Repo giữ bộ test; package runtime Skill **không chứa evals**.
+**Mặc định Studio:** `evals/<skill-name>/cases.json`, `rubric.md`, `fixtures/`, `baselines/`, `evidence/<lô>.json` (bằng chứng gọn mỗi lô; log thô của lô nằm ở ledger OpcOS, xem [Khối evaluated](#khối-evaluated)). Repo giữ bộ test; package runtime Skill **không chứa evals**.
 
 Nếu một Skill độc lập không có repo, có thể colocate evals bên trong folder Skill; phải exclude khi publish và ghi rõ trong packager. Không trộn private fixtures vào `assets/` phát hành.
 
