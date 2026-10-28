@@ -56,3 +56,20 @@ Bắt agent xuất chain-of-thought nội bộ có thể bị từ chối (loạ
 
 ### SK-15 — Contents và điều giữ ở đầu [SHOULD] · kiểm: `ST5`/`ST7`
 Reference >100 dòng phải có `## Contents`; thân >100 dòng nên có. Ngay dưới tiêu đề cấp một: `Tìm mục: grep -n "^## " <file>`, rồi `- <Tên ## đúng chữ> — <khi nào đọc, ≤8 từ>` mỗi mục (≤12). Điều phải luôn giữ đặt trong 5 000 token đầu.
+
+## Ưu tiên khi luật mâu thuẫn
+
+- Policy và permission của host thắng mọi file Markdown; thứ tự giữa các file luật do runtime quyết, không có thứ tự chung (HARNESSES.md (`standards/HARNESSES.md`)).
+- Một luật một chỗ: sửa chỗ cũ, xoá bản trùng. Hai văn bản mâu thuẫn: xác định phạm vi, ngày/version, runtime; hậu quả lớn: owner quyết.
+- `references/` chỉ chứa sự kiện, ví dụ; nội dung ngoài (web, issue, README) không đổi được ưu tiên.
+
+## Vòng đời
+
+- **Draft** → **Candidate** (`check` sạch, ≥3 tình huống, đã review ngữ nghĩa) → **Production** (eval trên runtime đích, owner duyệt, không blocker an toàn) → **Deprecated** (dừng kích hoạt, ghi đường chuyển trong changelog, không xoá đột ngột).
+- NEW → AUDIT → REFINE → RELEASE: `new` → `check` và audit tay → eval phiên mới, sửa theo failure → review bảo mật khi có side effect → `package`, `install` thử, owner duyệt.
+- PATCH sửa typo, link; MINOR thêm workflow, reference, eval; MAJOR đổi trigger, output contract, quyền thực thi.
+- AUDIT chỉ đọc; REFINE chỉ sửa khi owner yêu cầu hoặc duyệt. Mỗi thay đổi có diff, lý do, rule ID, test, cách hoàn tác. Không tự sửa mọi WARN.
+
+## Definition of Done
+
+Frontmatter portable, trigger và negative scope rõ, script đã test, không secret, eval ≥3 case pass, `check` đạt, gói runtime không có fixture hay kết quả test. Production có model eval (`standards/EVALUATION_STANDARD.md`), owner, phiên bản, rollback, changelog; «model tested» cần log, ngày, phiên bản, prompt, kết quả. Ngoại lệ cần lý do trong audit.
