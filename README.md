@@ -271,7 +271,7 @@ Khi engine nằm trong repo (tính từ chính file engine, không theo thư m�
 Trước khi phát hành: `python3 studio.py doctor`, rồi `fmt --check` trên danh sách file của đợt (13 đường của SPR-33, phải thoát 0 và báo `0 skipped`):
 
 ```bash
-python3 studio.py fmt --check standards/MEMO-SKILL-V0.md standards/SKILL_AUTHORING_STANDARD.md standards/SOURCE_TRACEABILITY.md standards/EVALUATION_STANDARD.md standards/CORE_STANDARD.md standards/README.md standards/VIETNAMESE_SKILL_WRITING.md content skills/skill-creator-studio/assets/skill-template skills/skill-creator-studio/assets/skill-template-full templates/README.md
+python3 studio.py fmt --check standards/MEMO-SKILL-V0.md standards/SKILL_AUTHORING_STANDARD.md standards/SOURCE_TRACEABILITY.md standards/EVALUATION_STANDARD.md standards/CORE_STANDARD.md standards/README.md standards/VIETNAMESE_SKILL_WRITING.md examples skills/skill-creator-studio/assets/skill-template skills/skill-creator-studio/assets/skill-template-full templates/README.md
 ```
 
 `fmt --check` không kèm đường thì thoát 2; `fmt --check --all` hiện thoát 1 vì còn dòng cũ và file chuẩn không được chạm trong đợt này. Sau đó `validate --all --require-evals`, `evals --all` và `python3 -m unittest discover -s tests`. Ghi số đo vào [QA_REPORT.md](QA_REPORT.md), thêm mục vào [CHANGELOG.md](CHANGELOG.md) (chỉ thêm, không ghi đè), rồi mới tăng version. `model_evaluated` giữ `false` cho đến khi `registry/catalog.json` có đủ bằng chứng đếm lại được.
