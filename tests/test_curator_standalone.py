@@ -114,7 +114,7 @@ class CuratorStandaloneTests(unittest.TestCase):
 
     def extras_with(self, engine: Path):
         with mock.patch.object(dist, "ENGINE_DIR", engine):
-            return dist.engine_extras(self.source_copy(engine.name + "-src"))
+            return dist.engine_extras(self.source_copy("plain-src"))  # neutral name: only the engine folder may be the cloud one
 
     def test_rf_12_1_studio_line_in_engine_deps_is_not_copied_twice(self):
         copy = self.source_copy()
@@ -144,6 +144,7 @@ class CuratorStandaloneTests(unittest.TestCase):
         with mock.patch.object(dist.fs, "open_nofollow_read", spy):
             extras, findings = self.extras_with(engine)
         self.assertTrue(findings and all(f["code"] == "PACK" and f["level"] == "ERROR" for f in findings), findings)
+        self.assertTrue(all("engine file is inside a cloud zone" in f["message"] for f in findings), findings)  # not ENGINE_DEPS, the engine files
         self.assertEqual([x for x in opened if str(engine) in x], [])
 
     def test_rf_12_2_engine_file_over_25_mb_is_refused(self):
