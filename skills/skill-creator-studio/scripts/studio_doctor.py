@@ -90,13 +90,16 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
     return found
 
 
-def iter_skill_dirs(roots: list, include_cache: bool = False, skip_markers: tuple = ()) -> tuple[list, list]:
+def iter_skill_dirs(roots: list, include_cache: bool = False, skip_markers: tuple = (), budget: dict | None = None) -> tuple[list, list]:
     """(skill folders, skipped[{path, reason}]). A skill is a folder holding SKILL.md; the scan never goes below one, never
     follows a symlink or junction, and de-duplicates by real path. Reasons: cloud (a name with a marker, or Windows cloud
     attributes on the folder or its SKILL.md), secret-zone (both decided without listing or opening anything there),
-    link, excluded, limit, unreadable."""
+    link, excluded, limit, unreadable. `budget` ({left, cut}) is the folder budget of the whole run: every folder listed spends one of it, so a caller that
+    scans several times (skills inside skills) passes the same dict and the sum stays within DOCTOR_MAX_DIRS; the first folder refused for lack of it sets
+    `cut`. Without one the call has a budget of its own."""
     markers = C.CLOUD_MARKERS + tuple(skip_markers)
-    skills, skipped, seen_skills, seen_skips, seen_roots, listed = [], [], set(), set(), set(), 0
+    skills, skipped, seen_skills, seen_skips, seen_roots = [], [], set(), set(), set()
+    budget = {"left": C.DOCTOR_MAX_DIRS, "cut": False} if budget is None else budget
 
     def skip(path, reason):
         key = (os.path.normcase(os.fspath(path)), reason)
@@ -125,10 +128,11 @@ def iter_skill_dirs(roots: list, include_cache: bool = False, skip_markers: tupl
         stack = [(real, ())]
         while stack:
             current, rel = stack.pop()
-            listed += 1
-            if listed > C.DOCTOR_MAX_DIRS:
+            if budget["left"] <= 0:
+                budget["cut"] = True
                 skip(current, "limit")
                 break
+            budget["left"] -= 1
             try:
                 with os.scandir(current) as scan:
                     entries = sorted(scan, key=lambda e: e.name)

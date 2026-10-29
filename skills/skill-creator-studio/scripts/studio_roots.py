@@ -241,12 +241,14 @@ def _nested_skills(skill: Path, extra: tuple, skipped: list, budget: dict, depth
     that are not material (references, scripts, assets, tests, evals, examples, fixtures..., hidden and superseded folders) are scanned one by one.
     `budget` ({left, cut}) is shared by every call of one scan: each folder listed spends one of DOCTOR_MAX_DIRS and what is left unscanned is reported once as `limit`."""
     found = []
-    if depth >= C.DOCTOR_MAX_SKILL_DEPTH:
-        return found
-    if budget["left"] <= 0:
+
+    def cut(folder: Path) -> None:  # the run was cut here: one `limit` line for the whole run, however many places are cut
         if not budget["cut"]:
             budget["cut"] = True
-            skipped.append({"path": _posix(skill), "reason": "limit"})
+            skipped.append({"path": _posix(folder), "reason": "limit"})
+
+    if depth >= C.DOCTOR_MAX_SKILL_DEPTH or budget["left"] <= 0:
+        cut(skill)
         return found
     budget["left"] -= 1
     try:
@@ -274,10 +276,9 @@ def _nested_skills(skill: Path, extra: tuple, skipped: list, budget: dict, depth
             skipped.append({"path": _posix(child), "reason": "link"})
         else:
             if budget["left"] <= 0:
-                _nested_skills(child, extra, skipped, budget, depth + 1)  # reports the limit once
+                cut(child)  # reported here, not by stepping into the folder: the depth limit would swallow it
                 continue
-            budget["left"] -= 1
-            below, skp = doctor.iter_skill_dirs([child], False, extra)
+            below, skp = doctor.iter_skill_dirs([child], False, extra, budget)  # spends the shared budget itself
             skipped.extend(_rule_names(skp, extra))
             for item in below:
                 found.append(item)
@@ -336,7 +337,7 @@ def _plugin_scan(plugin: Path, markers: tuple, budget: dict | None = None, manif
             elif os.path.lexists(target):
                 skipped.append({"path": _posix(target), "reason": "link" if fs.is_link(target) else "unreadable"})
             continue
-        found, skp = doctor.iter_skill_dirs([target], False, extra)
+        found, skp = doctor.iter_skill_dirs([target], False, extra, budget)  # the first pass spends the run's budget too
         skipped.extend(_rule_names(skp, extra))
         for folder in found:
             add(folder)
