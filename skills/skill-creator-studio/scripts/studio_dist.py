@@ -153,8 +153,8 @@ def cmd_package(args) -> int:
     if target.exists() and not args.force:
         print("ERROR: package exists: %s; choose another --out or explicitly --force" % target, file=sys.stderr)
         return 1
-    try:
-        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
+    def fill(sink):
+        with zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED) as zf:
             for p in files:
                 arcname = str(Path(folder.name) / p.relative_to(folder))
                 with fs.open_nofollow_read(p, os.lstat(p), anchor=folder) as handle:  # the file that was checked, never a link put there since
@@ -163,9 +163,14 @@ def cmd_package(args) -> int:
             for source, inside in engine_extras(folder)[0]:
                 with fs.open_nofollow_read(source, os.lstat(source), anchor=ENGINE_DIR) as handle:
                     zf.writestr(zipfile.ZipInfo.from_file(source, str(Path(folder.name) / inside)), handle.read(), compress_type=zipfile.ZIP_DEFLATED)
+
+    try:
+        fs.replace_with(target, fill)  # written beside the target and renamed over it: a failure leaves the previous package (--force) as it was
     except fs.UnsafeOpen as exc:
-        fs._remove_quietly(target)
         print("ERROR: PACK: %s; nothing was packaged" % exc, file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print("ERROR: PACK: cannot write the package (%s); a previous package was kept" % (exc.strerror or exc), file=sys.stderr)
         return 1
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
     count = len(engine_extras(folder)[0])
@@ -310,13 +315,22 @@ def cmd_install(args) -> int:
                 shutil.copyfileobj(src_handle, dst_handle)
             os.chmod(destination, stat.S_IMODE(info.st_mode))
     except (fs.UnsafeOpen, OSError) as exc:
-        shutil.rmtree(dest, ignore_errors=True)
+        shutil.rmtree(dest, ignore_errors=True)  # only what this run copied: the old Skill was moved aside above
+        restored = False
         if backup is not None:
             try:
-                os.rename(backup, dest)
+                os.replace(backup, dest)
+                restored = True
+                try:
+                    backup.parent.rmdir()  # the backups folder, when this run made it and nothing else is in it
+                except OSError:
+                    pass
             except OSError:
-                print("ERROR: the old Skill is kept at %s" % backup, file=sys.stderr)
-        print("ERROR: install stopped: %s; no partial Skill was left" % exc, file=sys.stderr)
+                print("ERROR: the old Skill is kept at %s; restore it from there" % backup, file=sys.stderr)
+        if restored:
+            print("ERROR: install failed (%s); the previous Skill was restored" % exc, file=sys.stderr)
+        else:
+            print("ERROR: install stopped: %s; no partial Skill was left" % exc, file=sys.stderr)
         return 1
     print("Installed %s for %s at %s. This copies files; it does not run the agent or its scripts." % (folder.name, args.agent, dest))
     return 0

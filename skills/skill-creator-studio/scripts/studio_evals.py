@@ -235,16 +235,21 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
         return refuse(1, "EX5", "export file exists: %s; choose another --out or explicitly --force" % clash[0], clash[0])
     fresh = [x for x in [target] + list(copies) if not os.path.lexists(x)]  # only names this run creates are cleaned up again
     temp_name = ""
+    staged: list = []  # new files written beside their names; they replace the old ones only after every one is complete (--force keeps the old export on a failure)
+
+    def copy_into(source: Path):
+        def fill(writer):
+            with fs.open_nofollow_read(source, checked[source], anchor=eval_dir) as reader:
+                shutil.copyfileobj(reader, writer)
+        return fill
+
     try:
         for t, source in copies.items():
             t.parent.mkdir(parents=True, exist_ok=True)
             linked = fs.link_in_chain(t.parent, dest)  # a parent swapped for a junction after the check above would redirect the write
             if linked:
                 raise fs.UnsafeOpen("export destination goes through a symlink or junction: %s" % linked, "EX6")
-            if t.exists():  # only reachable with --force: replace the file, never write through it
-                t.unlink()
-            with fs.open_nofollow_read(source, checked[source], anchor=eval_dir) as reader, fs.create_exclusive(t) as writer:
-                shutil.copyfileobj(reader, writer)
+            staged.append(fs.stage_write(t, copy_into(source), anchor=dest))
         evals_dir.mkdir(parents=True, exist_ok=True)
         linked = fs.link_in_chain(evals_dir, dest)
         if linked:
@@ -252,9 +257,14 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
         handle, temp_name = tempfile.mkstemp(prefix=".evals-", suffix=".tmp", dir=str(evals_dir))  # same folder, so os.replace is atomic
         with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as out:
             out.write(json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n")
+        for item in staged:
+            item.commit()
+        staged = []
         os.replace(temp_name, target)
         temp_name = ""
     except OSError as exc:
+        for item in staged:
+            item.discard()
         for leftover in fresh + ([Path(temp_name)] if temp_name else []):  # a half-written export must not look like a finished one
             try:
                 leftover.unlink(missing_ok=True)
