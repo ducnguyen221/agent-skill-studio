@@ -3,7 +3,7 @@
 **Bộ chuẩn và công cụ để tạo, kiểm, cải tiến, đo và phân phối Agent Skills cho Claude Code, OpenAI Codex và Google Antigravity.**
 
 > **Kết luận:** repo có hai skill phát hành (`skills/skill-creator-studio` viết và sửa từng skill, `skills/skill-curator` nhìn cả thư viện skill), một engine Python không cần cài thêm gì, tám file chuẩn và một cổng
-> đếm lại bằng chứng đánh giá. Phiên bản **0.3.0**; thay đổi từng bản ở [CHANGELOG.md](CHANGELOG.md). Chạy `python3 studio.py --help` là thấy hết lệnh.
+> đếm lại bằng chứng đánh giá. Phiên bản **0.4.0**; thay đổi từng bản ở [CHANGELOG.md](CHANGELOG.md). Chạy `python3 studio.py --help` là thấy hết lệnh.
 
 ## Repo làm gì
 

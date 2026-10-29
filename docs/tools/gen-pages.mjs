@@ -154,7 +154,7 @@ ${table(['Agent', '`--workspace`', '`--user`', 'Gọi skill'], [
 ])}
 ${note('warn', 'Lưu ý:', 'Codex và Antigravity dùng chung `.agents/skills/` trong dự án, nên cài một lần là cả hai thấy. Đừng cài cùng skill hai lần dưới hai tên khác nhau, vì chúng sẽ tranh nhau được gọi.')}`)}
 ${sec('Cách 3 — Mẫu luật cho dự án khác', `  <p>Chép \`templates/starter-project/\` vào dự án đích: \`AGENTS.md\` là bộ luật chung duy nhất; \`CLAUDE.md\` nạp nó bằng dòng \`@AGENTS.md\`; Codex đọc thẳng \`AGENTS.md\`; \`GEMINI.md\` trỏ về \`AGENTS.md\`. Mỗi file có sẵn một dòng \`install\` đúng cờ.`.replace(/\\`/g, '`') + `</p>`)}
-${sec('Kiểm sau khi cài', `${code('Terminal', `python3 studio.py --version                       # in 0.3.0
+${sec('Kiểm sau khi cài', `${code('Terminal', `python3 studio.py --version                       # in 0.4.0
 python3 studio.py doctor                          # quét skills/ của repo, chỉ báo cáo; thoát 0 sạch, 1 có phát hiện, 2 không quét được
 python3 studio.py doctor --roots ".claude/skills" # quét gốc skill khác (ngoài repo bắt buộc --roots hoặc --roots-file)
 python3 studio.py check skills/skill-creator-studio`)}

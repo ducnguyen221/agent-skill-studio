@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.0 — 2026-10-29
+
+Sprint bảo mật (agent-skill-studio:SPR-05): Studio không đi theo link ở bất kỳ cấp nào dưới gốc neo, kể cả Windows; đầu ra ghi nguyên tử; `--force` khôi phục bản cũ; trần quét tuyệt đối; CI ghim SHA. Đóng `RQ-027`, `RQ-010`, `RQ-032`.
+
+### Thêm
+
+- `docs/`: website 7 trang trên OpcOS Design System dùng chung (Trang chủ, Giới thiệu, Cài đặt, Cách dùng, Luồng & quy trình, Nguyên tắc, Docs); thư mục thứ bảy của repo, không vào gói phát hành. `tests/test_layout.py` khoá bảy thư mục thay vì sáu.
+
+### Sửa
+
+- Mở file đọc không theo link ở phần tử cuối, kể cả Windows (`CreateFile` với cờ reparse thay cho `open()`); mọi lần đọc dưới gốc neo ghim chuỗi thư mục cha từ gốc xuống file, nên thư mục bị tráo thành link sau lần kiểm không còn đọc xuyên được.
+- Tạo file (`new`, `install`, xuất eval) không để lại file rỗng ở đích của link; `new` ghi dưới thư mục đã ghim.
+- Đầu ra (`--out`, `--md`, gói `package`, `fmt --fix`) ghi qua file tạm cùng thư mục rồi thay nguyên tử; `--out` là link treo thì thay chính tên, là junction thì từ chối; `--home` chặn thư mục harness.
+- `--force` (`install`, `package`, xuất eval) khôi phục bản cũ khi lỗi giữa chừng. `install --force` đặt bản cũ ở `.skill-studio-backups/<tên>-<giờ>` và tự trả về nếu chép lỗi (nếu trả về cũng hỏng thì thông báo ghi đường sao lưu để tự khôi phục). Xuất eval thay nhiều file một lượt: nếu bị cắt ngang (mất điện, tiến trình bị giết), file `*.spr05old` còn lại chính là bản cũ — đổi tên lại để khôi phục.
+- File có hơn một tên (hard link) bị từ chối với `SKILL.md` và manifest; `.claude-plugin` là link thì coi như pack không có manifest; đường cài đi qua junction không còn bị in ra đích thật (`home_path` chỉ đổi tên 8.3 sang tên dài).
+- Trần quét: một ngân sách `DOCTOR_MAX_DIRS` cho cả lượt `doctor` (kể cả skill lồng nhau), và luôn có dòng `limit` khi quét bị cắt do ngân sách hay do `DOCTOR_MAX_SKILL_DEPTH`.
+- Bản cài `skill-curator` thiếu hay hỏng file động cơ nay dừng với `ERROR: engine list ENGINE_DEPS missing or unreadable in <thư mục>; reinstall skill-curator`, thoát 2, thay vì chạy với nửa động cơ. Bản cài Antigravity hiện thiếu `ENGINE_DEPS` (`RQ-038`): chạy lại `install` cho skill-curator trước khi dùng.
+- `--baseline` đọc qua chuỗi thư mục đã ghim như mọi lần đọc khác.
+- CI: `actions/checkout` và `actions/setup-python` ghim SHA (kèm chú thích tag); bước test đặt `STUDIO_REQUIRE_SYMLINK=1` để runner không tạo được symlink thì hỏng thay vì bỏ qua ca.
+
+### Hợp đồng
+
+| thay đổi | kiểu | trước → sau | bên dùng bị ảnh hưởng | tương thích ngược | lộ trình deprecate |
+|---|---|---|---|---|---|
+| file đầu vào là link (`CQ1`): `doctor --roots-file`, `doctor --baseline` | sửa | link (hoặc file dưới thư mục link nằm dưới thư mục hiện hành) được `resolve` rồi nhận → `ERROR: … is a link (or under a folder link); not read`, thoát 2; link phía trên thư mục hiện hành vẫn nhận | người chạy CLI có file đầu vào là link | không với đầu vào là link (hiếm) | ghi CHANGELOG |
+| `curator.py` khi bản cài thiếu hay hỏng `ENGINE_DEPS` | sửa | chạy với nửa động cơ → `ERROR: engine list ENGINE_DEPS missing or unreadable in <thư mục>; reinstall skill-curator`, thoát 2 | người dùng bản cài `skill-curator` (bản cài Antigravity hiện thiếu `ENGINE_DEPS`, `RQ-038`) | không với bản cài thiếu file: phải cài lại | ghi CHANGELOG |
+| phiên bản | sửa | `0.3.0` → `0.4.0` (`VERSION` của engine, ba manifest, `SKILL.md`) | marketplace, cache cài | có | — |
+
 ## 0.3.0 — 2026-10-29
 
 Chặng 3 (agent-skill-studio:SPR-04): skill thứ hai `skill-curator`, lệnh `catalog`, `doctor` theo gói và ngân sách, `check` cho workflow và file luật, và đóng bảy nợ của chặng 2.
@@ -38,28 +66,6 @@ Chặng 3 (agent-skill-studio:SPR-04): skill thứ hai `skill-curator`, lệnh `
 ### Nợ đóng
 
 `RQ-013`, `RQ-019`, `RQ-024`, `RQ-026`, `RQ-029`, `RQ-030`, `RQ-031`.
-
-## Chưa phát hành
-
-- `docs/`: website 7 trang trên OpcOS Design System dùng chung (Trang chủ, Giới thiệu, Cài đặt, Cách dùng, Luồng & quy trình, Nguyên tắc, Docs); thư mục thứ bảy của repo, không vào gói phát hành. `tests/test_layout.py` khoá bảy thư mục thay vì sáu.
-
-### Sửa (agent-skill-studio:SPR-05, bảo mật)
-
-- Mở file đọc không theo link ở phần tử cuối, kể cả Windows (`CreateFile` với cờ reparse thay cho `open()`); mọi lần đọc dưới gốc neo ghim chuỗi thư mục cha từ gốc xuống file, nên thư mục bị tráo thành link sau lần kiểm không còn đọc xuyên được.
-- Tạo file (`new`, `install`, xuất eval) không để lại file rỗng ở đích của link; `new` ghi dưới thư mục đã ghim.
-- Đầu ra (`--out`, `--md`, gói `package`, `fmt --fix`) ghi qua file tạm cùng thư mục rồi thay nguyên tử; `--out` là link treo thì thay chính tên, là junction thì từ chối; `--home` chặn thư mục harness.
-- `--force` (`install`, `package`, xuất eval) khôi phục bản cũ khi lỗi giữa chừng. `install --force` đặt bản cũ ở `.skill-studio-backups/<tên>-<giờ>` và tự trả về nếu chép lỗi (nếu trả về cũng hỏng thì thông báo ghi đường sao lưu để tự khôi phục). Xuất eval thay nhiều file một lượt: nếu bị cắt ngang (mất điện, tiến trình bị giết), file `*.spr05old` còn lại chính là bản cũ — đổi tên lại để khôi phục.
-- File có hơn một tên (hard link) bị từ chối với `SKILL.md` và manifest; `.claude-plugin` là link thì coi như pack không có manifest; đường cài đi qua junction không còn bị in ra đích thật (`home_path` chỉ đổi tên 8.3 sang tên dài).
-- Trần quét: một ngân sách `DOCTOR_MAX_DIRS` cho cả lượt `doctor` (kể cả skill lồng nhau), và luôn có dòng `limit` khi quét bị cắt do ngân sách hay do `DOCTOR_MAX_SKILL_DEPTH`.
-- Bản cài `skill-curator` thiếu hay hỏng file động cơ nay dừng với `ERROR: engine list ENGINE_DEPS missing or unreadable in <thư mục>; reinstall skill-curator`, thoát 2, thay vì chạy với nửa động cơ. Bản cài Antigravity hiện thiếu `ENGINE_DEPS` (`RQ-038`): chạy lại `install` cho skill-curator trước khi dùng.
-- `--baseline` đọc qua chuỗi thư mục đã ghim như mọi lần đọc khác.
-- CI: `actions/checkout` và `actions/setup-python` ghim SHA (kèm chú thích tag); bước test đặt `STUDIO_REQUIRE_SYMLINK=1` để runner không tạo được symlink thì hỏng thay vì bỏ qua ca.
-
-### Hợp đồng (agent-skill-studio:SPR-05)
-
-| thay đổi | kiểu | trước → sau | bên dùng bị ảnh hưởng | tương thích ngược | lộ trình deprecate |
-|---|---|---|---|---|---|
-| file đầu vào là link (`CQ1`): `doctor --roots-file`, `doctor --baseline` | sửa | link (hoặc file dưới thư mục link nằm dưới thư mục hiện hành) được `resolve` rồi nhận → `ERROR: … is a link (or under a folder link); not read`, thoát 2; link phía trên thư mục hiện hành vẫn nhận | người chạy CLI có file đầu vào là link | không với đầu vào là link (hiếm) | ghi CHANGELOG |
 
 ## 0.2.0 — 2026-10-28
 
