@@ -40,12 +40,13 @@ def home_path(path) -> str:
     plain = _home_tail(text, _posix(os.path.expanduser("~")).rstrip("/"))
     if plain is not None:
         return plain
-    if os.path.isabs(text):  # another spelling of home (an 8.3 name such as DUCNGU~1, a link): compare the real paths of both (RF-A12)
+    if os.path.isabs(text):  # another spelling of home (an 8.3 name such as DUCNGU~1): compare the long names of both. A link is NOT followed: where it leads is never printed (FR9.1)
         try:
-            real_text, real_home = _posix(os.path.realpath(text)), _posix(os.path.realpath(os.path.expanduser("~"))).rstrip("/")
+            long_text = _posix(fs._long_name_text(os.path.abspath(text)))
+            long_home = _posix(fs._long_name_text(os.path.abspath(os.path.expanduser("~")))).rstrip("/")
         except (OSError, ValueError, RuntimeError):
             return text
-        return _home_tail(real_text, real_home) or text
+        return _home_tail(long_text, long_home) or text
     return text
 
 

@@ -54,6 +54,8 @@ def _plain_file_problem(path: Path, markers: tuple, limit: int, base: Path) -> t
         return reason, "its name or place is refused (%s)" % reason
     if fs.link_in_chain(path, base) is not None:
         return "link", "is a link or lies below one; not followed"
+    if fs.path_is_cloud(path):  # before resolve(): a placeholder is never followed on its way to a real path (RF-R4)
+        return "cloud", "is a cloud placeholder; not read"
     try:
         real = path.resolve()
     except (OSError, RuntimeError):
@@ -61,8 +63,6 @@ def _plain_file_problem(path: Path, markers: tuple, limit: int, base: Path) -> t
     reason = fs.zone_reason(real, markers)
     if reason:
         return reason, "its real path is in a %s place; not read" % reason
-    if fs.path_is_cloud(path):
-        return "cloud", "is a cloud placeholder; not read"
     try:
         info = os.lstat(path)
     except OSError:
