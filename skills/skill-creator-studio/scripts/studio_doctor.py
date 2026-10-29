@@ -534,11 +534,11 @@ def cmd_doctor(args) -> int:
         problem = fs.input_file_problem(source, markers, refuse_links=True)
         if problem is None:
             try:
-                baseline = json.loads(source.read_text(encoding="utf-8"))
+                baseline = json.loads(fs.read_capped(source, None, anchor=fs.anchor_for(source))[0])  # through the pinned chain, like every other read (FR2.1)
             except UnicodeError:
                 problem = "cannot be read: not UTF-8 text"
             except OSError as exc:
-                problem = "cannot be read (%s)" % (exc.strerror or type(exc).__name__)
+                problem = "cannot be read (%s)" % (str(exc) if isinstance(exc, fs.UnsafeOpen) else exc.strerror or type(exc).__name__)
             except ValueError as exc:
                 problem = "cannot be read as JSON (line %s column %s)" % (getattr(exc, "lineno", "?"), getattr(exc, "colno", "?"))
             else:

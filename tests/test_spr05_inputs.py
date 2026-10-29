@@ -157,6 +157,31 @@ class InputLinkTests(InputCase):
         self.assertEqual([p for p in seen if p.endswith("doc.md")], [])
 
 
+class BaselineReadTests(InputCase):
+    def test_baseline_folder_swapped_for_a_link_after_the_check_is_not_read(self):
+        """bắt-lỗi: FR2.1 the --baseline is read through the pinned chain (`read_capped` with the anchor), like every other read: a folder under the working folder
+        swapped for a junction AFTER the input checks passed is refused, and what lies behind it is not used."""
+        work, outside = self.tmp / "work", self.tmp / "outside"
+        (work / "d").mkdir(parents=True)
+        outside.mkdir()
+        made = self.make_baseline()
+        shutil.copyfile(made, work / "d" / "ibase.json")
+        shutil.copyfile(made, outside / "ibase.json")
+        real = fs.input_file_problem
+
+        def swapping(source, *a, **k):
+            result = real(source, *a, **k)
+            if Path(source).name == "ibase.json" and not fs.is_link(work / "d"):  # the checks are over: now the folder is swapped
+                shutil.rmtree(work / "d")
+                _links.dir_link(outside, work / "d")
+            return result
+
+        with mock.patch.object(fs, "input_file_problem", swapping):
+            code, out, err = run_cli("doctor", "--roots", self.tmp / "skills", "--baseline", "d/ibase.json", "--fail-on", "new", cwd=work)
+        self.assertEqual(code, 2, out + err)
+        self.assertIn("ERROR: baseline", err)
+
+
 class CloudBeforeResolveTests(InputCase):
     def test_plain_file_cloud_attribute_is_judged_before_resolve(self):
         """bắt-lỗi: FR5.2 (RF-R4) `_plain_file_problem` asks `path_is_cloud` before `resolve()` can touch the file: a placeholder is `cloud`, never resolved."""

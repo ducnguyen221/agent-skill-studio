@@ -26,10 +26,10 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python }}
       - name: Check portability manifests and external eval metadata
@@ -45,6 +45,8 @@ jobs:
           fi
           exit "$status"
       - name: Unit and local link tests
+        env:
+          STUDIO_REQUIRE_SYMLINK: '1'  # a runner that cannot make a symlink fails the symlink cases instead of skipping them
         run: python -m unittest discover -s tests -v
       - name: Package the shipped skill (exclude evals)
         run: python studio.py package skills/skill-creator-studio --out "${{ runner.temp }}/ass-ci"
@@ -68,7 +70,7 @@ jobs:
   actionlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - name: Lint workflows (actionlint 1.7.7, pinned by digest)

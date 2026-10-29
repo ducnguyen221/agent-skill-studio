@@ -43,6 +43,24 @@ Chặng 3 (agent-skill-studio:SPR-04): skill thứ hai `skill-curator`, lệnh `
 
 - `docs/`: website 7 trang trên OpcOS Design System dùng chung (Trang chủ, Giới thiệu, Cài đặt, Cách dùng, Luồng & quy trình, Nguyên tắc, Docs); thư mục thứ bảy của repo, không vào gói phát hành. `tests/test_layout.py` khoá bảy thư mục thay vì sáu.
 
+### Sửa (agent-skill-studio:SPR-05, bảo mật)
+
+- Mở file đọc không theo link ở phần tử cuối, kể cả Windows (`CreateFile` với cờ reparse thay cho `open()`); mọi lần đọc dưới gốc neo ghim chuỗi thư mục cha từ gốc xuống file, nên thư mục bị tráo thành link sau lần kiểm không còn đọc xuyên được.
+- Tạo file (`new`, `install`, xuất eval) không để lại file rỗng ở đích của link; `new` ghi dưới thư mục đã ghim.
+- Đầu ra (`--out`, `--md`, gói `package`, `fmt --fix`) ghi qua file tạm cùng thư mục rồi thay nguyên tử; `--out` là link treo thì thay chính tên, là junction thì từ chối; `--home` chặn thư mục harness.
+- `--force` (`install`, `package`, xuất eval) khôi phục bản cũ khi lỗi giữa chừng, không để lại file tạm hay thư mục `.old-*`.
+- File có hơn một tên (hard link) bị từ chối với `SKILL.md` và manifest; `.claude-plugin` là link thì coi như pack không có manifest; đường cài đi qua junction không còn bị in ra đích thật (`home_path` chỉ đổi tên 8.3 sang tên dài).
+- Trần quét: một ngân sách `DOCTOR_MAX_DIRS` cho cả lượt `doctor` (kể cả skill lồng nhau), và luôn có dòng `limit` khi quét bị cắt do ngân sách hay do `DOCTOR_MAX_SKILL_DEPTH`.
+- Động cơ đủ module, kiểm sau khi nạp và đọc một lần (TK8).
+- `--baseline` đọc qua chuỗi thư mục đã ghim như mọi lần đọc khác.
+- CI: `actions/checkout` và `actions/setup-python` ghim SHA (kèm chú thích tag); bước test đặt `STUDIO_REQUIRE_SYMLINK=1` để runner không tạo được symlink thì hỏng thay vì bỏ qua ca.
+
+### Hợp đồng (agent-skill-studio:SPR-05)
+
+| thay đổi | kiểu | trước → sau | bên dùng bị ảnh hưởng | tương thích ngược | lộ trình deprecate |
+|---|---|---|---|---|---|
+| file đầu vào là link (`CQ1`): `doctor --roots-file`, `doctor --baseline` | sửa | link (hoặc file dưới thư mục link nằm dưới thư mục hiện hành) được `resolve` rồi nhận → `ERROR: … is a link (or under a folder link); not read`, thoát 2; link phía trên thư mục hiện hành vẫn nhận | người chạy CLI có file đầu vào là link | không với đầu vào là link (hiếm) | ghi CHANGELOG |
+
 ## 0.2.0 — 2026-10-28
 
 Chặng 2 (agent-skill-studio:SPR-03): repo gọn sáu thư mục, luật nạp được cho ba agent, bằng chứng gọn mà cổng vẫn đếm lại được. Cộng cả mọi mục SPR-01, SPR-02 chưa phát hành bên dưới (ba chuẩn gộp vào `SKILL_AUTHORING_STANDARD.md` ở TK5 có lịch sử ngay trong mục TK5). **Đổi hợp đồng của bản này** (ai dùng bản `0.1.0` đọc kỹ):

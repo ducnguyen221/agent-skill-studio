@@ -114,7 +114,7 @@ Mỗi từ chối in một mã trên stderr (và trong `--json`). Các mã ngư�
 
 **`EV20`.** Khi engine nằm trong repo (tính từ chính file engine, không theo thư mục đang đứng), `evals --all` đối chiếu `model_evaluated`, `status` và khối `evaluated` của `evals/catalog.json` với số đếm lại từ `evals/<skill>/evidence/<lô>.json`. File gọn sinh bằng `evals/tools/activation.py compact`, kiểm lại bằng `compact --verify`. Engine chép rời ra ngoài repo bỏ qua cổng. Mỗi vấn đề là một ERROR, thoát 1.
 
-Giới hạn còn lại: trên Windows không có `O_NOFOLLOW`, nên việc mở file nguồn có thể đi theo link trước khi bị từ chối; công cụ chống nhầm lẫn, không chống một tiến trình thù địch cùng quyền. Đừng xuất từ cây eval mà tiến trình khác đang ghi. Trên macOS, `/tmp` và `/var` (link hệ thống tới `/private/…`) được phép làm đích của `new --output`; link do người dùng tạo vẫn bị từ chối (hỏng-đóng, kể cả khi có `--eval-root`).
+Rủi ro còn lại: Studio không đi theo link ở bất kỳ cấp nào **dưới** gốc neo (gốc quét, thư mục hiện hành, hoặc thư mục chứa file đầu ra). Link **phía trên** gốc neo — ví dụ `/tmp` của macOS hay thư mục đổi chủ của OneDrive — được nhận có chủ ý. Trên Windows Studio dùng `_winapi.CreateFile` (module riêng của CPython); bản Python thiếu nó thì Studio từ chối mở thay vì đọc thường. Cờ reparse bật cả cho file OneDrive chưa tải, nên Studio coi chúng như link và từ chối. Đừng xuất từ cây eval mà tiến trình khác đang ghi. Trên macOS, `/tmp` và `/var` (link hệ thống tới `/private/…`) được phép làm đích của `new --output`; link do người dùng tạo vẫn bị từ chối (hỏng-đóng, kể cả khi có `--eval-root`).
 
 ## Đọc gì khi nào
 
