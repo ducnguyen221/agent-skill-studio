@@ -57,7 +57,7 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
     items = [(x.strip(), x.strip()) for x in (roots or "").split(";") if x.strip()]
     if roots_file:
         listing = Path(os.path.abspath(os.path.expanduser(roots_file)))
-        problem = fs.input_file_problem(listing, markers)
+        problem = fs.input_file_problem(listing, markers, refuse_links=True)
         if problem:
             raise ValueError("--roots-file %s" % problem)
         try:
@@ -527,7 +527,7 @@ def cmd_doctor(args) -> int:
         return 2
     if args.baseline:
         source = Path(os.path.abspath(os.path.expanduser(args.baseline)))
-        problem = fs.input_file_problem(source, markers)
+        problem = fs.input_file_problem(source, markers, refuse_links=True)
         if problem is None:
             try:
                 baseline = json.loads(source.read_text(encoding="utf-8"))

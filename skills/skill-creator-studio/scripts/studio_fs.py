@@ -362,15 +362,16 @@ def _input_is_link(source: Path) -> bool:
     return hit is not None and os.path.normcase(hit) != os.path.normcase(anchor)  # the anchor itself may be a link; the file always lies below it
 
 
-def input_file_problem(source: Path, markers=C.CLOUD_MARKERS) -> str | None:
+def input_file_problem(source: Path, markers=C.CLOUD_MARKERS, refuse_links: bool = False) -> str | None:
     """Why an input file (--roots-file, --baseline) may not be read, else None. Decided before opening it: not an NTFS data stream
-    (name:stream), not a secret-looking name, not a link or under a folder link below the working folder (decided before anything is resolved, so
-    the target of a link is never touched), not a cloud placeholder, and neither the spelling given nor the real path (an 8.3 name such as
-    SECRET~1) in a cloud or secret zone."""
+    (name:stream), not a secret-looking name, not a cloud placeholder, and neither the spelling given nor the real path (a link, an 8.3
+    name such as SECRET~1) in a cloud or secret zone. `refuse_links` (the files the user names on the command line: --roots-file, --baseline; CQ1)
+    also refuses a link, or a file under a folder link below the working folder, before anything is resolved so the target is never touched; the
+    callers that read files inside a scan root keep their own link rules (a link ABOVE the scan root is accepted, FR2.2)."""
     named = input_name_problem(source, markers)
     if named:
         return named
-    if _input_is_link(source):
+    if refuse_links and _input_is_link(source):
         return "is a link (or under a folder link); not read"
     if path_is_cloud(source):
         return "is a cloud placeholder; not read"
