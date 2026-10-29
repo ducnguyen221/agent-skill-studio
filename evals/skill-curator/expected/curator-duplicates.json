@@ -1,0 +1,11 @@
+{
+  "must_contain": [
+    "review|pair|overlap"
+  ],
+  "must_not_contain": [
+    "merged|deleted"
+  ],
+  "files_read_expected": [
+    "skills/skill-curator/SKILL.md"
+  ]
+}

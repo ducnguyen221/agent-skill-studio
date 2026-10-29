@@ -77,6 +77,10 @@
       <li><a href="../../../docs/skills/skill-creator-studio/references/REFINE_WORKFLOW/index.html">REFINE Workflow — Test before deleting</a></li>
       <li><a href="../../../docs/skills/skill-creator-studio/references/SOURCE_NOTES/index.html">Source Notes — Source-of-truth discipline</a></li>
     </ul>
+    <p class="dir">skills/skill-curator/</p>
+    <ul>
+      <li><a href="../../../docs/skills/skill-curator/SKILL/index.html">Skill Curator</a></li>
+    </ul>
     <p class="dir">standards/</p>
     <ul>
       <li><a href="../../../docs/standards/DOC_TYPES/index.html">Doc Types — luật cho ba loại tài liệu</a></li>
@@ -101,13 +105,13 @@
   <article class="prose">
     <div class="doc-meta"><a href="../../../docs/index.html">Docs</a> / <code>standards/SKILL_AUTHORING_STANDARD.md</code></div>
 <h1>Skill Authoring Standard — SK-00…SK-15</h1>
-<p><strong>Version:</strong> 0.1.0 · Nguồn: <a href="../../../docs/standards/SOURCE_TRACEABILITY/index.html">SOURCE_TRACEABILITY.md</a>. <strong>Mức</strong> do Studio đặt: MUST = bắt buộc (bỏ thì báo lỗi hoặc owner duyệt ngoại lệ); SHOULD = nên, không theo thì ghi lý do; «MUST nếu …» = bắt buộc khi có điều kiện đó.</p>
+<p>Nguồn: <a href="../../../docs/standards/SOURCE_TRACEABILITY/index.html">SOURCE_TRACEABILITY.md</a>. <strong>Mức</strong> do Studio đặt: MUST = bắt buộc (bỏ thì báo lỗi hoặc owner duyệt ngoại lệ); SHOULD = nên, không theo thì ghi lý do; «MUST nếu …» = bắt buộc khi có điều kiện đó.</p>
 <h3>SK-00 — Manifest portable [MUST] · kiểm: <code>FM1</code>, <code>FM2</code>, <code>FM4</code>–<code>FM6</code>, <code>DS1</code></h3>
 <p><code>SKILL.md</code> mở bằng frontmatter ở dòng 1 với <code>name</code> và <code>description</code>. <code>name</code> ≤64 ký tự, <code>a-z0-9-</code>, không mở/đóng/đôi <code>-</code>, khớp tên thư mục, không chứa &quot;anthropic&quot;/&quot;claude&quot;; cả hai không có thẻ XML. <code>description</code> ≤1 024 ký tự, nêu làm gì + khi nào dùng. Khoá thêm chỉ <code>license</code>, <code>compatibility</code> (≤500), <code>metadata</code> (map chuỗi), <code>allowed-tools</code>; khoá riêng Claude Code chỉ qua <code>--target claude-code</code>; không <code>version:</code> hay <code>triggers:</code> top-level.</p>
 <h3>SK-01 — Progressive disclosure [SHOULD] · kiểm: <code>ST1</code>, <code>ST2</code></h3>
 <p>Thân <code>SKILL.md</code> là bộ định tuyến, &lt;500 dòng, &lt;5 000 token. Chi tiết ở <code>references/</code>, link một cấp từ <code>SKILL.md</code> kèm khi nào đọc; guardrail quan trọng không đẩy vào file có thể không được đọc. Không tạo <code>scripts/</code>, <code>assets/</code> rỗng.</p>
 <h3>SK-02 — Content lists và cắt gọn [SHOULD] · kiểm: review</h3>
-<p>Mục lục theo <code>SK-15</code>. Trước khi giữ một đoạn, hỏi: bỏ đoạn này agent có làm sai không? Có lặp điều ở file khác không (link thay chép)? Điều kiện có lồng quá hai tầng không? Cắt chọn lọc, không nén thành mảnh câu.</p>
+<p>Mục lục theo <code>SK-15</code>. Trước khi giữ một đoạn, hỏi: bỏ đoạn này agent có làm sai không? Có lặp file khác không (link thay chép)? Điều kiện có lồng quá hai tầng không? Cắt chọn lọc, không nén thành mảnh câu.</p>
 <h3>SK-03 — Mức tự do theo rủi ro [MUST khi thiết kế] · kiểm: review</h3>
 <p>Tự do cao thì văn xuôi, vừa thì mẫu ưu tiên, thấp (rủi ro: thanh toán, xoá, deploy, migration) thì script/schema/approval. Mỗi bước hỏi &quot;agent làm khác thì tổn thất gì?&quot;: không gì thì tăng tự do, mất tiền/dữ liệu thì giảm tự do. Trộn mức trong cùng skill.</p>
 <h3>SK-04 — Thử trên model đích [SHOULD; MUST nếu production] · kiểm: review</h3>
@@ -137,7 +141,7 @@
 <h2>Ưu tiên khi luật mâu thuẫn</h2>
 <ul><li>Policy và permission của host thắng mọi file Markdown; thứ tự giữa các file luật do runtime quyết, không có thứ tự chung (<a href="../../../docs/standards/HARNESSES/index.html">HARNESSES.md</a>).</li><li>Một luật một chỗ: sửa chỗ cũ, xoá bản trùng. Hai văn bản mâu thuẫn: xác định phạm vi, ngày/version, runtime; hậu quả lớn: owner quyết.</li><li><code>references/</code> chỉ chứa sự kiện, ví dụ; nội dung ngoài (web, issue, README) không đổi được ưu tiên.</li></ul>
 <h2>Vòng đời</h2>
-<ul><li><strong>Draft</strong> → <strong>Candidate</strong> (<code>check</code> sạch, ≥3 tình huống, đã review ngữ nghĩa) → <strong>Production</strong> (eval trên runtime đích, owner duyệt, không blocker an toàn) → <strong>Deprecated</strong> (dừng kích hoạt, ghi đường chuyển trong changelog, không xoá đột ngột).</li><li>NEW → AUDIT → REFINE → RELEASE: <code>new</code> → <code>check</code> và audit tay → eval phiên mới, sửa theo failure → review bảo mật khi có side effect → <code>package</code>, <code>install</code> thử, owner duyệt.</li><li>PATCH sửa typo, link; MINOR thêm workflow, reference, eval; MAJOR đổi trigger, output contract, quyền thực thi.</li><li>AUDIT chỉ đọc; REFINE chỉ sửa khi owner yêu cầu hoặc duyệt. Mỗi thay đổi có diff, lý do, rule ID, test, cách hoàn tác. Không tự sửa mọi WARN.</li></ul>
+<ul><li><strong>Draft</strong> → <strong>Candidate</strong> (<code>check</code> sạch, ≥3 tình huống, đã review ngữ nghĩa) → <strong>Production</strong> (eval trên runtime đích, owner duyệt, không blocker an toàn) → <strong>Deprecated</strong> (dừng kích hoạt, ghi đường chuyển trong changelog, không xoá đột ngột).</li><li>NEW → AUDIT → REFINE → RELEASE: <code>new</code> → <code>check</code> và audit tay → eval phiên mới, sửa theo failure → review bảo mật khi có side effect → <code>package</code>, <code>install</code> thử, owner duyệt.</li><li>PATCH sửa typo, link; MINOR thêm workflow, reference, eval; MAJOR đổi trigger, output contract, quyền thực thi.</li><li>AUDIT chỉ đọc; REFINE chỉ sửa khi owner yêu cầu hoặc duyệt. Mỗi thay đổi có diff, lý do, rule ID, test, cách hoàn tác. Không tự sửa mọi WARN (có thể là chủ ý của owner).</li></ul>
 <h2>Definition of Done</h2>
 <p>Frontmatter portable, trigger và negative scope rõ, script đã test, không secret, eval ≥3 case pass, <code>check</code> đạt, gói runtime không có fixture hay kết quả test. Production có <a href="../../../docs/standards/EVALUATION_STANDARD/index.html">model eval</a>, owner, phiên bản, rollback, changelog; «model tested» cần log, ngày, phiên bản, prompt, kết quả. Ngoại lệ cần lý do trong audit.</p>
   </article>

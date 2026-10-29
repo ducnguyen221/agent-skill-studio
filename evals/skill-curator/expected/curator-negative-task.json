@@ -1,0 +1,10 @@
+{
+  "must_contain": [
+    "sorted"
+  ],
+  "must_not_contain": [
+    "skill-curator",
+    "SKILL.md"
+  ],
+  "files_read_expected": []
+}

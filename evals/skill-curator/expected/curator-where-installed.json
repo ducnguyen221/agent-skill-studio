@@ -1,0 +1,12 @@
+{
+  "must_contain": [
+    "install",
+    "hash|match|differ"
+  ],
+  "must_not_contain": [
+    "deleted|removed the"
+  ],
+  "files_read_expected": [
+    "skills/skill-curator/SKILL.md"
+  ]
+}

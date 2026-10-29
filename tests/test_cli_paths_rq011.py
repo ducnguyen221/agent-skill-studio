@@ -83,19 +83,14 @@ class CheckCliTests(TmpCase):
         self.assertIn("--all requires Studio repository", err)
 
     def test_check_names_the_reason_when_a_file_is_not_a_skill_document(self):
-        """độ-phủ: rules files, future types, plain files, links, placeholders, big and non-UTF-8 files are refused with exit 2 and a reason."""
-        rules = self.tmp / "CLAUDE.md"
-        rules.write_text("# rules\n", encoding="utf-8")
-        wf = self.tmp / "flow.md"
-        wf.write_text("---\ntype: workflow\n---\n\n# Flow\n", encoding="utf-8")
+        """độ-phủ: plain files, links, placeholders, big and non-UTF-8 files are refused with exit 2 and a reason (rules files and workflows are checked since SPR-04 TK8)."""
         untyped = self.tmp / "note.md"
         untyped.write_text("---\ntitle: x\n---\n\nbody\n", encoding="utf-8")
         text = self.tmp / "note.txt"
         text.write_text("x", encoding="utf-8")
         binary = self.tmp / "bin.md"
         binary.write_bytes(b"\xff\xfe\x00\x80 not utf-8")
-        for path, expected in ((rules, "type rules is not available yet"), (wf, "type workflow is not available yet"),
-                               (untyped, "cannot tell the document type"), (text, "cannot tell the document type"),
+        for path, expected in ((untyped, "cannot tell the document type"), (text, "cannot tell the document type"),
                                (binary, "cannot be read as UTF-8")):
             code, _out, err = cli("check", str(path))
             self.assertEqual(code, 2, path.name)

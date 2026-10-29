@@ -2,8 +2,8 @@
 
 **Bộ chuẩn và công cụ để tạo, kiểm, cải tiến, đo và phân phối Agent Skills cho Claude Code, OpenAI Codex và Google Antigravity.**
 
-> **Kết luận:** repo có một skill phát hành (`skills/skill-creator-studio`), một engine Python không cần cài thêm gì, tám file chuẩn và một cổng
-> đếm lại bằng chứng đánh giá. Phiên bản **0.2.0**; thay đổi từng bản ở [CHANGELOG.md](CHANGELOG.md). Chạy `python3 studio.py --help` là thấy hết lệnh.
+> **Kết luận:** repo có hai skill phát hành (`skills/skill-creator-studio` viết và sửa từng skill, `skills/skill-curator` nhìn cả thư viện skill), một engine Python không cần cài thêm gì, tám file chuẩn và một cổng
+> đếm lại bằng chứng đánh giá. Phiên bản **0.3.0**; thay đổi từng bản ở [CHANGELOG.md](CHANGELOG.md). Chạy `python3 studio.py --help` là thấy hết lệnh.
 
 ## Repo làm gì
 
@@ -27,7 +27,7 @@ agent-skill-studio/
 ├── studio.py                         # vỏ mỏng gọi engine trong skill
 ├── .claude-plugin/, .codex-plugin/   # manifest plugin; .github/workflows/ci.yml
 ├── standards/   # 8 file chuẩn, bắt đầu từ README.md và SKILL_AUTHORING_STANDARD.md
-├── skills/      # chỉ skill phát hành: skill-creator-studio (SKILL.md, references/, scripts/, assets/)
+├── skills/      # skill phát hành: skill-creator-studio, skill-curator (SKILL.md, references/, scripts/, assets/)
 ├── templates/   # starter-project/ (mẫu luật cho dự án khác); hai khuôn skill nằm ở skills/…/assets/
 ├── examples/    # mẫu để chép: descriptions.md, eval-cases.md, exemplar/, exemplar-vi/, data-quality-audit/
 ├── evals/       # catalog.json, RUNBOOK.md, tools/, <skill>/{cases.json, rubric.md, expected/, fixtures/, evidence/}
@@ -35,7 +35,7 @@ agent-skill-studio/
 └── docs/        # website tĩnh trên OpcOS Design System (xem docs/README.md); không vào gói phát hành
 ```
 
-Engine nằm một chỗ: `skills/skill-creator-studio/scripts/` (`studio.py` là CLI, kèm chín mô-đun `studio_*.py`). `evals/` và `tests/` không vào gói phát hành. Log thô của lượt đo nằm ở sổ OpcOS; repo chỉ giữ file gọn `evals/<skill>/evidence/<lô>.json` mà cổng đếm lại được.
+Mã dùng chung và CLI nằm ở `skills/skill-creator-studio/scripts/` (`studio.py` cùng các mô-đun `studio_*.py`); mã `catalog` nằm ở `skills/skill-curator/scripts/`. `evals/` và `tests/` không vào gói phát hành. Log thô của lượt đo nằm ở sổ OpcOS; repo chỉ giữ file gọn `evals/<skill>/evidence/<lô>.json` mà cổng đếm lại được.
 
 ## Khởi động trong 5 phút
 
@@ -74,6 +74,7 @@ Cài riêng một skill bằng `install` (sao chép có kiểm tra, không ghi �
 python3 studio.py install skills/skill-creator-studio --agent claude --workspace .
 python3 studio.py install skills/skill-creator-studio --agent codex --workspace .        # .agents/skills/
 python3 studio.py install skills/skill-creator-studio --agent antigravity --user         # ~/.gemini/config/skills/
+python3 studio.py install skills/skill-curator --agent codex --workspace .               # skill thứ hai, cùng cách
 ```
 
 - **Claude Code:** `.claude/skills/<tên>`; `--user` không hỗ trợ (thoát 2), tự chép vào `~/.claude/skills/`.
@@ -88,12 +89,13 @@ python3 studio.py install skills/skill-creator-studio --agent antigravity --user
 | Lệnh | Việc | Ghi chú |
 |---|---|---|
 | `new` | dựng skill mới và bộ eval rỗng | `--lang vi` thân tiếng Việt, `--full` khuôn đầy đủ; không ghi đè file eval đã có |
-| `check` | kiểm tĩnh một skill (thư mục hoặc `SKILL.md`) | chỉ đọc, không sửa file |
+| `check` | kiểm tĩnh một skill, hoặc một file workflow hay file luật có `type:` | chỉ đọc, không sửa file |
 | `validate`, `audit` | bí danh của `check` | giữ nguyên cờ, mã thoát và JSON |
 | `evals` | kiểm schema eval; `--all` thêm cổng `model_evaluated` | `--export agentskills` xuất ca dương, không gọi model |
 | `package` | đóng gói ZIP chỉ gồm file chạy | bỏ `evals/`, `tests/`; gặp tên giống secret thì dừng |
 | `install` | chép skill vào thư mục khám phá của agent | xem mục trên |
-| `doctor` | quét nhiều gốc skill, chỉ báo cáo | không mở vùng secret, cloud hay link; thoát 0, 1 hoặc 2 |
+| `doctor` | quét nhiều gốc skill, chỉ báo cáo | không mở vùng secret, cloud hay link; `--roots-from opcos`, `--by-pack`, `--docs`; thoát 0, 1 hoặc 2 |
+| `catalog` | bảng một dòng mỗi skill nguồn; `--overlap` gắn nhãn cặp trùng, `--installed` so bản đã cài | chỉ đọc; `--roots-from opcos`, `--json`/`--out`, `--md` (skill `skill-curator`) |
 | `fmt` | kiểm hoặc sửa kiểu trình bày Markdown | `--fix` chép bản `.bak-<ISO>` trước (bỏ bằng `--no-backup`); `--all` quét cả repo, bỏ qua fixture |
 
 ## Mã của engine
@@ -112,7 +114,7 @@ Mỗi từ chối in một mã trên stderr (và trong `--json`). Các mã ngư�
 
 **`EV20`.** Khi engine nằm trong repo (tính từ chính file engine, không theo thư mục đang đứng), `evals --all` đối chiếu `model_evaluated`, `status` và khối `evaluated` của `evals/catalog.json` với số đếm lại từ `evals/<skill>/evidence/<lô>.json`. File gọn sinh bằng `evals/tools/activation.py compact`, kiểm lại bằng `compact --verify`. Engine chép rời ra ngoài repo bỏ qua cổng. Mỗi vấn đề là một ERROR, thoát 1.
 
-Giới hạn còn lại: trên Windows không có `O_NOFOLLOW`, nên việc mở file nguồn có thể đi theo link trước khi bị từ chối; công cụ chống nhầm lẫn, không chống một tiến trình thù địch cùng quyền. Đừng xuất từ cây eval mà tiến trình khác đang ghi. Trên macOS `/tmp` và `/var` là symlink nên `new --output` dưới đó bị từ chối (hỏng-đóng, kể cả khi có `--eval-root`); dùng thư mục không qua symlink, ví dụ dưới `$HOME`.
+Giới hạn còn lại: trên Windows không có `O_NOFOLLOW`, nên việc mở file nguồn có thể đi theo link trước khi bị từ chối; công cụ chống nhầm lẫn, không chống một tiến trình thù địch cùng quyền. Đừng xuất từ cây eval mà tiến trình khác đang ghi. Trên macOS, `/tmp` và `/var` (link hệ thống tới `/private/…`) được phép làm đích của `new --output`; link do người dùng tạo vẫn bị từ chối (hỏng-đóng, kể cả khi có `--eval-root`).
 
 ## Đọc gì khi nào
 

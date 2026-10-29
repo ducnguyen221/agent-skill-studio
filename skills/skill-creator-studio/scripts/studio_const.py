@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import re
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 PORTABLE_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 TARGETS = ("portable", "claude-code")
 # Claude Code extension keys beyond the portable set (code.claude.com/docs/en/skills, read 2026-10-22).
@@ -73,13 +73,20 @@ OPCOS_PROVENANCE_KEYS = frozenset({"source", "source_sha", "base_sha", "rewrite_
 CODEX_BODY_MAX_BYTES = 8000  # [codex 0.147]; standards/SOURCE_TRACEABILITY.md A16
 DOCTOR_FAIL_ON = ("error", "warn", "new")
 DOCTOR_SCHEMA = 1
+OPCOS_DESC_CHARS = 350  # profile opcos: BG1 above this many description characters (measure-skill-budget.py DESC_CHAR_LIMIT)
+OPCOS_DESC_TOTAL_BYTES = 20000  # profile opcos: the `budget` block is over above this many description bytes
 DOCTOR_MAX_DEPTH = 12  # folder levels below a root
 DOCTOR_MAX_DIRS = 100000  # folders listed per run
 DOCTOR_MAX_SKILLS = 3000
 DOCTOR_MAX_FILE_BYTES = 1_000_000  # a SKILL.md or reference above this is not read (SZ1)
 DOCTOR_MAX_FILES_PER_SKILL = 5000  # files and folders listed inside one skill; the rest is not listed (SZ1)
 DOCTOR_MAX_SKILL_DEPTH = 12  # folder levels listed inside one skill
+PATHS_JSON_MAX = 256 * 1024  # a paths.json above this is refused unread (SPR-04 FR1.1)
+MANIFEST_MAX = 64 * 1024  # a plugin manifest above this is refused unread (FR1.2)
+PATHS_JSON_UP = 6  # folder levels above the working folder that are searched for paths.json
+MANIFEST_SKILLS_MAX = 64  # entries of a manifest `skills` list that are looked at; the rest is not
 DOCTOR_REPORT_HEAD = re.compile(rb'\A(?:\xef\xbb\xbf)?\s*\{\s*"schema"\s*:')  # how a doctor report starts
+CATALOG_MD_HEAD = re.compile(rb'\A(?:\xef\xbb\xbf)?<!-- studio catalog -->[ \t]*(?:\r?\n|\Z)')  # how a CATALOG.md starts: the marker is the whole first line
 FM_ORDER = ("name", "description", "license", "compatibility", "allowed-tools", "metadata")
 DOC_MIN_KEYS = ("title", "status", "updated")
 FMT_META_LINE_RE = re.compile(r"^(\s{2,}[\w.-]+:)[ \t]+(\S.*)$")  # match a line already stripped at the end: no lazy group followed by blanks

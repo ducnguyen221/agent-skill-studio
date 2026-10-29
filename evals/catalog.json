@@ -5,13 +5,25 @@
     {
       "name": "skill-creator-studio",
       "path": "skills/skill-creator-studio",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "status": "prototype-static-validated",
       "owner": "Agent Skill Studio maintainers",
       "targets": ["claude-code", "codex", "antigravity"],
       "purpose": "Create, audit and refine portable Agent Skills",
       "triggers": ["create skill", "audit SKILL.md", "refine existing skill"],
       "evals": "evals/skill-creator-studio",
+      "model_evaluated": false
+    },
+    {
+      "name": "skill-curator",
+      "path": "skills/skill-curator",
+      "version": "0.1.0",
+      "status": "prototype-static-validated",
+      "owner": "Agent Skill Studio maintainers",
+      "targets": ["claude-code", "codex", "antigravity"],
+      "purpose": "Inventory, check and de-duplicate a whole Agent Skills library",
+      "triggers": ["which skills exist", "skill catalog", "skills over budget or duplicated"],
+      "evals": "evals/skill-curator",
       "model_evaluated": false
     },
     {

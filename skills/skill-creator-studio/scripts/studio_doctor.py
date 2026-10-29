@@ -8,13 +8,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import studio_const as C
+import studio_doctypes as doctypes
 import studio_fs as fs
 import studio_lint as lint
+import studio_roots as roots_mod
 import studio_validate as validate
 
 
@@ -169,8 +172,11 @@ def iter_skill_dirs(roots: list, include_cache: bool = False, skip_markers: tupl
     return sorted(skills, key=lambda p: os.path.normcase(str(p))), skipped
 
 
-def _skill_identity(skill: Path, target: str, max_bytes: int | None = None) -> tuple[str, str]:
-    """(name, 'en'|'vi') from SKILL.md: frontmatter name (folder name when unreadable or above `max_bytes`) and the body language."""
+def _skill_identity(skill: Path, target: str, max_bytes: int | None = None, skip_read: bool = False) -> tuple[str, str]:
+    """(name, 'en'|'vi') from SKILL.md: frontmatter name (folder name when unreadable or above `max_bytes`) and the body language.
+    `skip_read` (validate refused the file with INPUT): SKILL.md is not opened again and the folder name stands."""
+    if skip_read:
+        return skill.name, "en"
     manifest = skill / "SKILL.md"
     try:
         text, too_big = fs.read_capped(manifest, max_bytes)
@@ -181,6 +187,21 @@ def _skill_identity(skill: Path, target: str, max_bytes: int | None = None) -> t
     meta, _, body_start = fs.parse_frontmatter(text, manifest, C.CLAUDE_CODE_KEYS if target == "claude-code" else frozenset())
     name = meta.get("name") if isinstance(meta.get("name"), str) and meta["name"] else skill.name
     return name, lint.detect_lang("\n".join(text.splitlines()[body_start:]))
+
+
+def _budget_desc_bytes(skill: Path, max_bytes: int | None, skip_read: bool) -> int:
+    """UTF-8 bytes of the description as measure-skill-budget.py counts them (0 when SKILL.md is unreadable, refused, too big or has no description)."""
+    if skip_read:
+        return 0
+    manifest = skill / "SKILL.md"
+    try:
+        text, too_big = fs.read_capped(manifest, max_bytes)
+    except (OSError, UnicodeError):
+        return 0
+    if too_big:
+        return 0
+    meta, _, _ = fs.parse_frontmatter(text, manifest)
+    return len(validate.budget_desc(meta).encode("utf-8"))
 
 
 def _under_roots(path, roots) -> str:
@@ -220,9 +241,91 @@ def diff_baseline(current: dict, baseline: dict) -> list[dict]:
             if after > before.get((path, code), 0)]
 
 
+def _key(path) -> str:
+    return os.path.normcase(os.fspath(path))
+
+
+def _pack_name(skill: Path, roots: list, cache: dict, markers: tuple) -> str:
+    """The pack of a skill outside --roots-from: `name` of the nearest `.claude-plugin/plugin.json` at or above it (up to the folder above its root), else the first
+    folder under its root. The manifest is read by studio_roots (size cap, no links, cloud and secret zones refused); an unreadable one counts as absent."""
+    try:
+        skill = Path(skill).resolve()
+    except OSError:
+        return Path(skill).name
+    root = next((r for r in roots if _key(skill).startswith(_key(r) + os.sep)), None)  # `roots` are resolved already (real_roots of doctor_run)
+    if root is None:
+        return skill.name
+    folder = skill.parent
+    stop = _key(root.parent)  # a root such as <plugin>/skills sits one level below its manifest, so the folder above the root is looked at too
+    while _key(folder).startswith(stop):
+        if folder not in cache:
+            name = None
+            try:
+                data = roots_mod._read_json(folder / ".claude-plugin" / "plugin.json", C.MANIFEST_MAX, markers, Path(root).parent) if (folder / ".claude-plugin").is_dir() else None
+                if isinstance(data, dict) and isinstance(data.get("name"), str) and data["name"].strip():
+                    name = data["name"].strip()[:200]
+            except roots_mod.RootError:
+                pass
+            cache[folder] = name
+        if cache[folder]:
+            return cache[folder]
+        if _key(folder) == stop:
+            break
+        folder = folder.parent
+    try:
+        return skill.relative_to(root).parts[0]
+    except (ValueError, IndexError):
+        return skill.name
+
+
+def _manifest_dir(skill: Path, roots: list, cache: dict) -> Path | None:
+    """The plugin folder of a skill: the nearest folder at or above it, up to the one above its root, that holds `.claude-plugin/plugin.json`; None outside the roots.
+    Same walk as `_pack_name`, but only the manifest's presence is asked (a stat), the manifest is not read."""
+    try:
+        skill = Path(skill).resolve()
+    except OSError:
+        return None
+    root = next((r for r in roots if _key(skill).startswith(_key(r) + os.sep)), None)
+    if root is None:
+        return None
+    folder, stop = skill.parent, _key(root.parent)
+    while _key(folder).startswith(stop):
+        if folder not in cache:
+            try:
+                os.lstat(folder / ".claude-plugin" / "plugin.json")
+                cache[folder] = True
+            except OSError:
+                cache[folder] = False
+        if cache[folder]:
+            return folder
+        if _key(folder) == stop:
+            break
+        folder = folder.parent
+    return None
+
+
+def _has_evals_dir(skill: Path) -> bool:
+    """True when the skill holds an `evals/` folder (a link does not count): the ST8 that a tightened rule would add (FR6.2)."""
+    try:
+        info = os.lstat(skill / "evals")
+    except OSError:
+        return False
+    return stat.S_ISDIR(info.st_mode)
+
+
+def pack_line(pack: dict) -> str:
+    """One text line of the pack table (PLAN TK7). ST8 is the real ST8 count; when skills hold an evals/ folder, a tightened rule would add them, shown as `<real>+<n> evals` (RF-7.1)."""
+    by_code = pack["by_code"]
+    st8 = "%d+%d evals" % (by_code.get("ST8", 0), pack["st8_evals"]) if pack["st8_evals"] > 0 else "%d" % by_code.get("ST8", 0)
+    return "%s: %d skills, %d errors (ST5 %d), %d warnings (ST8 %s); check exits %d" % (
+        pack["pack"], pack["skills"], pack["errors"], by_code.get("ST5", 0), pack["warnings"], st8, pack["check_exit"])
+
+
 def doctor_run(roots: list, profile: str, target: str, include_cache: bool, baseline: dict | None,
-               skip_markers: tuple = (), scanned: tuple | None = None) -> dict:
+               skip_markers: tuple = (), scanned: tuple | None = None, by_pack: bool = False, pack_of: dict | None = None, docs: bool = False) -> dict:
     """The doctor report (SPEC 9.11, schema 1). Reads skills, writes nothing. `scanned` = a finished iter_skill_dirs result to reuse.
+    `by_pack` adds `packs`; `pack_of` = {skill path: pack name} when the caller knows it (--roots-from opcos).
+    `docs` adds `docs`: the rules files at the root of each plugin that holds a scanned skill, and its workflows/ files, checked as `check` does (FR8.4); the totals stay skills only.
     A file above DOCTOR_MAX_FILE_BYTES or a cloud placeholder inside a skill is not read; it is listed in skipped as well as flagged in the skill."""
     skills, skipped = scanned if scanned is not None else iter_skill_dirs(roots, include_cache, skip_markers)
     skipped = list(skipped)
@@ -236,6 +339,11 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
                 continue
     entries = []
     totals = {"skills": 0, "errors": 0, "warnings": 0, "notes": 0}
+    desc_bytes = 0
+    packs: dict = {}
+    manifests: dict = {}
+    plugin_dirs: dict = {}
+    manifest_seen: dict = {}
     for skill in skills:
         under = next((r for r in real_roots if fs.valid_resolved_under(skill, r)), None)
         findings = validate.validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under,
@@ -253,16 +361,40 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
             except ValueError:
                 shown = _posix(path)
             codes.append({"code": f["code"], "level": f["level"], "file": shown, "line": f["line"], "message": f["message"]})
-        name, lang = _skill_identity(skill, target, C.DOCTOR_MAX_FILE_BYTES)
+        refused = any(c["code"] == "INPUT" for c in codes)
+        name, lang = _skill_identity(skill, target, C.DOCTOR_MAX_FILE_BYTES, skip_read=refused)
+        desc_bytes += _budget_desc_bytes(skill, C.DOCTOR_MAX_FILE_BYTES, refused) if profile == "opcos" else 0
         errors, warnings = sum(c["level"] == "ERROR" for c in codes), sum(c["level"] == "WARN" for c in codes)
         entries.append({"path": _posix(skill), "name": name, "lang": lang, "errors": errors, "warnings": warnings, "codes": codes})
         totals["skills"] += 1
         totals["errors"] += errors
         totals["warnings"] += warnings
         totals["notes"] += sum(c["level"] == "NOTE" for c in codes)
+        if docs:
+            plugin = _manifest_dir(skill, real_roots, manifest_seen)
+            if plugin is not None:
+                plugin_dirs[_key(plugin)] = plugin
+        if by_pack:
+            pack_name = (pack_of or {}).get(_key(skill)) or _pack_name(skill, real_roots, manifests, C.CLOUD_MARKERS + tuple(skip_markers))
+            pack = packs.setdefault(pack_name, {"pack": pack_name, "skills": 0, "errors": 0, "warnings": 0, "by_code": {}, "check_exit": 0, "st8_evals": 0})
+            pack["skills"] += 1
+            pack["errors"] += errors
+            pack["warnings"] += warnings
+            pack["st8_evals"] += _has_evals_dir(skill)
+            for item in codes:
+                if item["level"] in ("ERROR", "WARN"):
+                    pack["by_code"][item["code"]] = pack["by_code"].get(item["code"], 0) + 1
     report = {"schema": C.DOCTOR_SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "studio_version": C.VERSION, "roots": [_posix(r) for r in roots], "skills": entries, "skipped": skipped,
               "totals": totals, "new_vs_baseline": []}
+    if profile == "opcos":  # the same verdict as measure-skill-budget.py on the total (SPEC FR5.2)
+        report["budget"] = {"desc_bytes_total": desc_bytes, "limit": C.OPCOS_DESC_TOTAL_BYTES, "over": desc_bytes > C.OPCOS_DESC_TOTAL_BYTES}
+    if by_pack:  # `check` exits 1 for a pack with an ERROR, the same rule as the default fail level (FR6.1)
+        for pack in packs.values():
+            pack["check_exit"] = 1 if pack["errors"] else 0
+        report["packs"] = sorted(packs.values(), key=lambda p: p["pack"].casefold())
+    if docs:
+        report["docs"] = doctypes.docs_report([plugin_dirs[k] for k in sorted(plugin_dirs)], C.CLOUD_MARKERS + tuple(skip_markers))
     if baseline is not None:
         report["new_vs_baseline"] = diff_baseline(report, baseline)
     return report
@@ -277,37 +409,44 @@ def _baseline_problem(obj) -> str | None:
     return None
 
 
-def _out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), include_cache: bool = False, skip_markers: tuple = ()) -> str | None:
+OUT_KINDS = ("doctor", "catalog-json", "catalog-md")
+
+
+def out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), include_cache: bool = False, skip_markers: tuple = (), kind: str = "doctor") -> str | None:
     """Why `out` may not be written, else None. The report may not land in what the scan reads: not in a zone, not under skills/, not in a
     scanned skill, and not in a scanned root unless the folder in between (.tmp, .worktrees, a cache...) is one the scan leaves out.
-    It may not carry a secret-looking name or an NTFS stream, and an existing file is overwritten only when it is empty or already a doctor
-    report (a .json file that starts with {"schema"). Order matters: every decision by name, zone or cloud attributes on the spelling given
+    It may not carry a secret-looking name or an NTFS stream, and an existing file is overwritten only when it is empty or already what `kind` writes:
+    `doctor` and `catalog-json` a .json file that starts with {"schema"; `catalog-md` a .md file whose first line is <!-- studio catalog --> (its messages
+    say --md, the others --out). Order matters: every decision by name, zone or cloud attributes on the spelling given
     and on the real folder comes first; the file itself is stat-ed and its first bytes read last, only once it is known to be a plain
     local path (so a link into ~/.secret or a cloud folder is refused without one call on the file, and with the same message whatever it holds)."""
+    if kind not in OUT_KINDS:
+        raise ValueError("unknown out kind: %s" % kind)
+    flag = "--md" if kind == "catalog-md" else "--out"
     markers = C.CLOUD_MARKERS + tuple(skip_markers)
     reason = fs.zone_reason(out, markers)
     if reason:
-        return "--out is inside a %s zone" % reason
+        return "%s is inside a %s zone" % (flag, reason)
     if os.name == "nt" and ":" in os.path.splitdrive(os.fspath(out))[1]:
-        return "--out names an NTFS data stream: %s" % out.name
+        return "%s names an NTFS data stream: %s" % (flag, out.name)
     if fs.secret_file_name(out.name):
-        return "--out has a secret-looking file name: %s" % out.name
+        return "%s has a secret-looking file name: %s" % (flag, out.name)
     try:
         real_parent = out.parent.resolve()
     except (OSError, RuntimeError):
-        return "--out cannot be resolved: %s" % out
+        return "%s cannot be resolved: %s" % (flag, out)
     real = real_parent / out.name
     reason = fs.zone_reason(real, markers)
     if reason:
-        return "--out is inside a %s zone (through a link)" % reason
+        return "%s is inside a %s zone (through a link)" % (flag, reason)
     if fs.path_is_cloud(real_parent) or fs.path_is_cloud(out.parent):
-        return "--out is inside a cloud placeholder folder: %s" % out.parent
+        return "%s is inside a cloud placeholder folder: %s" % (flag, out.parent)
     if fs.path_is_cloud(real) or fs.path_is_cloud(out):
-        return "--out is a cloud placeholder: %s" % out
+        return "%s is a cloud placeholder: %s" % (flag, out)
     if any(part.lower() == "skills" for part in out.parts[:-1]) or (repo is not None and fs.valid_resolved_under(real, repo / "skills")):
-        return "--out must not be under a skills/ folder: %s" % out
+        return "%s must not be under a skills/ folder: %s" % (flag, out)
     if any(fs.valid_resolved_under(real, skill) for skill in skills):
-        return "--out must not be inside a scanned skill folder: %s" % out
+        return "%s must not be inside a scanned skill folder: %s" % (flag, out)
     for root in roots:
         if fs.zone_reason(root, markers):
             continue
@@ -316,22 +455,43 @@ def _out_problem(out: Path, roots: list, repo: Path | None, skills: list = (), i
         except (ValueError, OSError, RuntimeError):
             continue
         if not any(_is_excluded(below[:n], include_cache) for n in range(1, len(below) + 1)):
-            return "--out must not be inside a scanned root (a folder the scan skips, such as .tmp, is fine): %s" % out
+            return "%s must not be inside a scanned root (a folder the scan skips, such as .tmp, is fine): %s" % (flag, out)
     if not real_parent.is_dir():
-        return "folder of --out does not exist: %s (doctor never creates folders)" % out.parent
+        return "folder of %s does not exist: %s (doctor never creates folders)" % (flag, out.parent)
     if out.is_dir() or fs.is_link(out):
-        return "--out must be a plain file path: %s" % out
+        return "%s must be a plain file path: %s" % (flag, out)
     if out.exists():
-        if out.suffix.lower() != ".json":
-            return "--out would overwrite an existing file that is not a .json report: %s" % out
+        if out.suffix.lower() != (".md" if kind == "catalog-md" else ".json"):
+            return "%s would overwrite an existing file that is not a %s: %s" % (flag, ".md catalog" if kind == "catalog-md" else ".json report", out)
         try:
             with open(out, "rb") as handle:
                 head = handle.read(64)
         except OSError:
-            return "--out exists and cannot be checked: %s" % out
-        if head.strip() and not C.DOCTOR_REPORT_HEAD.match(head):
-            return "--out would overwrite an existing file that is not a doctor report (it must start with {\"schema\"): %s" % out
+            return "%s exists and cannot be checked: %s" % (flag, out)
+        if kind == "catalog-md":
+            if head.strip() and not C.CATALOG_MD_HEAD.match(head):
+                return "%s would overwrite an existing file that is not a catalog (its first line must be <!-- studio catalog -->): %s" % (flag, out)
+        elif head.strip() and not C.DOCTOR_REPORT_HEAD.match(head):
+            return "%s would overwrite an existing file that is not a %s (it must start with {\"schema\"): %s" % (flag, "doctor report" if kind == "doctor" else "catalog report", out)
     return None
+
+
+_out_problem = out_problem  # the name this function had before it was public (SPR-04 TK5)
+
+
+def _opcos_roots(markers: tuple) -> list:
+    """The Root records of `--roots-from opcos`: paths.json from OPCOS_ROOT or up from the working folder, its areas turned into roots. ValueError (the
+    message is printed, exit 2) when there is no paths.json, it cannot be used, or no root is usable (FR1.3)."""
+    try:
+        found = roots_mod.find_paths_json(Path.cwd(), os.environ, markers)
+        if found is None:
+            raise ValueError("paths.json not found (looked in $OPCOS_ROOT and up to %d folders above %s)" % (C.PATHS_JSON_UP, Path.cwd()))
+        listed = roots_mod.opcos_roots(found, True, markers)
+    except roots_mod.RootError as exc:
+        raise ValueError("paths.json cannot be used: %s" % exc)
+    if all(r["status"] == "error" for r in listed):
+        raise ValueError("no usable root in %s: %s" % (found, "; ".join("%s %s" % (r["area"], "/".join(r["reasons"])) for r in listed)))
+    return listed
 
 
 def cmd_doctor(args) -> int:
@@ -342,11 +502,23 @@ def cmd_doctor(args) -> int:
         print("ERROR: --skip-marker needs non-empty text", file=sys.stderr)
         return 2
     markers = C.CLOUD_MARKERS + skip_markers
-    try:
-        roots = parse_roots(args.roots, args.roots_file, repo, skip_markers)
-    except ValueError as exc:
-        print("ERROR: %s" % exc, file=sys.stderr)
-        return 2
+    opcos = None  # --roots-from opcos: the Root records of paths.json (SPR-04 FR1); the scan itself is below, after the checks that need no scan
+    if getattr(args, "roots_from", None):
+        if args.roots or args.roots_file:
+            print("ERROR: --roots-from cannot be combined with --roots or --roots-file", file=sys.stderr)
+            return 2
+        try:
+            opcos = _opcos_roots(markers)
+        except ValueError as exc:
+            print("ERROR: %s" % exc, file=sys.stderr)
+            return 2
+        roots = [Path(r["path"]) for r in opcos if r["status"] != "error"]
+    else:
+        try:
+            roots = parse_roots(args.roots, args.roots_file, repo, skip_markers)
+        except ValueError as exc:
+            print("ERROR: %s" % exc, file=sys.stderr)
+            return 2
     baseline = None
     if args.fail_on == "new" and not args.baseline:
         print("ERROR: --fail-on new needs --baseline <earlier doctor --json report>", file=sys.stderr)
@@ -371,17 +543,25 @@ def cmd_doctor(args) -> int:
     out = None
     if args.out:  # decided by name and by what the file holds before any root is walked; the scanned skills are added after the scan
         out = Path(os.path.abspath(os.path.expanduser(args.out)))
-        problem = _out_problem(out, roots, repo, [], args.include_cache, skip_markers)
+        problem = out_problem(out, roots, repo, [], args.include_cache, skip_markers)
         if problem:
             print("ERROR: %s" % problem, file=sys.stderr)
             return 2
-    scanned = iter_skill_dirs(roots, args.include_cache, skip_markers)
+    if opcos is not None:
+        found, listed = roots_mod.collect_skills(opcos, markers)
+        scanned = ([s["path"] for s in found], listed)
+    else:
+        scanned = iter_skill_dirs(roots, args.include_cache, skip_markers)
     if out is not None:
-        problem = _out_problem(out, roots, repo, scanned[0], args.include_cache, skip_markers)
+        problem = out_problem(out, roots, repo, scanned[0], args.include_cache, skip_markers)
         if problem:
             print("ERROR: %s" % problem, file=sys.stderr)
             return 2
-    report = doctor_run(roots, args.profile, args.target, args.include_cache, baseline, skip_markers, scanned)
+    pack_of = {_key(s["path"]): s["plugin"] for s in found} if opcos is not None else None
+    report = doctor_run(roots, args.profile, args.target, args.include_cache, baseline, skip_markers, scanned,
+                        by_pack=bool(getattr(args, "by_pack", False)), pack_of=pack_of, docs=bool(getattr(args, "docs", False)))
+    if opcos is not None:
+        report["roots_status"] = opcos
     if out is not None:
         try:
             with open(out, "w", encoding="utf-8", newline="\n") as handle:
@@ -401,6 +581,18 @@ def cmd_doctor(args) -> int:
         for skill in report["skills"]:
             if skill["errors"] or skill["warnings"]:
                 print("  %s: %d errors, %d warnings" % (skill["path"], skill["errors"], skill["warnings"]))
+        for pack in report.get("packs", []):
+            print("  " + pack_line(pack))
+        for doc in report.get("docs", []):
+            found = [c for c in doc["codes"] if c["level"] in ("ERROR", "WARN")]
+            if found:
+                print("  doc %s (%s): %d errors, %d warnings (%s)" % (doc["path"], doc["type"], sum(c["level"] == "ERROR" for c in found),
+                                                                  sum(c["level"] == "WARN" for c in found), ", ".join(sorted({c["code"] for c in found}))))
+        if "docs" in report:
+            print("  docs: %d files checked" % len(report["docs"]))
+        for item in report.get("roots_status", []):
+            if item["status"] != "ok":
+                print("  root %s: %s (%s)" % (item["area"], item["status"], ", ".join(item["reasons"])))
         for item in report["skipped"]:
             print("  skipped (%s): %s" % (item["reason"], item["path"]))
         for item in report["new_vs_baseline"]:

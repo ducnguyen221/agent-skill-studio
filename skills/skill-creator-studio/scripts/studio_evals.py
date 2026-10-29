@@ -661,7 +661,15 @@ def model_evaluated_problems(catalog_path, root):
     if fs.is_link(evals_dir):  # a link, or a folder that cannot be probed (FR13.1): its evidence/ folders cannot be compared with the catalog, and that is said
         problems.append("evals/ is a link or cannot be probed; its evidence folders are not checked against the catalog")
     elif evals_dir.is_dir():  # an evidence/ folder whose skill the catalog does not name is never skipped silently
+        linked, folders = [], []
         with os.scandir(evals_dir) as scan:
-            folders = sorted(e.name for e in scan if e.is_dir(follow_symlinks=False) and os.path.lexists(evals_dir / e.name / "evidence"))
+            for e in sorted(scan, key=lambda x: x.name):
+                if e.is_symlink() or fs.is_link(evals_dir / e.name):  # asked first: is_dir(follow_symlinks=False) is False for a symlink and, from Python 3.12, a junction, and they must be said, not skipped
+                    linked.append(e.name)  # left out; `evidence` is never probed through it
+                elif not e.is_dir(follow_symlinks=False):
+                    continue
+                elif os.path.lexists(evals_dir / e.name / "evidence"):
+                    folders.append(e.name)
+        problems.extend("evals/%s is a link or cannot be probed; it is left out, its evidence folder is not checked" % n for n in linked)
         problems.extend("evals/%s/evidence has no catalog entry with evals: evals/%s" % (n, n) for n in folders if "evals/%s" % n not in declared)
     return problems

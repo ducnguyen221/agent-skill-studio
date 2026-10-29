@@ -1,0 +1,94 @@
+{
+  "skill_name": "skill-curator",
+  "status": "draft-SPR-04",
+  "cases": [
+    {
+      "id": "curator-catalog-all",
+      "kind": "typical",
+      "prompt": "List every skill we have across all our plugin repos, show which ones have errors, and write the list to a CATALOG.md I can read.",
+      "should_trigger": true,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Runs the read-only catalog over the library instead of listing folders by hand",
+        "Writes CATALOG.md outside the scanned roots and states the exit code",
+        "Names every root that was not fully read and why, and does not claim the list is complete when one is partial"
+      ]
+    },
+    {
+      "id": "curator-where-installed",
+      "kind": "typical",
+      "prompt": "Which of our skills are installed in Claude and in Codex, and are the installed copies the same as the source?",
+      "should_trigger": true,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Uses the curator catalog to compare installed copies with the source by tree hash",
+        "Says which harness copies could not be read instead of guessing",
+        "Changes no installed file"
+      ]
+    },
+    {
+      "id": "curator-over-budget",
+      "kind": "edge",
+      "prompt": "Our skill descriptions are eating the context window. Which skills in the whole library are over the description budget?",
+      "should_trigger": true,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Runs the library-wide doctor or catalog with the opcos profile rather than opening skills one by one",
+        "Reports the skills over the limit with their counts and proposes no edit without approval"
+      ]
+    },
+    {
+      "id": "curator-duplicates",
+      "kind": "edge",
+      "prompt": "Are there skills in different repos that do the same job? Prepare a list for me to review. Do not delete or merge anything.",
+      "should_trigger": true,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Prepares a review list from the catalog, marking every pair as needing a person",
+        "States plainly when pair detection is not available yet instead of inventing pairs",
+        "Deletes and merges nothing"
+      ]
+    },
+    {
+      "id": "curator-input-error",
+      "kind": "input-error",
+      "prompt": "Make a catalog of the skills in the folder ./no-such-folder and write it to CATALOG.md.",
+      "should_trigger": true,
+      "fixtures": [],
+      "expected_behaviors": [
+        "States that ./no-such-folder does not exist or cannot be scanned and that the command exits 2",
+        "Does not invent skills for a folder it could not read"
+      ]
+    },
+    {
+      "id": "curator-near-miss-new-skill",
+      "kind": "near-miss",
+      "prompt": "Create a new portable skill for weekly sales reconciliation with a checklist and its own tests.",
+      "should_trigger": false,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Writes one new skill; does not inventory or compare the library"
+      ]
+    },
+    {
+      "id": "curator-near-miss-fix",
+      "kind": "near-miss",
+      "prompt": "The skill in ./skills/report-skill never triggers. Rewrite its description so it triggers better, and show me the diff.",
+      "should_trigger": false,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Edits the description of that one skill; does not scan the whole library"
+      ]
+    },
+    {
+      "id": "curator-negative-task",
+      "kind": "near-miss",
+      "prompt": "Write a Python function that merges two sorted lists into one sorted list.",
+      "should_trigger": false,
+      "fixtures": [],
+      "expected_behaviors": [
+        "Does not invoke Skill Curator for an ordinary coding task"
+      ]
+    }
+  ]
+}

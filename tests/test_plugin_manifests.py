@@ -46,7 +46,7 @@ class PluginManifestTests(unittest.TestCase):
         self.assertEqual("./skills/", load(CLAUDE_PLUGIN)["skills"])
         self.assertEqual("./skills/", load(CODEX_PLUGIN)["skills"])
         skill_dirs = [d for d in (ROOT / "skills").iterdir() if d.is_dir()]
-        self.assertEqual(["skill-creator-studio"], sorted(d.name for d in skill_dirs), "only skill-creator-studio ships (SPR-03 FR15.1)")
+        self.assertEqual(["skill-creator-studio", "skill-curator"], sorted(d.name for d in skill_dirs), "two skills ship: skill-creator-studio and skill-curator (SPR-04 FR9.1)")
         for d in skill_dirs:
             self.assertTrue((d / "SKILL.md").is_file(), d.as_posix())
 

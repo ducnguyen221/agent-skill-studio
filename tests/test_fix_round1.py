@@ -167,13 +167,13 @@ class Rfs3CheckRefusesSecretZone(unittest.TestCase):
         self.assertNotIn("not available yet", err + out)
 
     def test_check_on_a_plain_file_still_reads_its_type(self):
-        """tương-đương: RF-S3 outside a zone `check note.md` with `type: workflow` keeps saying the check is not available yet."""
+        """tương-đương: RF-S3 outside a zone `check note.md` with `type: workflow` reads its type and checks it as a workflow (SPR-04 TK8; it said `not available yet` before)."""
         with tempfile.TemporaryDirectory() as t:
             note = Path(t) / "note.md"
             note.write_text("---\ntype: workflow\n---\n# note\n", encoding="utf-8")
-            code, _out, err = run_studio(E.ENGINE_PATH, "check", str(note), cwd=ROOT)
-        self.assertEqual(2, code)
-        self.assertIn("not available yet", err)
+            code, out, err = run_studio(E.ENGINE_PATH, "check", str(note), cwd=ROOT)
+        self.assertEqual(1, code, err)  # a workflow with no Kết luận, no Bước and no Xong khi
+        self.assertIn("WC1", out)
 
 
 class Rft1DoctorCloudRoot(unittest.TestCase):

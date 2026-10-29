@@ -16,7 +16,7 @@ updated: 2026-10-28
 Thân `SKILL.md` là bộ định tuyến, <500 dòng, <5 000 token. Chi tiết ở `references/`, link một cấp từ `SKILL.md` kèm khi nào đọc; guardrail quan trọng không đẩy vào file có thể không được đọc. Không tạo `scripts/`, `assets/` rỗng.
 
 ### SK-02 — Content lists và cắt gọn [SHOULD] · kiểm: review
-Mục lục theo `SK-15`. Trước khi giữ một đoạn, hỏi: bỏ đoạn này agent có làm sai không? Có lặp điều ở file khác không (link thay chép)? Điều kiện có lồng quá hai tầng không? Cắt chọn lọc, không nén thành mảnh câu.
+Mục lục theo `SK-15`. Trước khi giữ một đoạn, hỏi: bỏ đoạn này agent có làm sai không? Có lặp file khác không (link thay chép)? Điều kiện có lồng quá hai tầng không? Cắt chọn lọc, không nén thành mảnh câu.
 
 ### SK-03 — Mức tự do theo rủi ro [MUST khi thiết kế] · kiểm: review
 Tự do cao thì văn xuôi, vừa thì mẫu ưu tiên, thấp (rủi ro: thanh toán, xoá, deploy, migration) thì script/schema/approval. Mỗi bước hỏi "agent làm khác thì tổn thất gì?": không gì thì tăng tự do, mất tiền/dữ liệu thì giảm tự do. Trộn mức trong cùng skill.
@@ -68,7 +68,7 @@ Reference >100 dòng phải có `## Contents`; thân >100 dòng nên có. Ngay d
 - **Draft** → **Candidate** (`check` sạch, ≥3 tình huống, đã review ngữ nghĩa) → **Production** (eval trên runtime đích, owner duyệt, không blocker an toàn) → **Deprecated** (dừng kích hoạt, ghi đường chuyển trong changelog, không xoá đột ngột).
 - NEW → AUDIT → REFINE → RELEASE: `new` → `check` và audit tay → eval phiên mới, sửa theo failure → review bảo mật khi có side effect → `package`, `install` thử, owner duyệt.
 - PATCH sửa typo, link; MINOR thêm workflow, reference, eval; MAJOR đổi trigger, output contract, quyền thực thi.
-- AUDIT chỉ đọc; REFINE chỉ sửa khi owner yêu cầu hoặc duyệt. Mỗi thay đổi có diff, lý do, rule ID, test, cách hoàn tác. Không tự sửa mọi WARN.
+- AUDIT chỉ đọc; REFINE chỉ sửa khi owner yêu cầu hoặc duyệt. Mỗi thay đổi có diff, lý do, rule ID, test, cách hoàn tác. Không tự sửa mọi WARN (có thể là chủ ý của owner).
 
 ## Definition of Done
 

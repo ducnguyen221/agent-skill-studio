@@ -23,6 +23,12 @@ Usage:
   python tests/contract_runner.py --write-golden --engine <archive of 1211bfa>   create golden.json (refused when it exists)
   python tests/contract_runner.py --record-after <case-id> --by SPR-03/TKn      record a deliberate change: writes `after`, never `before`
   python tests/contract_runner.py --only R-version     run the cases whose id starts with the text
+  python tests/contract_runner.py --record-strict --at-commit <sha>   create strict.json: full normalised stderr + line ends per file (refused when it exists)
+  python tests/contract_runner.py --add-case <case-id>   add a case of cases.json that golden.json lacks: writes its `before` (and its strict entry)
+
+strict.json (SPR-04 RQ-024) is the sharper half of the contract: for a case that has an entry, the whole stderr (paths -> <ROOT>, backslash -> `/`,
+CRLF -> LF) and the line end of every file in its trees must stay equal. "native" in an `eol` map means "whatever the OS writes by default" (the engine
+writes text without newline=): it matches crlf on Windows and lf elsewhere, so one recording holds on every OS until the engine pins the line end.
 """
 from __future__ import annotations
 
@@ -44,6 +50,7 @@ CONTRACT_DIR = TESTS_DIR / "fixtures" / "contract"
 INPUTS_DIR = CONTRACT_DIR / "inputs"
 CASES_FILE = CONTRACT_DIR / "cases.json"
 GOLDEN_FILE = CONTRACT_DIR / "golden.json"
+STRICT_FILE = CONTRACT_DIR / "strict.json"
 TIMEOUT = 120
 VIAS = ("R", "C", "E", "S", "Z", "L")
 COMPARE_KEYS = ("exit", "stdout_json", "stdout_text", "stderr", "tree", "zip")
@@ -60,6 +67,10 @@ def load_cases() -> list:
 
 def load_golden() -> dict:
     return json.loads(GOLDEN_FILE.read_text(encoding="utf-8"))["cases"]
+
+
+def load_strict() -> dict:
+    return json.loads(STRICT_FILE.read_text(encoding="utf-8"))["cases"]
 
 
 def expected_result(entry: dict) -> dict:
@@ -139,7 +150,51 @@ def stderr_prefix(text: str) -> str:
     return ""
 
 
-def run_case(case: dict, engine: Path, base: Path, shared_repo: Path) -> dict:
+def stderr_norm(text: str, root) -> str:
+    """The whole stderr, comparable across machines: CRLF -> LF, `\\` -> `/`, the root(s) (a path or a list of paths) -> <ROOT>. Nothing is dropped."""
+    text = text.replace("\r\n", "\n").replace("\\", "/")
+    roots = [root] if isinstance(root, (str, Path)) else list(root)
+    forms = set()
+    for item in roots:
+        item = Path(item)
+        forms |= {str(item).replace("\\", "/"), str(item.resolve()).replace("\\", "/"), os.path.realpath(item).replace("\\", "/")}
+    for form in sorted(forms, key=len, reverse=True):
+        text = re.sub(re.escape(form), "<ROOT>", text, flags=re.IGNORECASE)
+    # argparse words its own usage block and its `invalid choice` list differently from Python 3.9 to 3.12 (quoted choices, wrapping); the line
+    # `studio.py: error: argument command: invalid choice: 'x'` that Studio's parser raises stays, so a changed message is still caught
+    text = re.sub(r"(?m)^usage:.*(?:\n[ \t]+.*)*", "usage: <ARGPARSE>", text)
+    return re.sub(r"\(choose from [^)]*\)", "(choose from <CHOICES>)", text)
+
+
+def eol_map(path: Path) -> dict:
+    """{relative posix path: "lf" | "crlf" | "mixed"} for every file below `path` (a file without any line end counts as "lf"); {} if it does not exist."""
+    out = {}
+    if not path.is_dir():
+        return out
+    for p in sorted(path.rglob("*"), key=lambda q: q.relative_to(path).as_posix()):
+        if p.is_dir() or "__pycache__" in p.relative_to(path).parts:
+            continue
+        data = p.read_bytes()
+        crlf = data.count(b"\r\n")
+        lf = data.count(b"\n") - crlf
+        out[p.relative_to(path).as_posix()] = "mixed" if crlf and lf else "crlf" if crlf else "lf"
+    return out
+
+
+def native_eol() -> str:
+    return "crlf" if os.linesep == "\r\n" else "lf"
+
+
+def to_native(eol: dict) -> dict:
+    """Baseline recording: a file whose line end is what this OS writes by default is stored as "native" (see the module docstring)."""
+    return {k: ("native" if v == native_eol() else v) for k, v in eol.items()}
+
+
+def eol_equal(want: dict, got: dict) -> bool:
+    return set(want) == set(got) and all(want[k] == got[k] or (want[k] == "native" and got[k] == native_eol()) for k in want)
+
+
+def run_case(case: dict, engine: Path, base: Path, shared_repo: Path, strict_out: dict | None = None) -> dict:
     cid = case["id"]
     via = case["via"]
     if via not in VIAS:
@@ -182,6 +237,8 @@ def run_case(case: dict, engine: Path, base: Path, shared_repo: Path) -> dict:
         cwd, script = engine, "studio.py"
     slots = {"OUT": out, "REPO": repo, "SELF": self_dir, "SELFPARENT": self_dir.parent}
     args = [SLOT_RE.sub(lambda m: str(slots[m.group(1)]), a) for a in case["args"]]
+    for target, text in case.get("files", {}).items():  # a case may spoil a file of its repo copy first (use it with "fresh": the shared copy must stay whole)
+        slots_path(target, slots).write_bytes(text.encode("utf-8"))
     proc = _run(script, args, cwd, env)
     norm = Normaliser(repo, case_dir, base)
     result: dict = {"exit": proc.returncode}
@@ -205,6 +262,10 @@ def run_case(case: dict, engine: Path, base: Path, shared_repo: Path) -> dict:
                 zp = slots_path(z, slots)
                 names[norm.text(str(zp))] = sorted(zipfile.ZipFile(zp).namelist()) if zp.is_file() else ["<missing>"]
             result[key] = names
+    if strict_out is not None:  # raw facts for strict.json; every tree of the case, whether or not the case compares it
+        strict_out[cid] = {"stderr": stderr_norm(proc.stderr, [base, engine]),
+                           "eol": {norm.text(str(slots_path(t, slots))) + "/" + rel: v for t in case.get("trees", [])
+                                   for rel, v in eol_map(slots_path(t, slots)).items()}}
     return {k: result[k] for k in ("exit",) + tuple(k for k in COMPARE_KEYS if k in result and k != "exit")}
 
 
@@ -212,15 +273,15 @@ def slots_path(template: str, slots: dict) -> Path:
     return Path(SLOT_RE.sub(lambda m: str(slots[m.group(1)]), template))
 
 
-def run_all(engine: Path, only: str = "", exact: bool = False) -> dict:
+def run_all(engine: Path, only: str = "", exact: bool = False, strict: dict | None = None) -> dict:
     """Run every case against `engine` (a repo root) in a fresh temp dir that is removed afterwards. Returns {id: result}.
-    `only` selects the cases whose id starts with it (exact: whose id is it)."""
+    `only` selects the cases whose id starts with it (exact: whose id is it). `strict`, when given, is filled with {id: {stderr, eol}} (raw)."""
     engine = Path(engine).resolve()
     base = Path(tempfile.mkdtemp(prefix="studio-contract-")).resolve()
     try:
         shared = base / "ws"
         build_repo(engine, shared)
-        return {c["id"]: run_case(c, engine, base, shared) for c in load_cases() if (c["id"] == only if exact else c["id"].startswith(only))}
+        return {c["id"]: run_case(c, engine, base, shared, strict) for c in load_cases() if (c["id"] == only if exact else c["id"].startswith(only))}
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
@@ -239,6 +300,20 @@ def compare(results: dict, golden: dict) -> list:
         want = expected_result(golden[cid])
         if dumps(want) != dumps(got):
             problems.append("%s: differs\n--- golden\n%s\n--- got\n%s" % (cid, dumps(want), dumps(got)))
+    return problems
+
+
+def compare_strict(strict_results: dict, strict: dict) -> list:
+    """Mismatches of the full stderr and the line ends against strict.json; a case without an entry is skipped (only the golden comparison applies)."""
+    problems = []
+    for cid, got in strict_results.items():
+        if cid not in strict:
+            continue
+        want = expected_result(strict[cid])
+        if want["stderr"] != got["stderr"]:
+            problems.append("%s: strict stderr differs\n--- recorded\n%s\n--- got\n%s" % (cid, want["stderr"], got["stderr"]))
+        if not eol_equal(want["eol"], got["eol"]):
+            problems.append("%s: strict line ends differ\n--- recorded\n%s\n--- got\n%s" % (cid, dumps(want["eol"]), dumps(got["eol"])))
     return problems
 
 
@@ -269,12 +344,22 @@ def record_after(entry: dict, result: dict, by: str) -> dict:
 
 def cmd_record_after(cid: str, by: str, engine: Path) -> int:
     golden = json.loads(GOLDEN_FILE.read_text(encoding="utf-8"))
-    results = run_all(engine, cid, exact=True)
+    strict_results: dict = {}
+    results = run_all(engine, cid, exact=True, strict=strict_results)
     if cid not in golden["cases"] or cid not in results:
         print("ERROR: %s is not a case of this suite" % cid, file=sys.stderr)
         return 2
     golden["cases"][cid] = record_after(golden["cases"][cid], results[cid], by)
     store(GOLDEN_FILE, dumps(golden))
+    if cid in strict_results and STRICT_FILE.is_file():  # wrapped like golden: `before` stays, `after` takes the new stderr and line ends
+        strict = json.loads(STRICT_FILE.read_text(encoding="utf-8"))
+        if cid in strict["cases"]:
+            old = strict["cases"][cid]
+            was = (old["before"] if "changed_by" in old else old)["eol"]
+            new = strict_results[cid]  # a file that was "native" and still has the OS default line end stays "native"; anything else is stored raw
+            new = {"stderr": new["stderr"], "eol": {k: ("native" if was.get(k) == "native" and v == native_eol() else v) for k, v in new["eol"].items()}}
+            strict["cases"][cid] = record_after(old, new, by)
+            store(STRICT_FILE, dumps(strict))
     raw = json.loads(CASES_FILE.read_text(encoding="utf-8"))
     for case in raw["cases"]:
         if case["id"] == cid and not case.get("changed_by"):  # cases.json and golden.json must mark the same cases (test_contract_regression)
@@ -284,15 +369,61 @@ def cmd_record_after(cid: str, by: str, engine: Path) -> int:
     return 0
 
 
+def cmd_add_case(cid: str, engine: Path) -> int:
+    """Add a case that cases.json has and golden.json lacks: its answer becomes `before` (wrapped when the case carries `changed_by`), plus a strict entry."""
+    golden = json.loads(GOLDEN_FILE.read_text(encoding="utf-8"))
+    case = next((c for c in load_cases() if c["id"] == cid), None)
+    if case is None:
+        print("ERROR: %s is not in cases.json; add the case there first" % cid, file=sys.stderr)
+        return 2
+    if cid in golden["cases"]:
+        print("ERROR: %s already has a golden answer; its `before` is frozen - use --record-after %s --by <task>" % (cid, cid), file=sys.stderr)
+        return 2
+    strict_results: dict = {}
+    result = run_all(engine, cid, exact=True, strict=strict_results)[cid]
+    golden["cases"][cid] = {"changed_by": case["changed_by"], "before": result, "after": None} if case.get("changed_by") else result
+    store(GOLDEN_FILE, dumps(golden))
+    if STRICT_FILE.is_file():
+        strict = json.loads(STRICT_FILE.read_text(encoding="utf-8"))
+        entry = {"stderr": strict_results[cid]["stderr"], "eol": to_native(strict_results[cid]["eol"])}
+        strict["cases"][cid] = {"changed_by": case["changed_by"], "before": entry, "after": None} if case.get("changed_by") else entry
+        store(STRICT_FILE, dumps(strict))
+    print("added %s to golden.json (exit %s)" % (cid, result["exit"]))
+    return 0
+
+
+def cmd_record_strict(commit: str, engine: Path) -> int:
+    if STRICT_FILE.exists():
+        print("ERROR: %s exists; use --record-after <case-id> --by <task> or --add-case" % STRICT_FILE, file=sys.stderr)
+        return 2
+    strict_results: dict = {}
+    run_all(engine, strict=strict_results)
+    cases = {cid: {"stderr": v["stderr"], "eol": to_native(v["eol"])} for cid, v in strict_results.items()}
+    store(STRICT_FILE, dumps({"recorded_at_commit": commit, "cases": cases}))
+    print("wrote %s: %d cases" % (STRICT_FILE, len(cases)))
+    return 0
+
+
 def main(argv: list | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--engine", default=str(REPO_ROOT), help="repo root of the code under test (default: this repo)")
     ap.add_argument("--write-golden", action="store_true", help="create golden.json from the run instead of comparing (refused when it exists)")
     ap.add_argument("--record-after", metavar="CASE_ID", help="record the result of this case as the `after` of its golden entry")
     ap.add_argument("--by", help="with --record-after: who changed the answer, for example SPR-03/TK1")
+    ap.add_argument("--add-case", metavar="CASE_ID", help="add a case of cases.json that golden.json lacks (exit 2 if it already has it)")
+    ap.add_argument("--record-strict", action="store_true", help="create strict.json from the run (refused when it exists)")
+    ap.add_argument("--at-commit", help="with --record-strict: commit of the code under test, stored as recorded_at_commit")
     ap.add_argument("--source", default="git archive 1211bfa", help="label stored in golden.json")
     ap.add_argument("--only", default="", help="run only the cases whose id starts with this text")
     args = ap.parse_args(argv)
+    if args.add_case:
+        if args.record_after or args.write_golden or args.record_strict or args.only:
+            ap.error("--add-case takes no other mode and no --only")
+        return cmd_add_case(args.add_case, Path(args.engine))
+    if args.record_strict:
+        if not args.at_commit or args.record_after or args.write_golden or args.only:
+            ap.error("--record-strict needs --at-commit and takes no other mode and no --only")
+        return cmd_record_strict(args.at_commit, Path(args.engine))
     if args.record_after:
         if not args.by or args.write_golden or args.only:
             ap.error("--record-after needs --by and takes neither --write-golden nor --only")
@@ -303,12 +434,15 @@ def main(argv: list | None = None) -> int:
             return 2
         if args.only:
             ap.error("--write-golden needs the whole suite (no --only)")
-    results = run_all(Path(args.engine), args.only)
+    strict_results: dict = {}
+    results = run_all(Path(args.engine), args.only, strict=strict_results)
     if args.write_golden:
         write_golden(results, args.source)
         print("wrote %s: %d cases" % (GOLDEN_FILE, len(results)))
         return 0
     problems = compare(results, load_golden())
+    if STRICT_FILE.is_file():
+        problems += compare_strict(strict_results, load_strict())
     for p in problems:
         print(p)
     print("%d cases, %d differ" % (len(results), len(problems)))

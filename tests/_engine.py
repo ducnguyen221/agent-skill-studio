@@ -36,6 +36,7 @@ scaffold = sys.modules["studio_scaffold"]
 dist = sys.modules["studio_dist"]
 doctor = sys.modules["studio_doctor"]
 fmt = sys.modules["studio_fmt"]
+roots = sys.modules["studio_roots"]
 
 
 def clear_caches(module=None) -> None:  # `module` is kept for old callers; the cache lives in studio_fs

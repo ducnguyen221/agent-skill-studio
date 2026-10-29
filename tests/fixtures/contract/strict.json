@@ -1,0 +1,622 @@
+{
+  "recorded_at_commit": "53c2d76",
+  "cases": {
+    "R-version": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "R-validate-all-require-evals-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-audit-live-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-audit-dqa-text": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-audit-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-audit-frozen-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-validate-frozen-require-evals-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-validate-dqa-require-evals-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-validate-broken-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-validate-missing-path": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-validate-no-argument": {
+      "stderr": "ERROR: provide a skill path or --all\n",
+      "eol": {}
+    },
+    "R-evals-all-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-doctor-fixture-json": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "R-fmt-check-live-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-fmt-check-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-new-en": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "R-new-vi": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "R-new-full": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native",
+        "<TMP>/out/skills/demo-skill/agents/openai.yaml": "lf",
+        "<TMP>/out/skills/demo-skill/assets/sample-data/example.json": "lf",
+        "<TMP>/out/skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/references/PROCESS_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/scripts/check_inputs.py": "lf"
+      }
+    },
+    "R-new-full-vi": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native",
+        "<TMP>/out/skills/demo-skill/agents/openai.yaml": "lf",
+        "<TMP>/out/skills/demo-skill/assets/sample-data/example.json": "lf",
+        "<TMP>/out/skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/references/PROCESS_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/scripts/check_inputs.py": "lf"
+      }
+    },
+    "R-package-dqa": {
+      "stderr": "",
+      "eol": {}
+    },
+    "R-install-dqa-claude": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/.claude/skills/data-quality-audit/SKILL.md": "lf",
+        "<TMP>/out/.claude/skills/data-quality-audit/assets/sample-data/orders_valid.csv": "lf",
+        "<TMP>/out/.claude/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md": "lf",
+        "<TMP>/out/.claude/skills/data-quality-audit/scripts/validate_csv.py": "lf"
+      }
+    },
+    "R-sync-template-check": {
+      "stderr": "usage: <ARGPARSE>\nstudio.py: error: argument command: invalid choice: 'sync-template' (choose from <CHOICES>)\n",
+      "eol": {}
+    },
+    "C-version": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "C-validate-all-require-evals-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-audit-live-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-audit-dqa-text": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-audit-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-audit-frozen-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-validate-frozen-require-evals-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-validate-dqa-require-evals-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-validate-broken-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-validate-missing-path": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-validate-no-argument": {
+      "stderr": "ERROR: provide a skill path or --all\n",
+      "eol": {}
+    },
+    "C-evals-all-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-doctor-fixture-json": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "C-fmt-check-live-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-fmt-check-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-new-en": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "C-new-vi": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "C-new-full": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native",
+        "<TMP>/out/skills/demo-skill/agents/openai.yaml": "lf",
+        "<TMP>/out/skills/demo-skill/assets/sample-data/example.json": "lf",
+        "<TMP>/out/skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/references/PROCESS_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/scripts/check_inputs.py": "lf"
+      }
+    },
+    "C-new-full-vi": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native",
+        "<TMP>/out/skills/demo-skill/agents/openai.yaml": "lf",
+        "<TMP>/out/skills/demo-skill/assets/sample-data/example.json": "lf",
+        "<TMP>/out/skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/references/PROCESS_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/scripts/check_inputs.py": "lf"
+      }
+    },
+    "C-package-dqa": {
+      "stderr": "",
+      "eol": {}
+    },
+    "C-install-dqa-claude": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/.claude/skills/data-quality-audit/SKILL.md": "lf",
+        "<TMP>/out/.claude/skills/data-quality-audit/assets/sample-data/orders_valid.csv": "lf",
+        "<TMP>/out/.claude/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md": "lf",
+        "<TMP>/out/.claude/skills/data-quality-audit/scripts/validate_csv.py": "lf"
+      }
+    },
+    "C-sync-template-check": {
+      "stderr": "usage: <ARGPARSE>\nstudio.py: error: argument command: invalid choice: 'sync-template' (choose from <CHOICES>)\n",
+      "eol": {}
+    },
+    "E-version": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "E-validate-all-require-evals-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-audit-live-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-audit-dqa-text": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-audit-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-audit-frozen-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-validate-frozen-require-evals-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-validate-dqa-require-evals-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-validate-broken-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-validate-missing-path": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-validate-no-argument": {
+      "stderr": "ERROR: provide a skill path or --all\n",
+      "eol": {}
+    },
+    "E-evals-all-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-doctor-fixture-json": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "E-fmt-check-live-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-fmt-check-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-new-en": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "E-new-vi": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "E-new-full": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native",
+        "<TMP>/out/skills/demo-skill/agents/openai.yaml": "lf",
+        "<TMP>/out/skills/demo-skill/assets/sample-data/example.json": "lf",
+        "<TMP>/out/skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/references/PROCESS_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/scripts/check_inputs.py": "lf"
+      }
+    },
+    "E-new-full-vi": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native",
+        "<TMP>/out/skills/demo-skill/agents/openai.yaml": "lf",
+        "<TMP>/out/skills/demo-skill/assets/sample-data/example.json": "lf",
+        "<TMP>/out/skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/references/PROCESS_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/scripts/check_inputs.py": "lf"
+      }
+    },
+    "E-new-default-output": {
+      "stderr": "",
+      "eol": {
+        "<REPO>/skills/demo-skill/SKILL.md": "native",
+        "<REPO>/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<REPO>/evals/demo-skill/cases.json": "lf",
+        "<REPO>/evals/demo-skill/rubric.md": "lf"
+      }
+    },
+    "E-package-dqa": {
+      "stderr": "",
+      "eol": {}
+    },
+    "E-install-dqa-claude": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/.claude/skills/data-quality-audit/SKILL.md": "lf",
+        "<TMP>/out/.claude/skills/data-quality-audit/assets/sample-data/orders_valid.csv": "lf",
+        "<TMP>/out/.claude/skills/data-quality-audit/references/CHECKS_AND_ASSUMPTIONS.md": "lf",
+        "<TMP>/out/.claude/skills/data-quality-audit/scripts/validate_csv.py": "lf"
+      }
+    },
+    "E-sync-template-check": {
+      "stderr": "usage: <ARGPARSE>\nstudio.py: error: argument command: invalid choice: 'sync-template' (choose from <CHOICES>)\n",
+      "eol": {}
+    },
+    "S-version": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "S-validate-self-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "S-validate-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "S-validate-frozen-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "S-validate-all-outside-repo": {
+      "stderr": "ERROR: --all requires Studio repository; use an explicit Skill path\n",
+      "eol": {}
+    },
+    "S-evals-all-outside-repo": {
+      "stderr": "ERROR: provide --eval-root for non-Studio repository\n",
+      "eol": {}
+    },
+    "S-new-en": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "S-new-vi": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "S-new-full": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native",
+        "<TMP>/out/skills/demo-skill/agents/openai.yaml": "lf",
+        "<TMP>/out/skills/demo-skill/assets/sample-data/example.json": "lf",
+        "<TMP>/out/skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/references/PROCESS_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/scripts/check_inputs.py": "lf"
+      }
+    },
+    "S-doctor-self-parent-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "S-doctor-fixture-json": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "S-fmt-check-self-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "S-fmt-check-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "Z-version": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "Z-validate-self-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "Z-validate-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "Z-validate-frozen-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "Z-validate-all-outside-repo": {
+      "stderr": "ERROR: --all requires Studio repository; use an explicit Skill path\n",
+      "eol": {}
+    },
+    "Z-evals-all-outside-repo": {
+      "stderr": "ERROR: provide --eval-root for non-Studio repository\n",
+      "eol": {}
+    },
+    "Z-new-en": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "Z-new-vi": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "Z-new-full": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native",
+        "<TMP>/out/skills/demo-skill/agents/openai.yaml": "lf",
+        "<TMP>/out/skills/demo-skill/assets/sample-data/example.json": "lf",
+        "<TMP>/out/skills/demo-skill/assets/templates/OUTPUT_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/references/PROCESS_TEMPLATE.md": "lf",
+        "<TMP>/out/skills/demo-skill/scripts/check_inputs.py": "lf"
+      }
+    },
+    "Z-doctor-self-parent-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "Z-doctor-fixture-json": {
+      "changed_by": "SPR-04/TK15",
+      "before": {
+        "stderr": "",
+        "eol": {}
+      },
+      "after": {
+        "stderr": "",
+        "eol": {}
+      }
+    },
+    "Z-fmt-check-self-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "Z-fmt-check-dqa-json": {
+      "stderr": "",
+      "eol": {}
+    },
+    "L-validate-all-require-evals": {
+      "stderr": "",
+      "eol": {}
+    },
+    "L-evals-all": {
+      "stderr": "",
+      "eol": {}
+    },
+    "L-package-skill-creator-studio": {
+      "stderr": "",
+      "eol": {}
+    },
+    "new-output-no-eval-root": {
+      "stderr": "",
+      "eol": {
+        "<TMP>/out/evals/demo-skill/baselines/BASELINE.md": "lf",
+        "<TMP>/out/evals/demo-skill/cases.json": "lf",
+        "<TMP>/out/evals/demo-skill/rubric.md": "lf",
+        "<TMP>/out/skills/demo-skill/SKILL.md": "native"
+      }
+    },
+    "evals-all-broken-catalog": {
+      "stderr": "",
+      "eol": {}
+    }
+  }
+}
