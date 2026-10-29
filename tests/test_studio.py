@@ -1836,14 +1836,17 @@ class ExportWindowsNameAndRaceTests(unittest.TestCase):
                 studio_fs.create_exclusive(link)
 
     def test_unit_create_exclusive_refuses_any_existing_name_even_a_link(self):
-        """đơn-vị-hàm-mới: a name that lexists (a dangling symlink on Windows, where O_EXCL follows it) is never opened; no handle, no file."""
-        from unittest import mock
+        """đơn-vị-hàm-mới: a name that is there as a link (a junction here; a dangling symlink on Windows, where O_EXCL follows it) is never opened; no handle, no file.
+        SPR-05 TK3: the early `lexists` check is gone, the create itself refuses the name, so a real link is used instead of a patched `lexists`."""
+        from _links import dir_link
         with tempfile.TemporaryDirectory() as t:
+            ext = Path(t) / "ext"
+            ext.mkdir()
             target = Path(t) / "victim.bin"
-            with mock.patch.object(os.path, "lexists", return_value=True):
-                with self.assertRaises(FileExistsError):
-                    studio_fs.create_exclusive(target)
-            self.assertFalse(target.exists())
+            dir_link(ext, target)
+            with self.assertRaises(FileExistsError):
+                studio_fs.create_exclusive(target)
+            self.assertEqual(os.listdir(ext), [])
 
     def test_unit_create_exclusive_rejects_a_handle_that_is_not_the_named_path(self):
         """đơn-vị-hàm-mới: after the open, fstat(fd) must match lstat(path); an lstat that is a link (or another file) closes the handle and raises."""

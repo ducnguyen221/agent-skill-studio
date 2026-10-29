@@ -40,11 +40,12 @@ def is_drive_root(path: Path) -> bool:
     return path.parent == path
 
 
-def write_new(path: Path, text: str, created: list | None = None) -> bool:
+def write_new(path: Path, text: str, created: list | None = None, anchor: Path | None = None) -> bool:
     """Write `text` to a file that is not there yet; a file or link that is there is kept and named on stdout (FR12.1). False (after an ERROR line) when it cannot be written.
-    A file this call makes is appended to `created` (when given), so the caller can take back what its own run made (FR12.4)."""
+    A file this call makes is appended to `created` (when given), so the caller can take back what its own run made (FR12.4).
+    With `anchor` the folders from the anchor down to the file are pinned while it is made, so a folder swapped for a link since the checks is not written through."""
     try:
-        handle = fs.create_exclusive(path)
+        handle = fs.create_exclusive(path, anchor=anchor)
     except FileExistsError:
         print("kept existing %s" % path)
         return True
@@ -220,19 +221,16 @@ def cmd_new(args) -> int:
     try:
         _make_dirs(target.parent, folders)
         if args.full:
-            shutil.copytree(template, target, ignore=shutil.ignore_patterns("SKILL.vi.md"))  # the Vietnamese body is a source for SKILL.md, never a file of the new skill
-            if args.lang == "vi":
-                shutil.copyfile(wanted, target / "SKILL.md")
+            shutil.copytree(template, target, ignore=shutil.ignore_patterns("SKILL.vi.md", "SKILL.md"))  # SKILL.md is written below from the chosen language, never copied over a link
         else:
             target.mkdir()
-            shutil.copyfile(template, target / "SKILL.md")
         p = target / "SKILL.md"
-        content = p.read_text(encoding="utf-8")
+        content = wanted.read_text(encoding="utf-8")
         content = re.sub(r"^name: skill-template(-full)?$", lambda _m: "name: " + name, content, count=1, flags=re.MULTILINE)
         escaped = json.dumps(args.description, ensure_ascii=False)
         content = re.sub(r'^description: .*$', "description: " + escaped, content, count=1, flags=re.MULTILINE)
         content = content.replace("# Skill Template", "# " + name.replace("-", " ").title(), 1)
-        p.write_text(content, encoding="utf-8")
+        skill_ok = write_new(p, content, files, anchor=target.parent)  # the folders from the output folder down are pinned: a folder swapped for a link since the checks is not written through
         # Evals are outside runtime; do not invent test prompts or scores.
         _make_dirs(ef, folders)
         _make_dirs(ef / "fixtures", folders)
@@ -245,9 +243,10 @@ def cmd_new(args) -> int:
         cases = [{**c, "prompt": "STUDIO-DRAFT: replace with a realistic %s prompt" % c["kind"],
                   "expected_behaviors": ["STUDIO-DRAFT: replace with observable behavior"], "fixtures": []} for c in sample]
         written = [
-            write_new(ef / "cases.json", json.dumps({"skill_name": name, "status": "draft", "cases": cases}, ensure_ascii=False, indent=2) + "\n", files),
-            write_new(ef / "rubric.md", "# %s — evaluation rubric (draft)\n\nDefine actual success criteria, trigger expectations, and failure cases before release.\n" % name, files),
-            write_new(ef / "baselines" / "BASELINE.md", "# Baseline: NOT RUN\n\nRecord fresh-session model/runtime, prompt, outputs, score and evidence after real execution.\n", files),
+            skill_ok,
+            write_new(ef / "cases.json", json.dumps({"skill_name": name, "status": "draft", "cases": cases}, ensure_ascii=False, indent=2) + "\n", files, anchor=ef.parent),
+            write_new(ef / "rubric.md", "# %s — evaluation rubric (draft)\n\nDefine actual success criteria, trigger expectations, and failure cases before release.\n" % name, files, anchor=ef.parent),
+            write_new(ef / "baselines" / "BASELINE.md", "# Baseline: NOT RUN\n\nRecord fresh-session model/runtime, prompt, outputs, score and evidence after real execution.\n", files, anchor=ef.parent),
         ]
     except OSError as exc:  # shutil.Error is one too: say it, then take back what was made
         print("ERROR: cannot create %s: %s" % (getattr(exc, "filename", None) or target, exc), file=sys.stderr)

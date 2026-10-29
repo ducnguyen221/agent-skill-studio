@@ -534,20 +534,32 @@ class UnsafeOpen(OSError):
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
-def _open_no_reparse(path: str) -> int:
-    """Windows only: open the last name of `path` for reading as itself, never through a link, and return a file descriptor. CreateFile with
-    FILE_FLAG_OPEN_REPARSE_POINT opens a symlink, junction or cloud file as the reparse point, and BACKUP_SEMANTICS lets it open a folder too, so both
-    are looked at (`fstat`) and refused instead of being followed (open, then compare, left a window). `_winapi` is a private module of CPython: a build
-    without it, or one that changes it, refuses to open (fails closed) and never falls back to a plain open()."""
+def _open_no_reparse(path: str, write: bool = False, create_new: bool = False) -> int:
+    """Windows only: open the last name of `path` as itself, never through a link, and return a file descriptor: for reading, or with `write` for writing, and with
+    `create_new` only when no name is there yet (CREATE_NEW). CreateFile with FILE_FLAG_OPEN_REPARSE_POINT opens a symlink, junction or cloud file as the reparse
+    point, and BACKUP_SEMANTICS lets it open a folder too, so both are looked at (`fstat`) and refused instead of being followed (open, then compare, left a window).
+    CREATE_NEW on a name that is a link or a folder is denied (winerror 5); that becomes FileExistsError only when the name really is there (lstat), so a genuine
+    permission error stays one. `_winapi` is a private module of CPython: a build without it, or one that changes it, refuses to open (fails closed) and never
+    falls back to a plain open()."""
     try:
         import _winapi
         import msvcrt
     except ImportError as exc:
         raise UnsafeOpen("safe open unavailable on this Python (no _winapi): %s" % path) from exc
-    generic_read, share_all, open_existing = 0x80000000, 0x1 | 0x2 | 0x4, 3
-    handle = _winapi.CreateFile(path, generic_read, share_all, 0, open_existing, 0x00200000 | 0x02000000, 0)  # OPEN_REPARSE_POINT | BACKUP_SEMANTICS
+    access = 0x40000000 if write else 0x80000000  # GENERIC_WRITE / GENERIC_READ
+    disposition = 1 if create_new else 3  # CREATE_NEW / OPEN_EXISTING
     try:
-        fd = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+        handle = _winapi.CreateFile(path, access, 0x1 | 0x2 | 0x4, 0, disposition, 0x00200000 | 0x02000000, 0)  # share all; OPEN_REPARSE_POINT | BACKUP_SEMANTICS
+    except OSError as exc:
+        if create_new and getattr(exc, "winerror", None) == 5:
+            try:
+                os.lstat(path)
+            except OSError:
+                raise exc
+            raise FileExistsError(errno.EEXIST, "already exists (a link or a folder counts)", path) from exc
+        raise
+    try:
+        fd = msvcrt.open_osfhandle(handle, (os.O_WRONLY if write else os.O_RDONLY) | os.O_BINARY)
     except BaseException:
         _winapi.CloseHandle(handle)
         raise
@@ -691,6 +703,17 @@ def _open_read_fd(path: str, dir_fd) -> int:
         raise
 
 
+def _pin_for(path, anchor, stack) -> tuple:
+    """(path, dir_fd) for an open under `anchor`: the chain from the anchor to the folder of `path` is pinned on `stack` and `path` is made absolute. A path that is
+    not below `anchor` is pinned from its own folder. Without an anchor nothing is pinned: (path, None)."""
+    if anchor is None:
+        return path, None
+    absolute = os.path.abspath(os.fspath(path))
+    if not lexically_inside(os.path.dirname(absolute), anchor):
+        anchor = os.path.dirname(absolute)
+    return absolute, stack.enter_context(pin_chain(anchor, absolute)).dir_fd
+
+
 def open_nofollow_read(path, expect_stat=None, single_link: bool = True, anchor=None):
     """Open `path` for binary reading without following a link; return the file object. POSIX: O_NOFOLLOW. Windows: `_open_no_reparse` (CreateFile
     that opens a reparse point as itself, then refuses it). Both: the handle must be a regular file, with `expect_stat` (the lstat taken when the file was
@@ -699,13 +722,7 @@ def open_nofollow_read(path, expect_stat=None, single_link: bool = True, anchor=
     stack = contextlib.ExitStack()
     fd = None
     try:
-        dir_fd = None
-        if anchor is not None:
-            absolute = os.path.abspath(os.fspath(path))
-            if not lexically_inside(os.path.dirname(absolute), anchor):
-                anchor = os.path.dirname(absolute)
-            dir_fd = stack.enter_context(pin_chain(anchor, absolute)).dir_fd
-            path = absolute
+        path, dir_fd = _pin_for(path, anchor, stack)
         fd = _open_read_fd(os.fspath(path), dir_fd)
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
@@ -727,22 +744,38 @@ def open_nofollow_read(path, expect_stat=None, single_link: bool = True, anchor=
         raise
 
 
-def create_exclusive(path):
-    """Create `path` for binary writing, failing (FileExistsError) when anything, a link included, is already there; never writes through a link."""
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    if os.path.lexists(path):  # Windows has no O_NOFOLLOW and CREATE_NEW follows a dangling symlink: a name that is there at all, a link included, is refused first
-        raise FileExistsError(errno.EEXIST, "already exists (a link counts)", os.fspath(path))
-    fd = os.open(path, flags, 0o666)
+def _create_new_fd(path: str, dir_fd) -> int:
+    """The descriptor of a file made new at `path` for writing: Windows through `_open_no_reparse` (CREATE_NEW, the reparse point not followed), POSIX with
+    O_CREAT|O_EXCL|O_NOFOLLOW (by name under `dir_fd` when pinned). A name that is there, a link included, is FileExistsError, and nothing is made at a link's target."""
+    if os.name == "nt":
+        return _open_no_reparse(path, write=True, create_new=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    return os.open(os.path.basename(path), flags, 0o666, dir_fd=dir_fd) if dir_fd is not None else os.open(path, flags, 0o666)
+
+
+def create_exclusive(path, anchor=None):
+    """Create `path` for binary writing, failing (FileExistsError) when anything, a link included, is already there; never writes through a link, and never
+    leaves an empty file at the target of a link that sits at the name (the create itself does not follow it: no check-then-create window). With `anchor` the
+    folders from the anchor down to the file are pinned first and stay pinned until the returned file is closed."""
+    stack = contextlib.ExitStack()
+    fd = None
     try:
-        opened, named = os.fstat(fd), os.lstat(path)  # the handle must be the very file the name holds now, not a link's target
+        path, dir_fd = _pin_for(path, anchor, stack)
+        fd = _create_new_fd(os.fspath(path), dir_fd)
+        opened = os.fstat(fd)
+        named = os.lstat(os.path.basename(path), dir_fd=dir_fd) if dir_fd is not None else os.lstat(path)  # the handle must be the very file the name holds now
         if stat.S_ISLNK(named.st_mode) or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino):
             raise UnsafeOpen("created file is not the named path (link raced in): %s" % path)
-        return os.fdopen(fd, "wb")
+        handle = os.fdopen(fd, "wb")
+        fd = None
+        return _PinnedFile(handle, stack) if anchor is not None else handle
     except BaseException:
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        stack.close()
         raise
 
 
