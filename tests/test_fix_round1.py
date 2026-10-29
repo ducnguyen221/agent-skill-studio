@@ -173,7 +173,7 @@ class Rfs3CheckRefusesSecretZone(unittest.TestCase):
             note.write_text("---\ntype: workflow\n---\n# note\n", encoding="utf-8")
             code, out, err = run_studio(E.ENGINE_PATH, "check", str(note), cwd=ROOT)
         self.assertEqual(1, code, err)  # a workflow with no Kết luận, no Bước and no Xong khi
-        self.assertIn("WF1", out)
+        self.assertIn("WC1", out)
 
 
 class Rft1DoctorCloudRoot(unittest.TestCase):

@@ -1,6 +1,6 @@
 """SPR-04 TK8 (FR8, SC7): `check` lints workflow and agent-rules files by `standards/DOC_TYPES.md`, and `doctor --docs` reports them.
 
-Every code has a red case and a green case (WF1-WF4, RL1-RL4, SEC); the green rules case holds the `📜 … CHANGELOG … mốc` pointer line.
+Every code has a red case and a green case (WC1-WC4, RL1-RL4, SEC); the green rules case holds the `📜 … CHANGELOG … mốc` pointer line.
 The Studio's own AGENTS.md, CLAUDE.md and GEMINI.md exit 0. A file of no known type still exits 2.
 
 Run: python -X utf8 -m unittest tests.test_doctypes -v
@@ -99,57 +99,57 @@ class WorkflowTests(TmpCase):
         self.assertEqual([], workflow(FIX / "typed" / "flow-by-type.md"))  # English headings: Steps, Done when
 
     def test_wf1_conclusion_missing_or_too_far(self):
-        """bắt-lỗi (red at e92d4d2: exit 2 `not available yet`): WF1 ERROR when the Kết luận line is missing, or comes after the first 15 body lines."""
+        """bắt-lỗi (red at e92d4d2: exit 2 `not available yet`): WC1 ERROR when the Kết luận line is missing, or comes after the first 15 body lines."""
         found = workflow(FIX / "workflows" / "wf1-no-conclusion.md")
-        self.assertEqual(["WF1"], codes(found))
+        self.assertEqual(["WC1"], codes(found))
         self.assertEqual("ERROR", found[0]["level"])
-        self.assertEqual(["WF1"], codes(D.lint_workflow(Path("w.md"), GOOD_WORKFLOW.replace("> **Kết luận:**", "Việc này:"))))
+        self.assertEqual(["WC1"], codes(D.lint_workflow(Path("w.md"), GOOD_WORKFLOW.replace("> **Kết luận:**", "Việc này:"))))
 
     def test_wf1_conclusion_forms_and_the_window(self):
-        """tương-đương: WF1 accepts `> **Kết luận:**` and `**Kết luận:**`, counts 15 lines from the body start (after the frontmatter), and ignores one inside a code fence."""
+        """tương-đương: WC1 accepts `> **Kết luận:**` and `**Kết luận:**`, counts 15 lines from the body start (after the frontmatter), and ignores one inside a code fence."""
         plain = GOOD_WORKFLOW.replace("> **Kết luận:**", "**Kết luận:**")
         self.assertEqual([], D.lint_workflow(Path("w.md"), plain))
         framed = "---\ntitle: x\ntype: workflow\n---\n" + plain
         self.assertEqual([], D.lint_workflow(Path("w.md"), framed))
         fenced = GOOD_WORKFLOW.replace("> **Kết luận:** việc này làm một thứ.", "```\n> **Kết luận:** trong khối mã.\n```")
-        self.assertEqual(["WF1"], codes(D.lint_workflow(Path("w.md"), fenced)))
+        self.assertEqual(["WC1"], codes(D.lint_workflow(Path("w.md"), fenced)))
         last = "# T\n" + "x\n" * 13 + "**Kết luận:** dòng thứ 15 của thân.\n" + GOOD_WORKFLOW.split("\n", 3)[3]
-        self.assertEqual([], [f for f in D.lint_workflow(Path("w.md"), last) if f["code"] == "WF1"])
+        self.assertEqual([], [f for f in D.lint_workflow(Path("w.md"), last) if f["code"] == "WC1"])
         late = "# T\n" + "x\n" * 14 + "**Kết luận:** dòng thứ 16.\n" + GOOD_WORKFLOW.split("\n", 3)[3]
-        self.assertEqual(["WF1"], [f["code"] for f in D.lint_workflow(Path("w.md"), late) if f["code"] == "WF1"])
+        self.assertEqual(["WC1"], [f["code"] for f in D.lint_workflow(Path("w.md"), late) if f["code"] == "WC1"])
 
     def test_wf1_conclusion_in_decomposed_unicode(self):
-        """tương-đương: WF1 a file saved with decomposed (NFD) Vietnamese still has its Kết luận."""
+        """tương-đương: WC1 a file saved with decomposed (NFD) Vietnamese still has its Kết luận."""
         import unicodedata
         self.assertEqual([], D.lint_workflow(Path("w.md"), unicodedata.normalize("NFD", GOOD_WORKFLOW)))
 
     def test_wf2_steps_not_numbered(self):
-        """bắt-lỗi (red at e92d4d2: exit 2 `not available yet`): WF2 ERROR when no numbered list sits under a heading with Bước or Steps."""
-        self.assertEqual(["WF2"], codes(workflow(FIX / "workflows" / "wf2-no-steps.md")))
+        """bắt-lỗi (red at e92d4d2: exit 2 `not available yet`): WC2 ERROR when no numbered list sits under a heading with Bước or Steps."""
+        self.assertEqual(["WC2"], codes(workflow(FIX / "workflows" / "wf2-no-steps.md")))
 
     def test_wf2_list_must_be_under_the_steps_heading(self):
-        """bắt-lỗi (red at e92d4d2: no studio_doctypes): WF2 a numbered list under another heading, or one inside a code fence, is not the steps; a list under a sub-heading of Bước is."""
+        """bắt-lỗi (red at e92d4d2: no studio_doctypes): WC2 a numbered list under another heading, or one inside a code fence, is not the steps; a list under a sub-heading of Bước is."""
         other = GOOD_WORKFLOW.replace("## Bước\n\n1. Làm; kiểm bằng lệnh.", "## Bước\n\nLàm theo thứ tự.\n\n## Ghi chú\n\n1. Một điều.")
-        self.assertEqual(["WF2"], codes(D.lint_workflow(Path("w.md"), other)))
+        self.assertEqual(["WC2"], codes(D.lint_workflow(Path("w.md"), other)))
         fenced = GOOD_WORKFLOW.replace("1. Làm; kiểm bằng lệnh.", "```\n1. Làm; kiểm bằng lệnh.\n```")
-        self.assertEqual(["WF2"], codes(D.lint_workflow(Path("w.md"), fenced)))
+        self.assertEqual(["WC2"], codes(D.lint_workflow(Path("w.md"), fenced)))
         nested = GOOD_WORKFLOW.replace("## Bước\n\n1. Làm;", "## Bước\n\n### Chuẩn bị\n\n1. Làm;")
         self.assertEqual([], D.lint_workflow(Path("w.md"), nested))
         paren = GOOD_WORKFLOW.replace("1. Làm;", "1) Làm;")
         self.assertEqual([], D.lint_workflow(Path("w.md"), paren))
 
     def test_wf3_done_when_missing(self):
-        """bắt-lỗi (red at e92d4d2: exit 2 `not available yet`): WF3 ERROR when there is no Xong khi / Done when heading."""
-        self.assertEqual(["WF3"], codes(workflow(FIX / "workflows" / "wf3-no-done.md")))
+        """bắt-lỗi (red at e92d4d2: exit 2 `not available yet`): WC3 ERROR when there is no Xong khi / Done when heading."""
+        self.assertEqual(["WC3"], codes(workflow(FIX / "workflows" / "wf3-no-done.md")))
 
     def test_wf4_over_300_lines_is_a_warning(self):
-        """bắt-lỗi (red at e92d4d2: no studio_doctypes): WF4 WARN at 301 lines; 300 lines is clean."""
+        """bắt-lỗi (red at e92d4d2: no studio_doctypes): WC4 WARN at 301 lines; 300 lines is clean."""
         pad = "Một dòng đệm.\n"
         base = GOOD_WORKFLOW.count("\n")
         ok = D.lint_workflow(Path("w.md"), GOOD_WORKFLOW + pad * (300 - base))
         self.assertEqual([], ok)
         found = D.lint_workflow(Path("w.md"), GOOD_WORKFLOW + pad * (301 - base))
-        self.assertEqual(["WF4"], codes(found))
+        self.assertEqual(["WC4"], codes(found))
         self.assertEqual("WARN", found[0]["level"])
         self.assertEqual(301, found[0]["line"])
 
@@ -271,11 +271,11 @@ class CheckCommandTests(TmpCase):
         self.assertEqual((0, ""), (code, err), out)
         code, out, err = cli("check", str(FIX / "workflows" / "wf1-no-conclusion.md"))
         self.assertEqual(1, code, err)
-        self.assertIn("ERROR WF1", out)
+        self.assertIn("ERROR WC1", out)
         long_flow = self.write("workflows/long.md", GOOD_WORKFLOW + "Một dòng đệm.\n" * 300)
         code, out, err = cli("check", str(long_flow))
         self.assertEqual(0, code, err)
-        self.assertIn("WARN  WF4", out)
+        self.assertIn("WARN  WC4", out)
 
     def test_check_workflow_by_type_outside_workflows_folder(self):
         """bắt-lỗi (red at e92d4d2: exit 2 `not available yet`): FR8.1 `type: workflow` in the frontmatter is enough, wherever the file lies; --json reports type and findings."""
@@ -401,7 +401,7 @@ class DoctorDocsTests(TmpCase):
         self.assertEqual(["RL4"], [c["code"] for c in docs["CLAUDE.md"]["codes"]])
         self.assertEqual("workflow", docs["wf3.md"]["type"])
         wf3 = docs["wf3.md"]["codes"][0]
-        self.assertEqual(("WF3", "ERROR", "workflows/wf3.md"), (wf3["code"], wf3["level"], wf3["file"]))
+        self.assertEqual(("WC3", "ERROR", "workflows/wf3.md"), (wf3["code"], wf3["level"], wf3["file"]))
         self.assertEqual([], docs["ok.md"]["codes"])
 
     def test_docs_key_absent_without_the_flag_and_totals_unchanged(self):

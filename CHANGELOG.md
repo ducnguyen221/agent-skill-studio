@@ -10,7 +10,7 @@ Chặng 3 (agent-skill-studio:SPR-04): skill thứ hai `skill-curator`, lệnh `
 - Lệnh `catalog`: một dòng mỗi skill nguồn (repo, phiên bản, băm cây, lỗi `doctor`, `model_evaluated`, khoá `metadata.opcos_*`); ra màn hình, JSON (`--json`, `--out`, schema `1`) hoặc `CATALOG.md` (`--md`).
 - `catalog --installed claude,codex,antigravity` so bản đã cài với bản nguồn; `catalog --overlap` gắn nhãn cặp có thể trùng kèm bằng chứng và gợi ý cố định.
 - `doctor --roots-from opcos` đọc gốc skill từ OpcOS và tìm skill theo manifest plugin; `--by-pack` gom theo gói; `--docs` kiểm tài liệu workflow và file luật; ngân sách chữ cho `--profile opcos`.
-- Mã kiểm `WF1`–`WF4` (workflow), `RL1`–`RL4` (file luật) và `SEC` (secret) theo `standards/DOC_TYPES.md`.
+- Mã kiểm `WC1`–`WC4` (workflow), `RL1`–`RL4` (file luật) và `SEC` (secret) theo `standards/DOC_TYPES.md`.
 - Site `docs/`: trang Cách dùng nói về `catalog` và skill `skill-curator`.
 
 ### Sửa

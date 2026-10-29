@@ -5,7 +5,7 @@ updated: 2026-10-28
 ---
 # Doc Types — luật cho ba loại tài liệu
 
-> **Kết luận:** tài liệu agent đọc thuộc ba loại, mỗi loại một bộ luật: skill, workflow / quy trình, file luật agent. Skill nhận bằng tên file `SKILL.md`; workflow và file luật nhận bằng `type:` ở frontmatter (`workflow`, `rules`) rồi tên file hoặc thư mục; không nhận được loại nào thì `check` thoát 2, không đoán. `check` và `doctor --docs` kiểm theo file này: workflow `WF1`–`WF4`, file luật `RL1`–`RL4`, secret `SEC`.
+> **Kết luận:** tài liệu agent đọc thuộc ba loại, mỗi loại một bộ luật: skill, workflow / quy trình, file luật agent. Skill nhận bằng tên file `SKILL.md`; workflow và file luật nhận bằng `type:` ở frontmatter (`workflow`, `rules`) rồi tên file hoặc thư mục; không nhận được loại nào thì `check` thoát 2, không đoán. `check` và `doctor --docs` kiểm theo file này: workflow `WC1`–`WC4`, file luật `RL1`–`RL4`, secret `SEC`.
 
 ## Skill
 

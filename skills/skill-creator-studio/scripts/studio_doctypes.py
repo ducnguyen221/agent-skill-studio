@@ -16,9 +16,9 @@ import studio_const as C
 import studio_fs as fs
 
 RULES_NAMES = ("agents.md", "claude.md", "gemini.md")  # a rules file by its name alone (letter case ignored)
-WORKFLOW_MAX_LINES = 300  # WF4
+WORKFLOW_MAX_LINES = 300  # WC4
 RULES_MAX_LINES = 200  # RL1
-CONCLUSION_WINDOW = 15  # WF1: the Kết luận line sits within this many lines of the body start
+CONCLUSION_WINDOW = 15  # WC1: the Kết luận line sits within this many lines of the body start
 CONCLUSION_RE = re.compile(r"^(?:>\s*)?\*\*Kết luận(?::\*\*|\*\*:)", re.IGNORECASE)
 HEADING_RE = re.compile(r"^ {0,3}(#{1,6})\s+(.*)$")
 NUMBERED_RE = re.compile(r"^\s*\d+[.)]\s+\S")
@@ -107,14 +107,14 @@ def _secret_findings(path: Path, lines: list) -> list:
 
 
 def lint_workflow(path: Path, text: str) -> list:
-    """WF1 no `Kết luận` line in the first 15 body lines, WF2 no numbered list under a Bước/Steps heading, WF3 no Xong khi/Done when heading (ERROR);
-    WF4 more than 300 lines (WARN); SEC a secret (ERROR). `standards/DOC_TYPES.md`, section Workflow."""
+    """WC1 no `Kết luận` line in the first 15 body lines, WC2 no numbered list under a Bước/Steps heading, WC3 no Xong khi/Done when heading (ERROR);
+    WC4 more than 300 lines (WARN); SEC a secret (ERROR). `standards/DOC_TYPES.md`, section Workflow."""
     lines = unicodedata.normalize("NFC", text).splitlines()  # a file saved decomposed still says `Kết luận`
     start = _body_start(lines)
     headings, _fences, inside = _structure(lines, start)
     findings = []
     if not any(CONCLUSION_RE.match(lines[i].lstrip()) for i in range(start, min(len(lines), start + CONCLUSION_WINDOW)) if i not in inside):
-        findings.append(fs.emit("ERROR", "WF1", path, start + 1, "no `> **Kết luận:**` line in the first %d lines of the body; say first what the workflow does and what comes out" % CONCLUSION_WINDOW))
+        findings.append(fs.emit("ERROR", "WC1", path, start + 1, "no `> **Kết luận:**` line in the first %d lines of the body; say first what the workflow does and what comes out" % CONCLUSION_WINDOW))
     stepped = False
     for position, (index, level, title) in enumerate(headings):
         if not any(word in title.casefold() for word in ("bước", "steps")):
@@ -124,11 +124,11 @@ def lint_workflow(path: Path, text: str) -> list:
             stepped = True
             break
     if not stepped:
-        findings.append(fs.emit("ERROR", "WF2", path, 0, "no numbered list under a heading with `Bước` or `Steps`; write the steps as 1. 2. 3., each one checkable"))
+        findings.append(fs.emit("ERROR", "WC2", path, 0, "no numbered list under a heading with `Bước` or `Steps`; write the steps as 1. 2. 3., each one checkable"))
     if not any(word in title.casefold() for _i, _l, title in headings for word in ("xong khi", "done when")):
-        findings.append(fs.emit("ERROR", "WF3", path, 0, "no `Xong khi` / `Done when` heading; say how to tell the workflow is finished and where to go back when a check fails"))
+        findings.append(fs.emit("ERROR", "WC3", path, 0, "no `Xong khi` / `Done when` heading; say how to tell the workflow is finished and where to go back when a check fails"))
     if len(lines) > WORKFLOW_MAX_LINES:
-        findings.append(fs.emit("WARN", "WF4", path, WORKFLOW_MAX_LINES + 1, "%d lines, above %d; move the rarely used part to a linked file and say when to read it" % (len(lines), WORKFLOW_MAX_LINES)))
+        findings.append(fs.emit("WARN", "WC4", path, WORKFLOW_MAX_LINES + 1, "%d lines, above %d; move the rarely used part to a linked file and say when to read it" % (len(lines), WORKFLOW_MAX_LINES)))
     findings.extend(_secret_findings(path, lines))
     return findings
 

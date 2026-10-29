@@ -12,7 +12,7 @@
       "src": "CHANGELOG.md",
       "out": "docs/CHANGELOG/index.html",
       "title": "Changelog",
-      "sha256": "24f12f9ba76f5d861b1999fffe40a9e10d360bd2e256d95d7c67d61e7c722a26"
+      "sha256": "8ae333ef764e0fd84780136e3a9975ca58cb2261d637b7440626e8df2e3bfd5b"
     },
     {
       "src": "CLAUDE.md",
@@ -132,7 +132,7 @@
       "src": "standards/DOC_TYPES.md",
       "out": "docs/standards/DOC_TYPES/index.html",
       "title": "Doc Types — luật cho ba loại tài liệu",
-      "sha256": "2a1d363186439ce598d030a55d18ef949abc6e76189b0ef4a79034617867a2e3"
+      "sha256": "e0f4da88d220a4882328c06160523d3869c367313f0a17236dc5bf5252f36d02"
     },
     {
       "src": "standards/EVALUATION_STANDARD.md",
