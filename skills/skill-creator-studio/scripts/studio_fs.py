@@ -14,6 +14,7 @@ import os
 import re
 import stat
 import sys
+import threading
 from pathlib import Path
 
 import studio_const as C
@@ -698,19 +699,57 @@ def pin_chain(anchor, path):
         raise ValueError("%s is not below the anchor %s" % (path_text, anchor_text))
     relative = path_text[len(anchor_text):] if os.path.normcase(parent).startswith(os.path.normcase(anchor_text)) else ""
     names = [part for part in re.split(r"[\\/]+", os.path.dirname(relative)) if part]
-    with contextlib.ExitStack() as stack:
+    session = getattr(_session, "held", None)
+    with contextlib.ExitStack() as own:
+        # Inside a pin_session the folders go on the session's stack and are remembered, so a folder already held is not opened again; the chain is still
+        # walked folder by folder from the anchor down, and a folder opened earlier in the session was opened the same way (as itself, not through a link).
+        stack = _session.stack if session is not None else own
+        held = session if session is not None else {}
+        current = anchor_text
+        key = (os.path.normcase(current), True)
         if os.name == "nt":
-            current = anchor_text
-            _pin_component_windows(current, stack, follow=True)
+            if key not in held:
+                _pin_component_windows(current, stack, follow=True)
+                held[key] = None
             for name in names:
                 current = os.path.join(current, name)
-                _pin_component_windows(current, stack)
+                key = (os.path.normcase(current), False)
+                if key not in held:
+                    _pin_component_windows(current, stack)
+                    held[key] = None
             yield _Pin(None)
         else:
-            fd = _pin_component(anchor_text, None, stack, follow=True)
+            if key not in held:
+                held[key] = _pin_component(anchor_text, None, stack, follow=True)
+            fd = held[key]
             for name in names:
-                fd = _pin_component(name, fd, stack)
+                current = os.path.join(current, name)
+                key = (os.path.normcase(current), False)
+                if key not in held:
+                    held[key] = _pin_component(name, fd, stack)
+                fd = held[key]
             yield _Pin(fd)
+
+
+_session = threading.local()
+
+
+@contextlib.contextmanager
+def pin_session():
+    """Keep the folders that `pin_chain` opens held until this block ends, and open each folder once: a caller that reads many files of one tree (the tree hash of a
+    skill) pays for one chain of folders, not one chain per file. The rule is the same as for a single pin: every folder below the anchor is opened as itself and a link
+    is refused; what is held is released when the block ends, an exception included (FR2.3). Only for reads: a folder held without FILE_SHARE_DELETE cannot be renamed
+    or removed by this process either. A session inside a session is the outer one."""
+    if getattr(_session, "held", None) is not None:
+        yield
+        return
+    stack = contextlib.ExitStack()
+    _session.stack, _session.held = stack, {}
+    try:
+        yield
+    finally:
+        _session.stack, _session.held = None, None
+        stack.close()
 
 
 class _PinnedFile:
@@ -753,12 +792,12 @@ def _open_read_fd(path: str, dir_fd) -> int:
 
 def _pin_for(path, anchor, stack) -> tuple:
     """(path, dir_fd) for an open under `anchor`: the chain from the anchor to the folder of `path` is pinned on `stack` and `path` is made absolute. A path that is
-    not below `anchor` is pinned only from the folder that holds it (a caller that names the wrong anchor gets a weaker pin, not an error; `pin_chain` itself raises ValueError). Without an anchor nothing is pinned: (path, None)."""
+    not below `anchor` as written is UnsafeOpen (a caller that names an anchor spelled another way, an 8.3 name or an alias, gets a refusal, never a weaker pin). Without an anchor nothing is pinned: (path, None)."""
     if anchor is None:
         return path, None
     absolute = os.path.abspath(os.fspath(path))
-    if not lexically_inside(os.path.dirname(absolute), anchor):
-        anchor = os.path.dirname(absolute)
+    if not lexically_inside(os.path.dirname(absolute), anchor):  # not below the anchor as written: a weaker pin from its own folder would follow a link there (RF-S1)
+        raise UnsafeOpen("%s is not below the anchor %s as written; not read" % (absolute, os.path.abspath(os.fspath(anchor))))
     return absolute, stack.enter_context(pin_chain(anchor, absolute)).dir_fd
 
 

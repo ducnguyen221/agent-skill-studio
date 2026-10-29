@@ -514,6 +514,13 @@ def _semantic_file_sha256(path: Path, rel: str, anchor: Path | None = None) -> s
 
 
 def _tree_digest(skill: Path, markers: tuple, semantic: bool, anchor: Path | None = None) -> str | None:
+    """`_tree_digest_walk` with the folder chains held for the whole skill: the folders from the anchor down are opened once while its files are read, and released
+    when the digest is done (fs.pin_session), instead of one chain of folders per file."""
+    with fs.pin_session():
+        return _tree_digest_walk(skill, markers, semantic, anchor)
+
+
+def _tree_digest_walk(skill: Path, markers: tuple, semantic: bool, anchor: Path | None = None) -> str | None:
     """The walk behind tree_sha256 and tree_digest_semantic: one line per file, hashed byte for byte or by `_semantic_file_sha256`. The chain of folders from
     `anchor` (the scan root; default the folder that holds the skill) down to each file is pinned while it is read."""
     skill = Path(os.path.abspath(os.fspath(skill)))
