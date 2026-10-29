@@ -230,7 +230,7 @@ def cmd_new(args) -> int:
         escaped = json.dumps(args.description, ensure_ascii=False)
         content = re.sub(r'^description: .*$', "description: " + escaped, content, count=1, flags=re.MULTILINE)
         content = content.replace("# Skill Template", "# " + name.replace("-", " ").title(), 1)
-        skill_ok = write_new(p, content, files, anchor=target.parent)  # the folders from the output folder down are pinned: a folder swapped for a link since the checks is not written through
+        skill_ok = write_new(p, content.replace("\n", os.linesep), files, anchor=target.parent)  # the line end this OS writes by default, as write_text did (the contract records «native»); the folders from the output folder down are pinned: a folder swapped for a link since the checks is not written through
         # Evals are outside runtime; do not invent test prompts or scores.
         _make_dirs(ef, folders)
         _make_dirs(ef / "fixtures", folders)
