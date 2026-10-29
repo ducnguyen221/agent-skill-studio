@@ -48,7 +48,7 @@ class ShallowestAnchorTests(Round3Case):
         ext = self.tmp / "ext"
         ext.mkdir()
         (ext / "doc.md").write_text("OUTSIDE-SECRET", encoding="utf-8")
-        os.rmdir(private / "lnk")
+        os.unlink(private / "lnk") if os.path.islink(private / "lnk") else os.rmdir(private / "lnk")  # a POSIX symlink or a Windows junction
         _links.dir_link(ext, private / "lnk")  # the swap, after the anchor was chosen
         with self.assertRaises(fs.UnsafeOpen):
             fs.read_capped(path, None, anchor=anchor)
