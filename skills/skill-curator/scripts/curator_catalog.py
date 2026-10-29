@@ -500,16 +500,17 @@ def _plain_roots(paths: list, skip_markers: tuple) -> tuple:
     return roots, skills, skipped
 
 
-def _harness_problem(out: Path, flag: str) -> str | None:
-    """Why `out` may not be written under a harness's own folder (~/.claude, ~/.codex, ~/.gemini): the files there belong to the harness."""
+def _harness_problem(out: Path, flag: str, home: Path | None = None) -> str | None:
+    """Why `out` may not be written under a harness's own folder (~/.claude, ~/.codex, ~/.gemini): the files there belong to the harness. `home` is the folder
+    given with --home: its harness folders are guarded like the real home's."""
     try:
         real = out.parent.resolve() / out.name
     except (OSError, RuntimeError):
         return None
-    home = Path(os.path.expanduser("~"))
-    for name in HARNESS_DIRS:
-        if fs.valid_resolved_under(real, home / name):
-            return "%s must not be inside a harness folder (%s): %s" % (flag, name, out)
+    for owner in (Path(os.path.expanduser("~")), home):
+        for name in HARNESS_DIRS:
+            if owner is not None and fs.valid_resolved_under(real, owner / name):
+                return "%s must not be inside a harness folder (%s): %s" % (flag, name, out)
     return None
 
 
@@ -576,7 +577,7 @@ def run(args) -> int:
     for value, kind, flag in ((args.out, "catalog-json", "--out"), (args.md, "catalog-md", "--md")):
         if value:
             target = Path(os.path.abspath(os.path.expanduser(value)))
-            problem = doctor.out_problem(target, roots, repo, [], False, skip_markers, kind=kind) or _harness_problem(target, flag)
+            problem = doctor.out_problem(target, roots, repo, [], False, skip_markers, kind=kind) or _harness_problem(target, flag, Path(os.path.abspath(os.path.expanduser(args.home))) if args.home else None)
             if problem:
                 _say("ERROR: %s" % problem, sys.stderr)
                 return 2
@@ -612,9 +613,8 @@ def run(args) -> int:
     for target, kind, flag in targets:
         text = json.dumps(report, ensure_ascii=False, indent=2) + "\n" if kind == "catalog-json" else render_md(report, _command_text(args))
         try:
-            with open(target, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(text)
-        except OSError as exc:
+            fs.write_replace(target, text.encode("utf-8"))
+        except OSError as exc:  # UnsafeOpen is one
             _say("ERROR: cannot write %s: %s" % (flag, exc), sys.stderr)
             return 2
     totals = report["totals"]

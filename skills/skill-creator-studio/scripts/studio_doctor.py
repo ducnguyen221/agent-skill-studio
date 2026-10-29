@@ -565,9 +565,8 @@ def cmd_doctor(args) -> int:
         report["roots_status"] = opcos
     if out is not None:
         try:
-            with open(out, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
-        except OSError as exc:
+            fs.write_replace(out, (json.dumps(report, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+        except OSError as exc:  # UnsafeOpen is one
             print("ERROR: cannot write --out: %s" % exc, file=sys.stderr)
             return 2
     totals = report["totals"]

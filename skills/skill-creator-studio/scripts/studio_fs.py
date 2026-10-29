@@ -779,6 +779,87 @@ def create_exclusive(path, anchor=None):
         raise
 
 
+def _names_a_folder(info) -> bool:
+    """True for a folder or a folder link by its lstat: a directory, or (Windows) the directory attribute, which a junction and a directory symlink carry."""
+    return stat.S_ISDIR(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x10)
+
+
+def _refuse_folder_target(target: Path, dir_fd) -> None:
+    """UnsafeOpen when the name `target` is a folder or a folder link now (a file, a file link or nothing is fine: a rename replaces the name itself)."""
+    try:
+        info = os.lstat(target.name, dir_fd=dir_fd) if dir_fd is not None else os.lstat(target)
+    except FileNotFoundError:
+        return
+    if _names_a_folder(info):
+        raise UnsafeOpen("output is a folder or a folder link: %s" % target)
+
+
+class _Staged:
+    """A file written beside its target under a temp name, not yet in place: `commit()` renames it over the target, `discard()` removes it."""
+
+    def __init__(self, target: Path, tmp: Path, anchor: Path):
+        self.target, self.tmp, self.anchor = target, tmp, anchor
+
+    def commit(self) -> None:
+        with pin_chain(self.anchor, self.target) as pin:
+            _refuse_folder_target(self.target, pin.dir_fd)
+            if pin.dir_fd is not None:
+                os.replace(self.tmp.name, self.target.name, src_dir_fd=pin.dir_fd, dst_dir_fd=pin.dir_fd)
+            else:
+                os.replace(self.tmp, self.target)
+
+    def discard(self) -> None:
+        """Remove the temp file; never raises. A folder on the way that is a link now is not entered (the temp stays, it holds only what this run wrote)."""
+        try:
+            with pin_chain(self.anchor, self.tmp) as pin:
+                os.unlink(self.tmp.name, dir_fd=pin.dir_fd) if pin.dir_fd is not None else os.unlink(self.tmp)
+        except (OSError, ValueError):
+            pass
+
+
+def stage_write(target, fill, anchor=None) -> _Staged:
+    """Write a file next to `target` under a temp name (`.<name>.<8 hex>.spr05tmp`): `fill(handle)` writes its bytes, then it is flushed and fsynced. The target
+    itself is not touched until `commit()`. The chain of folders from `anchor` (default `anchor_for(target)`) down to the target's folder is pinned for every step; a
+    target that is a folder or a folder link is refused before anything is written. An error removes the temp file and is raised again."""
+    target = Path(os.path.abspath(os.fspath(target)))
+    anchor = Path(os.path.abspath(os.fspath(anchor))) if anchor is not None else anchor_for(target)
+    if not lexically_inside(target.parent, anchor):
+        anchor = target.parent
+    tmp = target.with_name(".%s.%s%s" % (target.name, os.urandom(4).hex(), C.REPLACE_TMP_SUFFIX))
+    with pin_chain(anchor, target) as pin:
+        _refuse_folder_target(target, pin.dir_fd)
+        fd = _create_new_fd(os.fspath(tmp), pin.dir_fd)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                fill(handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException:
+            try:
+                os.unlink(tmp.name, dir_fd=pin.dir_fd) if pin.dir_fd is not None else os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    return _Staged(target, tmp, anchor)
+
+
+def replace_with(target, fill, anchor=None) -> None:
+    """Replace `target` by what `fill(handle)` writes: staged beside it and renamed over it, so the old file stays as it was until the new one is complete."""
+    staged = stage_write(target, fill, anchor)
+    try:
+        staged.commit()
+    except BaseException:
+        staged.discard()
+        raise
+
+
+def write_replace(target, data: bytes, anchor=None) -> None:
+    """Replace `target` by `data` atomically: the bytes go to a temp file beside it (create_exclusive semantics, the chain from `anchor` pinned) and an os.replace puts
+    it over the name, which replaces a link at the name instead of writing through it. A folder or folder link at the name is UnsafeOpen. Any error removes the temp file and
+    leaves the old target as it was."""
+    replace_with(target, lambda handle: handle.write(data), anchor)
+
+
 def link_in_chain(path, stop):
     """The first link/junction among `path` and its parents up to and including `stop` (all of them when `stop` is not above `path`), else None."""
     current, stop = Path(path), Path(stop)

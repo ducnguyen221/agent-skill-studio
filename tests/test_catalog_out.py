@@ -125,14 +125,7 @@ class CatalogOutTests(TmpCase):
     def test_write_failure_is_exit_2(self):
         """bắt-lỗi: FR2.3 a file that cannot be written gives exit 2 and a message, not a traceback."""
         target = self.safe / "catalog.json"
-        real_open = open
-
-        def failing(path, mode="r", *a, **k):
-            if "w" in mode and Path(path) == target:
-                raise OSError(13, "denied")
-            return real_open(path, mode, *a, **k)
-
-        with mock.patch("builtins.open", failing):
+        with mock.patch("os.replace", side_effect=OSError(13, "denied")):  # SPR-05 TK4: the file is written under a temp name and renamed over the target; the rename is where a write can fail
             code, out, err = run_catalog("--roots-from", "opcos", "--out", str(target), cwd=self.tree)
         self.assertEqual(code, 2, out + err)
         self.assertIn("cannot write --out", err)
