@@ -67,7 +67,7 @@ def short_description(text: str, limit: int = DESC_MAX) -> str:
     return cut.rstrip(" ,;:.") + "…"
 
 
-def _read_skill_meta(skill: Path) -> tuple:
+def _read_skill_meta(skill: Path, anchor: Path | None = None) -> tuple:
     """(name, description, opcos keys, notes) from SKILL.md. A key `metadata.opcos_<k>` becomes {k: value cut to DESC_MAX}; a value that is a list or a
     mapping is left out with a note (FR7.1). An unreadable or refused SKILL.md gives the folder name, no description and no keys."""
     manifest = skill / "SKILL.md"
@@ -75,7 +75,7 @@ def _read_skill_meta(skill: Path) -> tuple:
     if fs.is_link(manifest) or fs.path_is_cloud(manifest):
         return name, desc, keys, notes
     try:
-        text, too_big = fs.read_capped(manifest, C.DOCTOR_MAX_FILE_BYTES, single_link=True)
+        text, too_big = fs.read_capped(manifest, C.DOCTOR_MAX_FILE_BYTES, single_link=True, anchor=skill if anchor is None else anchor)
     except (OSError, UnicodeError):
         return name, desc, keys, notes
     if too_big:

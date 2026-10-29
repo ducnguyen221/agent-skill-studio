@@ -81,7 +81,7 @@ def _read_json(path: Path, limit: int, markers: tuple, base: Path, single_link: 
     if problem:
         raise RootError(problem[0], "%s %s (%s)" % (path.name, problem[1], problem[0]))
     try:
-        with fs.open_nofollow_read(path, expect_stat=os.lstat(path), single_link=single_link) as handle:
+        with fs.open_nofollow_read(path, expect_stat=os.lstat(path), single_link=single_link, anchor=base) as handle:
             data = handle.read(limit + 1)
     except fs.UnsafeOpen as exc:
         if "hard link" in str(exc):
@@ -437,14 +437,14 @@ def collect_skills(roots: list, markers: tuple = C.CLOUD_MARKERS) -> tuple:
     return skills, skipped
 
 
-def _file_sha256(path: Path) -> str | None:
+def _file_sha256(path: Path, anchor: Path | None = None) -> str | None:
     """SHA-256 of the file's bytes (read in blocks through open_nofollow_read, no CRLF folding), None above TREE_FILE_MAX or when it cannot be opened safely."""
     try:
         info = os.lstat(path)
         if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_size > TREE_FILE_MAX:
             return None
         digest, total = hashlib.sha256(), 0
-        with fs.open_nofollow_read(path, expect_stat=info, single_link=False) as handle:
+        with fs.open_nofollow_read(path, expect_stat=info, single_link=False, anchor=anchor) as handle:
             while True:
                 block = handle.read(1 << 20)
                 if not block:
@@ -457,13 +457,13 @@ def _file_sha256(path: Path) -> str | None:
         return None
 
 
-def _file_bytes(path: Path) -> bytes | None:
+def _file_bytes(path: Path, anchor: Path | None = None) -> bytes | None:
     """The bytes of a regular file, read through open_nofollow_read; None above TREE_FILE_MAX or when it cannot be opened safely (the rules of _file_sha256)."""
     try:
         info = os.lstat(path)
         if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_size > TREE_FILE_MAX:
             return None
-        with fs.open_nofollow_read(path, expect_stat=info, single_link=False) as handle:
+        with fs.open_nofollow_read(path, expect_stat=info, single_link=False, anchor=anchor) as handle:
             data = handle.read(TREE_FILE_MAX + 1)
         return data if len(data) <= TREE_FILE_MAX else None
     except OSError:  # UnsafeOpen is one
@@ -490,10 +490,10 @@ def _dropped_frontmatter_lines(head: list, findings: list) -> list:
     return [head[i].rstrip() for i in sorted(wanted) if 0 < i < len(head)]
 
 
-def _semantic_file_sha256(path: Path, rel: str) -> str | None:
+def _semantic_file_sha256(path: Path, rel: str, anchor: Path | None = None) -> str | None:
     """SHA-256 of a file as the semantic tree sees it: SKILL.md = its parsed frontmatter (sorted keys) + its body, CRLF folded to LF; another text file
     (SEMANTIC_TEXT_SUFFIXES) with CRLF folded to LF; any other file as its bytes. A SKILL.md that is not UTF-8 or has no parsable frontmatter counts as text."""
-    data = _file_bytes(path)
+    data = _file_bytes(path, anchor)
     if data is None:
         return None
     if rel == "SKILL.md":
@@ -541,7 +541,7 @@ def _tree_digest(skill: Path, markers: tuple, semantic: bool) -> str | None:
         if fs.secret_file_name(path.name):
             return None
         rel = path.relative_to(skill).as_posix()
-        digest = _semantic_file_sha256(path, rel) if semantic else _file_sha256(path)
+        digest = _semantic_file_sha256(path, rel, skill) if semantic else _file_sha256(path, skill)
         if digest is None:
             return None
         lines.append((rel, digest))

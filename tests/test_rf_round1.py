@@ -171,9 +171,9 @@ class FmtIdentityTests(unittest.TestCase):
         calls = []
         real = studio_fs.open_nofollow_read
 
-        def spy(path, expect_stat=None, single_link=True):
+        def spy(path, expect_stat=None, single_link=True, anchor=None):  # SPR-05 TK2: the call also carries the anchor of the pinned folder chain
             calls.append((Path(path).name, expect_stat is not None))
-            return real(path, expect_stat, single_link)
+            return real(path, expect_stat, single_link, anchor)
 
         with mock.patch.object(studio_fs, "open_nofollow_read", spy):
             run("fmt", "--check", str(self.path))

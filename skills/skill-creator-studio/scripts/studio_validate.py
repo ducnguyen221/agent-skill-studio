@@ -30,17 +30,21 @@ def desc_chars_like_budget(meta: dict) -> int:
 
 def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: bool = False, target: str = "portable",
                    profile: str = "portable", allow_links_under: Path | None = None, max_file_bytes: int | None = None,
-                   skip_markers: tuple = ()) -> list[dict]:
+                   skip_markers: tuple = (), anchor: Path | None = None) -> list[dict]:
     """Findings for one skill. profile "opcos" (doctor): an existing link that leaves the skill but stays under `allow_links_under`
     is a WARN ST6, the OPCOS_PROVENANCE_KEYS are WARN FM4, and no `metadata.opcos_*` key is a NOTE MD1. ST3 and ST8 apply to every profile.
     `max_file_bytes` (doctor passes DOCTOR_MAX_FILE_BYTES): a SKILL.md or reference above it is not read, WARN SZ1. `skip_markers` extend CLOUD_MARKERS.
-    A symlink, junction or cloud placeholder inside the skill is reported (SEC, SZ2) and never opened, listed or followed."""
+    A symlink, junction or cloud placeholder inside the skill is reported (SEC, SZ2) and never opened, listed or followed. Every file is opened with the folders
+    from `anchor` (the scan root; default the skill folder) down to it pinned, so a folder swapped for a link after the checks is not read through (SPR-05 FR2.1)."""
     markers = C.CLOUD_MARKERS + tuple(skip_markers)
     given = folder / "SKILL.md"
     problem = fs.input_file_problem(given, markers)  # the spelling given first: a zone folder is not resolved, stat-ed or read (FR10.1)
     if problem:
         return [fs.emit("ERROR", "INPUT", given, 0, "SKILL.md %s" % problem)]
     folder = folder.resolve()
+    pin_from = folder if anchor is None else Path(os.path.abspath(os.fspath(anchor)))
+    if not fs.lexically_inside(folder, pin_from):  # resolve() followed a link out of the scan root: nothing there is read
+        return [fs.emit("ERROR", "INPUT", given, 0, "SKILL.md lies behind a link that leaves the scan root; not read")]
     manifest = folder / "SKILL.md"
     problem = fs.input_file_problem(manifest, markers) if manifest != given else None  # then the real path
     if not problem and fs.is_link(manifest):  # open() follows a link: refused, as `package` does (ensure_distributable)
@@ -50,7 +54,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     if not manifest.is_file():
         return [fs.emit("ERROR", "FM1", manifest, 0, "SKILL.md is missing")]
     try:
-        text, too_big = fs.read_capped(manifest, max_file_bytes, single_link=True)
+        text, too_big = fs.read_capped(manifest, max_file_bytes, single_link=True, anchor=pin_from)
     except fs.UnsafeOpen as exc:  # a link raced in, or a second name (hard link): refused before a byte is read
         return [fs.emit("ERROR", "INPUT", manifest, 0, "SKILL.md %s; not read" % ("has more than one name (hard link)" if "hard link" in str(exc) else "is a link or not a plain file"))]
     except UnicodeError:
@@ -185,7 +189,7 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
             if p.resolve() not in refs_linked:
                 findings.append(fs.emit("WARN", "ST4", p, 0, "reference Markdown is not directly linked from SKILL.md"))
             try:
-                ref_text, ref_too_big = fs.read_capped(p, max_file_bytes)
+                ref_text, ref_too_big = fs.read_capped(p, max_file_bytes, anchor=pin_from)
             except fs.UnsafeOpen:  # swapped for a link after the listing: never read
                 findings.append(fs.emit("ERROR", "SEC", p, 0, "reference is a link or not a plain file; not read"))
                 continue
@@ -260,7 +264,7 @@ def resolve_check_path(arg: str) -> tuple:
     if path.suffix.casefold() != ".md":
         raise ValueError(unknown)
     try:
-        text, too_big = fs.read_capped(path, C.DOCTOR_MAX_FILE_BYTES, single_link=True)
+        text, too_big = fs.read_capped(path, C.DOCTOR_MAX_FILE_BYTES, single_link=True, anchor=fs.anchor_for(path))
     except (OSError, UnicodeError) as exc:
         raise ValueError("%s cannot be read as UTF-8 text: %s" % (path, exc))
     if too_big:

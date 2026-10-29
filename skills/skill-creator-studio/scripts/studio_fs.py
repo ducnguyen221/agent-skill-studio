@@ -7,6 +7,7 @@ Internal module of `studio.py`; do not run it. It reaches the constants through 
 from __future__ import annotations
 
 import ast
+import contextlib
 import errno
 import functools
 import os
@@ -562,21 +563,150 @@ def _open_no_reparse(path: str) -> int:
     return fd
 
 
+def anchor_for(path, cwd=None) -> Path:
+    """The folder a chain of folders is pinned from for `path`: the working folder when `path` is below it, else the folder that holds `path`. The same
+    rule `resolve_check_path` uses, so a link ABOVE the anchor (macOS /tmp, a OneDrive folder that changed owner) is accepted on purpose (FR2.2)."""
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    here = Path(os.path.abspath(os.fspath(cwd) if cwd is not None else os.getcwd()))
+    return here if os.path.normcase(here) in {os.path.normcase(p) for p in absolute.parents} else absolute.parent
+
+
+class _Pin:
+    """What `pin_chain` yields: `dir_fd` is the pinned folder that holds the file (a POSIX descriptor; None on Windows, where the full path is safe while pinned)."""
+
+    def __init__(self, dir_fd):
+        self.dir_fd = dir_fd
+
+
+def _pin_component(name: str, dir_fd: int, stack) -> int:
+    """POSIX: open one folder of the chain by `name` under the pinned `dir_fd` (None for the anchor, which is given as a path) without following a link."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(name, flags, dir_fd=dir_fd) if dir_fd is not None else os.open(name, flags)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.ENOTDIR, getattr(errno, "EMLINK", -1)):
+            try:
+                is_symlink = stat.S_ISLNK(os.lstat(name, dir_fd=dir_fd).st_mode if dir_fd is not None else os.lstat(name).st_mode)
+            except OSError:
+                is_symlink = False
+            if is_symlink:
+                raise UnsafeOpen("a folder on the path is a link: %s" % name) from exc
+        raise
+    stack.callback(os.close, fd)
+    return fd
+
+
+def _pin_component_windows(path: str, stack) -> None:
+    """Windows: open one folder of the chain as itself (FILE_LIST_DIRECTORY, reparse point not followed, BACKUP_SEMANTICS to open a folder) with a share mode
+    that has no FILE_SHARE_DELETE, so while the handle is held nobody can rename or remove the folder or one above it (a handle with only FILE_READ_ATTRIBUTES
+    would not block that). A reparse point on the way is refused; a folder another process holds open for delete cannot be pinned (winerror 32)."""
+    try:
+        import _winapi
+        import msvcrt
+    except ImportError as exc:
+        raise UnsafeOpen("safe open unavailable on this Python (no _winapi): %s" % path) from exc
+    try:
+        handle = _winapi.CreateFile(path, 0x1, 0x1 | 0x2, 0, 3, 0x00200000 | 0x02000000, 0)  # FILE_LIST_DIRECTORY; share read+write; OPEN_EXISTING
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 32:
+            raise UnsafeOpen("a folder on the path is in use: %s" % path) from exc
+        raise
+    try:
+        fd = msvcrt.open_osfhandle(handle, os.O_RDONLY)
+    except BaseException:
+        _winapi.CloseHandle(handle)
+        raise
+    stack.callback(os.close, fd)
+    info = os.fstat(fd)
+    if getattr(info, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT:
+        raise UnsafeOpen("a folder on the path is a link: %s" % path)
+    if not stat.S_ISDIR(info.st_mode):
+        raise UnsafeOpen("a folder on the path is not a folder: %s" % path)
+
+
+@contextlib.contextmanager
+def pin_chain(anchor, path):
+    """Hold every folder from `anchor` (included) down to the folder of `path` open, as itself and not through a link, until the with block ends (an exception
+    included): between the check and the open nobody can swap one of them for a junction or symlink. `path` must be below `anchor` by spelling (os.path.abspath,
+    never resolve: `..`, an 8.3 name or a name:stream stay what they are), else ValueError. A link on the way is UnsafeOpen. POSIX holds directory descriptors,
+    and the caller must do every later step through `.dir_fd` (a descriptor does not stop a rename); Windows holds handles without FILE_SHARE_DELETE, which do.
+    The anchor is given in the same spelling the path will be opened by (the resolved root where the scan resolved it). Never asks is_link/link_in_chain:
+    those are the early checks, and a pin that leaned on them would vanish with them."""
+    anchor_text, path_text = os.path.abspath(os.fspath(anchor)), os.path.abspath(os.fspath(path))
+    parent = os.path.dirname(path_text)
+    if not lexically_inside(parent, anchor_text):
+        raise ValueError("%s is not below the anchor %s" % (path_text, anchor_text))
+    relative = path_text[len(anchor_text):] if os.path.normcase(parent).startswith(os.path.normcase(anchor_text)) else ""
+    names = [part for part in re.split(r"[\\/]+", os.path.dirname(relative)) if part]
+    with contextlib.ExitStack() as stack:
+        if os.name == "nt":
+            current = anchor_text
+            _pin_component_windows(current, stack)
+            for name in names:
+                current = os.path.join(current, name)
+                _pin_component_windows(current, stack)
+            yield _Pin(None)
+        else:
+            fd = _pin_component(anchor_text, None, stack)
+            for name in names:
+                fd = _pin_component(name, fd, stack)
+            yield _Pin(fd)
+
+
+class _PinnedFile:
+    """A binary file object that also holds the pinned folder chain until it is closed (a `with` block, or `close()`); every other attribute is the file's."""
+
+    def __init__(self, handle, stack):
+        self._handle, self._stack = handle, stack
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def __iter__(self):
+        return iter(self._handle)
+
+    def __getattr__(self, name):
+        return getattr(self._handle, name)
+
+    def close(self) -> None:
+        try:
+            self._handle.close()
+        finally:
+            self._stack.close()
+
+
+def _open_read_fd(path: str, dir_fd) -> int:
+    """The descriptor of `path` opened for reading as itself: Windows through `_open_no_reparse`, POSIX with O_NOFOLLOW (by name under `dir_fd` when pinned)."""
+    if os.name == "nt":
+        return _open_no_reparse(path)
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        return os.open(os.path.basename(path), flags, dir_fd=dir_fd) if dir_fd is not None else os.open(path, flags)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, getattr(errno, "EMLINK", -1)):
+            raise UnsafeOpen("source is a symlink: %s" % path) from exc
+        raise
+
+
 def open_nofollow_read(path, expect_stat=None, single_link: bool = True, anchor=None):
     """Open `path` for binary reading without following a link; return the file object. POSIX: O_NOFOLLOW. Windows: `_open_no_reparse` (CreateFile
     that opens a reparse point as itself, then refuses it). Both: the handle must be a regular file, with `expect_stat` (the lstat taken when the file was
-    checked) the same (st_dev, st_ino), and with `single_link` exactly one name. Any mismatch raises UnsafeOpen. `anchor` is for the pinned folder
-    chain (SPR-05 TK2) and is not used yet."""
-    if os.name == "nt":
-        fd = _open_no_reparse(os.fspath(path))
-    else:
-        try:
-            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-        except OSError as exc:
-            if exc.errno in (errno.ELOOP, getattr(errno, "EMLINK", -1)):
-                raise UnsafeOpen("source is a symlink: %s" % path) from exc
-            raise
+    checked) the same (st_dev, st_ino), and with `single_link` exactly one name. Any mismatch raises UnsafeOpen. With `anchor` the folders from the anchor down
+    to the file are pinned first (pin_chain) and stay pinned until the returned file is closed; a path that is not below `anchor` is pinned from its own folder."""
+    stack = contextlib.ExitStack()
+    fd = None
     try:
+        dir_fd = None
+        if anchor is not None:
+            absolute = os.path.abspath(os.fspath(path))
+            if not lexically_inside(os.path.dirname(absolute), anchor):
+                anchor = os.path.dirname(absolute)
+            dir_fd = stack.enter_context(pin_chain(anchor, absolute)).dir_fd
+            path = absolute
+        fd = _open_read_fd(os.fspath(path), dir_fd)
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
             raise UnsafeOpen("source is not a regular file: %s" % path)
@@ -584,12 +714,16 @@ def open_nofollow_read(path, expect_stat=None, single_link: bool = True, anchor=
             raise UnsafeOpen("source changed between check and copy: %s" % path)
         if single_link and info.st_nlink != 1:
             raise UnsafeOpen("source has %d names (hard link): %s" % (info.st_nlink, path))
-        return os.fdopen(fd, "rb")
+        handle = os.fdopen(fd, "rb")
+        fd = None
+        return _PinnedFile(handle, stack) if anchor is not None else handle
     except BaseException:
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        stack.close()
         raise
 
 

@@ -243,7 +243,7 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
                 raise fs.UnsafeOpen("export destination goes through a symlink or junction: %s" % linked, "EX6")
             if t.exists():  # only reachable with --force: replace the file, never write through it
                 t.unlink()
-            with fs.open_nofollow_read(source, checked[source]) as reader, fs.create_exclusive(t) as writer:
+            with fs.open_nofollow_read(source, checked[source], anchor=eval_dir) as reader, fs.create_exclusive(t) as writer:
                 shutil.copyfileobj(reader, writer)
         evals_dir.mkdir(parents=True, exist_ok=True)
         linked = fs.link_in_chain(evals_dir, dest)
@@ -284,7 +284,7 @@ def engine_repo_root() -> Path | None:
 
 def _read_text(path) -> str:
     """UTF-8 text of a plain file, opened without following a link and read up to DOCTOR_MAX_FILE_BYTES; ValueError when larger or not UTF-8."""
-    with fs.open_nofollow_read(path, os.lstat(path), single_link=False) as handle:
+    with fs.open_nofollow_read(path, os.lstat(path), single_link=False, anchor=fs.anchor_for(path)) as handle:
         data = handle.read(C.DOCTOR_MAX_FILE_BYTES + 1)
     if len(data) > C.DOCTOR_MAX_FILE_BYTES:
         raise ValueError("%s is larger than %d bytes" % (path, C.DOCTOR_MAX_FILE_BYTES))

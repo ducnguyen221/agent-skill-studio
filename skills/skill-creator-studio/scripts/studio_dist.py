@@ -39,7 +39,7 @@ def engine_extras(folder: Path) -> tuple[list[tuple[Path, Path]], list[dict]]:
     if problem:
         return [], [fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS %s; nothing is packaged" % problem)]
     try:
-        with fs.open_nofollow_read(deps, os.lstat(deps)) as handle:
+        with fs.open_nofollow_read(deps, os.lstat(deps), anchor=folder) as handle:
             text = handle.read(65536).decode("utf-8")
     except (fs.UnsafeOpen, OSError, UnicodeError) as exc:
         return [], [fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS cannot be read: %s" % exc)]
@@ -61,7 +61,7 @@ def engine_extras(folder: Path) -> tuple[list[tuple[Path, Path]], list[dict]]:
             findings.append(fs.emit("ERROR", "PACK", source, 0, "file exceeds 25 MB; review before shipping"))
         else:
             try:
-                with fs.open_nofollow_read(source, os.lstat(source)) as handle:
+                with fs.open_nofollow_read(source, os.lstat(source), anchor=ENGINE_DIR) as handle:
                     raw = handle.read().decode("utf-8")
             except (fs.UnsafeOpen, OSError, UnicodeError) as exc:
                 findings.append(fs.emit("ERROR", "PACK", source, 0, "engine file cannot be read: %s" % exc))
@@ -85,7 +85,11 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
     if problem:
         return [], [fs.emit("ERROR", "PACK", manifest, 0, "SKILL.md %s; nothing is packaged" % problem)]
     findings = validate.validate_skill(folder)
-    if manifest.is_file() and re.search(r"<!--\s*STUDIO-DRAFT", manifest.read_text(encoding="utf-8")):
+    try:
+        draft = manifest.is_file() and re.search(r"<!--\s*STUDIO-DRAFT", fs.read_capped(manifest, None, anchor=folder)[0])
+    except (OSError, UnicodeError) as exc:  # validate_skill read it a moment ago: a failure now is a swap
+        return [], findings + [fs.emit("ERROR", "PACK", manifest, 0, "SKILL.md cannot be read again (%s); nothing is packaged" % (str(exc) if isinstance(exc, fs.UnsafeOpen) else type(exc).__name__))]
+    if draft:
         findings.append(fs.emit("ERROR", "PACK", manifest, 0, "cannot package an unfinished template: remove draft marker after authoring"))
     files = []
     paths, links, dirs, cloud, cut = fs.walk_files(folder, skip_names=C.SKIP_DIRS)  # no rglob: links and cloud placeholders are listed, never entered or opened
@@ -119,7 +123,7 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
             continue
         if p.suffix.lower() in {".md", ".py", ".txt", ".json", ".yaml", ".yml", ".sh"}:
             try:
-                with fs.open_nofollow_read(p, info) as handle:
+                with fs.open_nofollow_read(p, info, anchor=folder) as handle:
                     raw = handle.read().decode("utf-8")
             except fs.UnsafeOpen as exc:
                 findings.append(fs.emit("ERROR", "PACK", p, 0, "not packaged: %s" % exc))
@@ -153,11 +157,11 @@ def cmd_package(args) -> int:
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
             for p in files:
                 arcname = str(Path(folder.name) / p.relative_to(folder))
-                with fs.open_nofollow_read(p, os.lstat(p)) as handle:  # the file that was checked, never a link put there since
+                with fs.open_nofollow_read(p, os.lstat(p), anchor=folder) as handle:  # the file that was checked, never a link put there since
                     data = handle.read()
                 zf.writestr(zipfile.ZipInfo.from_file(p, arcname), data, compress_type=zipfile.ZIP_DEFLATED)
             for source, inside in engine_extras(folder)[0]:
-                with fs.open_nofollow_read(source, os.lstat(source)) as handle:
+                with fs.open_nofollow_read(source, os.lstat(source), anchor=ENGINE_DIR) as handle:
                     zf.writestr(zipfile.ZipInfo.from_file(source, str(Path(folder.name) / inside)), handle.read(), compress_type=zipfile.ZIP_DEFLATED)
     except fs.UnsafeOpen as exc:
         fs._remove_quietly(target)
@@ -302,7 +306,7 @@ def cmd_install(args) -> int:
             if inner is not None:
                 raise fs.UnsafeOpen("link inside the destination: %s" % inner)
             info = os.lstat(source)
-            with fs.open_nofollow_read(source, info) as src_handle, fs.create_exclusive(destination) as dst_handle:
+            with fs.open_nofollow_read(source, info, anchor=folder if fs.lexically_inside(source, folder) else ENGINE_DIR) as src_handle, fs.create_exclusive(destination) as dst_handle:
                 shutil.copyfileobj(src_handle, dst_handle)
             os.chmod(destination, stat.S_IMODE(info.st_mode))
     except (fs.UnsafeOpen, OSError) as exc:

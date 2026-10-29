@@ -61,11 +61,11 @@ def parse_roots(roots: str | None, roots_file: str | None, repo: Path | None, sk
         if problem:
             raise ValueError("--roots-file %s" % problem)
         try:
-            lines = listing.read_text(encoding="utf-8").splitlines()
+            lines = fs.read_capped(listing, None, anchor=fs.anchor_for(listing))[0].splitlines()
         except UnicodeError:
             raise ValueError("cannot read --roots-file %s: not UTF-8 text" % roots_file)
         except OSError as exc:
-            raise ValueError("cannot read --roots-file %s: %s" % (roots_file, exc.strerror or type(exc).__name__))
+            raise ValueError("cannot read --roots-file %s: %s" % (roots_file, str(exc) if isinstance(exc, fs.UnsafeOpen) else exc.strerror or type(exc).__name__))
         for number, raw in enumerate(lines, 1):
             line = raw.strip()
             comment = re.search(r"(?<=\s)#", line)  # a comment starts at '#' at the line start or after whitespace; 'a#b' stays a path (one linear scan)
@@ -172,14 +172,14 @@ def iter_skill_dirs(roots: list, include_cache: bool = False, skip_markers: tupl
     return sorted(skills, key=lambda p: os.path.normcase(str(p))), skipped
 
 
-def _skill_identity(skill: Path, target: str, max_bytes: int | None = None, skip_read: bool = False) -> tuple[str, str]:
+def _skill_identity(skill: Path, target: str, max_bytes: int | None = None, skip_read: bool = False, anchor: Path | None = None) -> tuple[str, str]:
     """(name, 'en'|'vi') from SKILL.md: frontmatter name (folder name when unreadable or above `max_bytes`) and the body language.
     `skip_read` (validate refused the file with INPUT): SKILL.md is not opened again and the folder name stands."""
     if skip_read:
         return skill.name, "en"
     manifest = skill / "SKILL.md"
     try:
-        text, too_big = fs.read_capped(manifest, max_bytes, single_link=True)
+        text, too_big = fs.read_capped(manifest, max_bytes, single_link=True, anchor=skill if anchor is None else anchor)
     except (OSError, UnicodeError):
         return skill.name, "en"
     if too_big:
@@ -189,13 +189,13 @@ def _skill_identity(skill: Path, target: str, max_bytes: int | None = None, skip
     return name, lint.detect_lang("\n".join(text.splitlines()[body_start:]))
 
 
-def _budget_desc_bytes(skill: Path, max_bytes: int | None, skip_read: bool) -> int:
+def _budget_desc_bytes(skill: Path, max_bytes: int | None, skip_read: bool, anchor: Path | None = None) -> int:
     """UTF-8 bytes of the description as measure-skill-budget.py counts them (0 when SKILL.md is unreadable, refused, too big or has no description)."""
     if skip_read:
         return 0
     manifest = skill / "SKILL.md"
     try:
-        text, too_big = fs.read_capped(manifest, max_bytes, single_link=True)
+        text, too_big = fs.read_capped(manifest, max_bytes, single_link=True, anchor=skill if anchor is None else anchor)
     except (OSError, UnicodeError):
         return 0
     if too_big:
@@ -346,8 +346,9 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
     manifest_seen: dict = {}
     for skill in skills:
         under = next((r for r in real_roots if fs.valid_resolved_under(skill, r)), None)
+        pin_root = next((r for r in real_roots if fs.lexically_inside(skill, r)), None)  # by spelling: a folder swapped for a link since the scan is no longer under it once resolved
         findings = validate.validate_skill(skill, require_evals=False, target=target, profile=profile, allow_links_under=under,
-                                  max_file_bytes=C.DOCTOR_MAX_FILE_BYTES, skip_markers=skip_markers)
+                                  max_file_bytes=C.DOCTOR_MAX_FILE_BYTES, skip_markers=skip_markers, anchor=pin_root)
         codes = []
         for f in findings:
             if f["code"] in ("SZ1", "SZ2"):
@@ -362,8 +363,8 @@ def doctor_run(roots: list, profile: str, target: str, include_cache: bool, base
                 shown = _posix(path)
             codes.append({"code": f["code"], "level": f["level"], "file": shown, "line": f["line"], "message": f["message"]})
         refused = any(c["code"] == "INPUT" for c in codes)
-        name, lang = _skill_identity(skill, target, C.DOCTOR_MAX_FILE_BYTES, skip_read=refused)
-        desc_bytes += _budget_desc_bytes(skill, C.DOCTOR_MAX_FILE_BYTES, refused) if profile == "opcos" else 0
+        name, lang = _skill_identity(skill, target, C.DOCTOR_MAX_FILE_BYTES, skip_read=refused, anchor=pin_root)
+        desc_bytes += _budget_desc_bytes(skill, C.DOCTOR_MAX_FILE_BYTES, refused, pin_root) if profile == "opcos" else 0
         errors, warnings = sum(c["level"] == "ERROR" for c in codes), sum(c["level"] == "WARN" for c in codes)
         entries.append({"path": _posix(skill), "name": name, "lang": lang, "errors": errors, "warnings": warnings, "codes": codes})
         totals["skills"] += 1

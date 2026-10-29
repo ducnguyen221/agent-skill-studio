@@ -351,7 +351,7 @@ def _body_words(text: str) -> list:
     return ("\n".join(lines[bounds[1] + 1:]) if bounds else "\n".join(lines)).split()
 
 
-def _write_fixed(path: Path, data: bytes, backup: bool) -> str | None:
+def _write_fixed(path: Path, data: bytes, backup: bool, anchor: Path | None = None) -> str | None:
     """Replace `path` with `data`: a copy `<name>.bak-<ISO>` first when `backup`, then a new temp file next to it (a name chosen by the system
     and created exclusively, so a link planted at a guessable name is never followed) and an atomic replace. A read-only file is refused
     before anything is made. Whatever this call made is removed again when it fails; the original file stays as it was. Returns the path of
@@ -372,7 +372,7 @@ def _write_fixed(path: Path, data: bytes, backup: bool) -> str | None:
                     target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
                     count += 1
             made_backup = target  # set only once the exclusive create has succeeded, so a failure never removes a file we did not make
-            with sink, fs.open_nofollow_read(path, checked, single_link=False) as source:
+            with sink, fs.open_nofollow_read(path, checked, single_link=False, anchor=anchor) as source:
                 shutil.copyfileobj(source, sink)
             try:
                 shutil.copystat(path, target)
@@ -436,9 +436,15 @@ def cmd_fmt(args) -> int:
     if args.all and repo is not None:
         named.add(os.path.normcase(os.path.abspath(repo)))
     results, errors, warnings, changed, backups = [], 0, 0, 0, 0
+    given_roots = [Path(os.path.abspath(os.path.expanduser(given))) for given in args.paths] + ([Path(os.path.abspath(repo))] if args.all and repo is not None else [])
+
+    def pin_root(path: Path) -> Path:
+        """The folder the chain down to `path` is pinned from: the folder named on the command line that holds it, else the working-folder rule."""
+        return next((r for r in given_roots if r != path and fs.lexically_inside(path, r)), fs.anchor_for(path))
+
     for path in files:
         try:
-            with fs.open_nofollow_read(path, os.lstat(path), single_link=False) as handle:  # lstat now, so Windows compares the opened handle with the listed file
+            with fs.open_nofollow_read(path, os.lstat(path), single_link=False, anchor=pin_root(path)) as handle:  # lstat now, so Windows compares the opened handle with the listed file
                 raw = handle.read()
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
@@ -455,7 +461,7 @@ def cmd_fmt(args) -> int:
                 skipped.append({"path": str(path), "reason": "would-change-text"})
                 continue
             try:
-                backup = _write_fixed(path, new.encode("utf-8"), backup=not args.no_backup)
+                backup = _write_fixed(path, new.encode("utf-8"), backup=not args.no_backup, anchor=pin_root(path))
             except OSError as exc:
                 print("ERROR: cannot write %s: %s" % (path, exc.strerror or type(exc).__name__), file=sys.stderr)
                 return 2
