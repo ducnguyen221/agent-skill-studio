@@ -76,7 +76,7 @@ class FmtFixPinTests(RoundCase):
     def setup_tree(self):
         work, victim = self.tmp / "work", self.tmp / "victim"
         (work / "sub").mkdir(parents=True)
-        (work / "sub" / "doc.md").write_text(DIRTY, encoding="utf-8", newline="")
+        (work / "sub" / "doc.md").write_bytes(DIRTY.encode("utf-8"))
         victim.mkdir()
         (victim / "doc.md").write_bytes(b"VICTIM\n")
         return work, victim
@@ -94,8 +94,10 @@ class FmtFixPinTests(RoundCase):
                 self.assertTrue(state["swapped"], "the swap hook never ran")
                 self.assertEqual((victim / "doc.md").read_bytes(), b"VICTIM\n")
                 self.assertEqual(os.listdir(victim), ["doc.md"])
-                if os.path.lexists(work / "sub"):
-                    os.rmdir(work / "sub")  # drop the junction before the cleanup walks the tree
+                if os.path.islink(work / "sub"):
+                    os.unlink(work / "sub")  # a POSIX symlink: drop it before the cleanup walks the tree
+                elif os.path.lexists(work / "sub") and fs.is_link(work / "sub"):
+                    os.rmdir(work / "sub")  # a Windows junction
 
     def test_fmt_fix_still_fixes_and_backs_up(self):
         """tương-đương: with no swap the file is fixed, a backup is made, and no temp file stays."""
@@ -117,7 +119,8 @@ class CatalogRootAnchorTests(RoundCase):
         root = self.tmp / "root"
         root.mkdir()
         _links.dir_link(ext, root / "mid")
-        with early_checks_blind():
+        listing = lambda roots, *args, **kwargs: ([root.resolve() / "mid" / "s"], [])  # as if the swap came after the scan (on POSIX the scan never enters a symlink)
+        with early_checks_blind(), mock.patch.object(E.doctor, "iter_skill_dirs", listing):
             code, out, err = run_cli("catalog", "--roots", root, "--json", cwd=self.tmp)
         self.assertNotIn("leakname", out + err)
         self.assertNotIn("LEAKDESC", out + err)
@@ -156,7 +159,7 @@ class SinglePinTests(RoundCase):
         target = self.tmp / "out.json"
         target.write_bytes(b"OLD")
         staged = fs.stage_write(target, lambda handle: handle.write(b"NEW"), anchor=self.tmp)
-        os.remove(staged.tmp)
+        os.rename(staged.tmp, staged.tmp.with_name(staged.tmp.name + ".kept"))  # the original keeps its inode: a deleted file's number can be handed to the next one
         staged.tmp.write_bytes(b"FOREIGN")
         with self.assertRaises(fs.UnsafeOpen):
             staged.commit()

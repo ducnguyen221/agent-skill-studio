@@ -176,7 +176,8 @@ class SwapAfterCheckTests(ChainCase):
         root = self.tmp / "root"
         root.mkdir()
         _links.dir_link(ext / "s", root / "s")
-        with early_checks_blind():
+        listing = lambda roots, *args, **kwargs: ([root.resolve() / "s"], [])  # as if the swap came after the scan (on POSIX the scan never enters a symlink)
+        with early_checks_blind(), mock.patch.object(E.doctor, "iter_skill_dirs", listing):
             code, out, err = run_cli("doctor", "--roots", root, "--json", cwd=self.tmp)
         self.assertNotIn("leakname", out + err)
         self.assertNotIn("LEAKDESC", out + err)
@@ -188,7 +189,8 @@ class SwapAfterCheckTests(ChainCase):
         root = self.tmp / "root"
         root.mkdir()
         _links.dir_link(ext / "s", root / "s")
-        with early_checks_blind():
+        listing = lambda roots, *args, **kwargs: ([root.resolve() / "s"], [])  # as if the swap came after the scan (on POSIX the scan never enters a symlink)
+        with early_checks_blind(), mock.patch.object(E.doctor, "iter_skill_dirs", listing):
             code, out, err = run_cli("catalog", "--roots", root, "--json", cwd=self.tmp)
         self.assertNotIn("leakname", out + err)
         self.assertNotIn("LEAKDESC", out + err)

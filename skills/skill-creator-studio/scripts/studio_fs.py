@@ -13,6 +13,7 @@ import functools
 import os
 import re
 import stat
+import sys
 from pathlib import Path
 
 import studio_const as C
@@ -534,6 +535,24 @@ class UnsafeOpen(OSError):
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
+def _win_create_file(path: str, access: int, share: int, disposition: int, flags: int) -> int:
+    """Windows: a handle from CreateFile for `path`. On Python 3.10+ that is `_winapi.CreateFile`; on 3.9 `_winapi.CreateFile` is the ANSI function (a name with
+    non-ASCII letters would be made under a wrong name), so the wide function is called through ctypes. The private `_winapi` module must exist either way
+    (a build without it refuses to open, SC6). Errors are OSError with the `winerror` (FileNotFoundError, FileExistsError, PermissionError...)."""
+    import _winapi
+    if sys.version_info >= (3, 10):
+        return _winapi.CreateFile(path, access, share, 0, disposition, flags, 0)
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    handle = kernel32.CreateFileW(path, access, share, None, disposition, flags, None)
+    if handle is None or handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return handle
+
+
 def _open_no_reparse(path: str, write: bool = False, create_new: bool = False) -> int:
     """Windows only: open the last name of `path` as itself, never through a link, and return a file descriptor: for reading, or with `write` for writing, and with
     `create_new` only when no name is there yet (CREATE_NEW). CreateFile with FILE_FLAG_OPEN_REPARSE_POINT opens a symlink, junction or cloud file as the reparse
@@ -549,7 +568,7 @@ def _open_no_reparse(path: str, write: bool = False, create_new: bool = False) -
     access = 0x40000000 if write else 0x80000000  # GENERIC_WRITE / GENERIC_READ
     disposition = 1 if create_new else 3  # CREATE_NEW / OPEN_EXISTING
     try:
-        handle = _winapi.CreateFile(path, access, 0x1 | 0x2 | 0x4, 0, disposition, 0x00200000 | 0x02000000, 0)  # share all; OPEN_REPARSE_POINT | BACKUP_SEMANTICS
+        handle = _win_create_file(path, access, 0x1 | 0x2 | 0x4, disposition, 0x00200000 | 0x02000000)  # share all; OPEN_REPARSE_POINT | BACKUP_SEMANTICS
     except OSError as exc:
         if create_new and getattr(exc, "winerror", None) == 5:
             try:
@@ -576,11 +595,19 @@ def _open_no_reparse(path: str, write: bool = False, create_new: bool = False) -
 
 
 def anchor_for(path, cwd=None) -> Path:
-    """The folder a chain of folders is pinned from for `path`: the working folder when `path` is below it, else the folder that holds `path`. The same
-    rule `resolve_check_path` uses, so a link ABOVE the anchor (macOS /tmp, a OneDrive folder that changed owner) is accepted on purpose (FR2.2)."""
+    """The folder a chain of folders is pinned from for `path`: the working folder when `path` is below it (by spelling, or through a link spelling of it: the
+    ancestor of `path` that is the same folder, as written in `path`), else the folder that holds `path`. The same rule `resolve_check_path` uses, so a link ABOVE the anchor (macOS /tmp, a OneDrive folder that changed owner) is accepted on purpose (FR2.2)."""
     absolute = Path(os.path.abspath(os.fspath(path)))
     here = Path(os.path.abspath(os.fspath(cwd) if cwd is not None else os.getcwd()))
-    return here if os.path.normcase(here) in {os.path.normcase(p) for p in absolute.parents} else absolute.parent
+    if os.path.normcase(here) in {os.path.normcase(p) for p in absolute.parents}:
+        return here
+    for parent in absolute.parents:  # the working folder reached through a link spelling (macOS /var -> /private/var): the folder of the path that IS the working folder
+        try:
+            if os.path.samefile(parent, here):
+                return parent
+        except OSError:
+            continue
+    return absolute.parent
 
 
 class _Pin:
@@ -621,7 +648,7 @@ def _pin_component_windows(path: str, stack, follow: bool = False) -> None:
     except ImportError as exc:
         raise UnsafeOpen("safe open unavailable on this Python (no _winapi): %s" % path) from exc
     try:
-        handle = _winapi.CreateFile(path, 0x1, 0x1 | 0x2, 0, 3, 0x02000000 if follow else 0x00200000 | 0x02000000, 0)  # FILE_LIST_DIRECTORY; share read+write; OPEN_EXISTING
+        handle = _win_create_file(path, 0x1, 0x1 | 0x2, 3, 0x02000000 if follow else 0x00200000 | 0x02000000)  # FILE_LIST_DIRECTORY; share read+write; OPEN_EXISTING
     except OSError as exc:
         if getattr(exc, "winerror", None) == 32:
             raise UnsafeOpen("a folder on the path is in use: %s" % path) from exc
@@ -797,6 +824,13 @@ def _refuse_folder_target(target: Path, dir_fd) -> bool:
         return False
     if _names_a_folder(info):
         raise UnsafeOpen("output is a folder or a folder link: %s" % target)
+    if stat.S_ISLNK(info.st_mode):  # POSIX: a symlink to a folder (lstat sees only the link); a link to a file, or a dangling one, is replaced as a name
+        try:
+            to_folder = stat.S_ISDIR((os.stat(target.name, dir_fd=dir_fd) if dir_fd is not None else os.stat(target)).st_mode)
+        except OSError:
+            to_folder = False
+        if to_folder:
+            raise UnsafeOpen("output is a folder or a folder link: %s" % target)
     return True
 
 

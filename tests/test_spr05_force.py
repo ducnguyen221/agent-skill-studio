@@ -160,7 +160,7 @@ class FmtFixTests(ForceCase):
         """tương-đương: FR4.2 (fmt already writes a temp file and replaces: green on a695479) a failing replace leaves the file byte for byte and no temp file."""
         doc = self.tmp / "doc.md"
         original = "# Title\n\nText   with trailing spaces   \n\n\n\n"
-        doc.write_text(original, encoding="utf-8", newline="")
+        doc.write_bytes(original.encode("utf-8"))
         with mock.patch("os.replace", side_effect=OSError("disk gone")):
             code, out, err = run_cli("fmt", "--fix", "--no-backup", doc, cwd=self.tmp)
         self.assertEqual(doc.read_bytes(), original.encode("utf-8"))
