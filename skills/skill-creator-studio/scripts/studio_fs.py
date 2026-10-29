@@ -542,8 +542,11 @@ def _win_create_file(path: str, access: int, share: int, disposition: int, flags
     import _winapi
     if sys.version_info >= (3, 10):
         return _winapi.CreateFile(path, access, share, 0, disposition, flags, 0)
-    import ctypes
-    from ctypes import wintypes
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except ImportError as exc:
+        raise UnsafeOpen("safe open unavailable on this Python (no ctypes): %s" % path) from exc
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateFileW.restype = wintypes.HANDLE
     kernel32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
@@ -601,8 +604,8 @@ def anchor_for(path, cwd=None) -> Path:
     here = Path(os.path.abspath(os.fspath(cwd) if cwd is not None else os.getcwd()))
     if os.path.normcase(here) in {os.path.normcase(p) for p in absolute.parents}:
         return here
-    for parent in absolute.parents:  # the working folder reached through a link spelling (macOS /var -> /private/var): the folder of the path that IS the working folder
-        try:
+    for parent in reversed(list(absolute.parents)):  # the working folder reached through a link spelling (macOS /var -> /private/var): the SHALLOWEST ancestor that is the
+        try:  # working folder, so a link below it (even one that points back at it) stays a folder below the anchor and is checked
             if os.path.samefile(parent, here):
                 return parent
         except OSError:
