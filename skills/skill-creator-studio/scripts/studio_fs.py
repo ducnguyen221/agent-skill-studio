@@ -387,13 +387,12 @@ def link_crosses_link(base: Path, link: str) -> bool:
     return False
 
 
-def read_capped(path, limit: int | None) -> tuple:
-    """(text, too_big). With a limit the file is read in binary up to limit+1 bytes and never further; newlines are folded as read_text does."""
-    if limit is None:
-        return Path(path).read_text(encoding="utf-8"), False
-    with open(path, "rb") as handle:
-        data = handle.read(limit + 1)
-    if len(data) > limit:
+def read_capped(path, limit: int | None, single_link: bool = False, anchor=None) -> tuple:
+    """(text, too_big). With a limit the file is read in binary up to limit+1 bytes and never further; newlines are folded as read_text does.
+    Every branch opens through open_nofollow_read, so a link at the last name is refused (UnsafeOpen) and, with `single_link`, so is a file with a second name."""
+    with open_nofollow_read(path, None, single_link, anchor) as handle:
+        data = handle.read() if limit is None else handle.read(limit + 1)
+    if limit is not None and len(data) > limit:
         return None, True
     return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n"), False
 
@@ -531,18 +530,52 @@ class UnsafeOpen(OSError):
         self.code = code
 
 
-def open_nofollow_read(path, expect_stat=None, single_link: bool = True):
-    """Open `path` for binary reading without following a link; return the file object. POSIX: O_NOFOLLOW. Windows (no O_NOFOLLOW): open, then compare
-    (st_dev, st_ino) of the open handle with `expect_stat` (the lstat taken when the file was checked). Both: the handle must be a regular file and,
-    with `single_link`, have exactly one name. Any mismatch raises UnsafeOpen. Windows residue: the open itself already follows a reparse point
-    before the comparison (see README, "Rủi ro còn lại")."""
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
+def _open_no_reparse(path: str) -> int:
+    """Windows only: open the last name of `path` for reading as itself, never through a link, and return a file descriptor. CreateFile with
+    FILE_FLAG_OPEN_REPARSE_POINT opens a symlink, junction or cloud file as the reparse point, and BACKUP_SEMANTICS lets it open a folder too, so both
+    are looked at (`fstat`) and refused instead of being followed (open, then compare, left a window). `_winapi` is a private module of CPython: a build
+    without it, or one that changes it, refuses to open (fails closed) and never falls back to a plain open()."""
     try:
-        fd = os.open(path, flags)
-    except OSError as exc:
-        if exc.errno in (errno.ELOOP, getattr(errno, "EMLINK", -1)):
-            raise UnsafeOpen("source is a symlink: %s" % path) from exc
+        import _winapi
+        import msvcrt
+    except ImportError as exc:
+        raise UnsafeOpen("safe open unavailable on this Python (no _winapi): %s" % path) from exc
+    generic_read, share_all, open_existing = 0x80000000, 0x1 | 0x2 | 0x4, 3
+    handle = _winapi.CreateFile(path, generic_read, share_all, 0, open_existing, 0x00200000 | 0x02000000, 0)  # OPEN_REPARSE_POINT | BACKUP_SEMANTICS
+    try:
+        fd = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+    except BaseException:
+        _winapi.CloseHandle(handle)
         raise
+    try:
+        info = os.fstat(fd)
+        if getattr(info, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT:  # a cloud file carries the flag too: the message names both
+            raise UnsafeOpen("is a link or a cloud file (reparse point): %s" % path)
+        if stat.S_ISDIR(info.st_mode):
+            raise UnsafeOpen("is a folder or a folder link: %s" % path)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def open_nofollow_read(path, expect_stat=None, single_link: bool = True, anchor=None):
+    """Open `path` for binary reading without following a link; return the file object. POSIX: O_NOFOLLOW. Windows: `_open_no_reparse` (CreateFile
+    that opens a reparse point as itself, then refuses it). Both: the handle must be a regular file, with `expect_stat` (the lstat taken when the file was
+    checked) the same (st_dev, st_ino), and with `single_link` exactly one name. Any mismatch raises UnsafeOpen. `anchor` is for the pinned folder
+    chain (SPR-05 TK2) and is not used yet."""
+    if os.name == "nt":
+        fd = _open_no_reparse(os.fspath(path))
+    else:
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except OSError as exc:
+            if exc.errno in (errno.ELOOP, getattr(errno, "EMLINK", -1)):
+                raise UnsafeOpen("source is a symlink: %s" % path) from exc
+            raise
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):

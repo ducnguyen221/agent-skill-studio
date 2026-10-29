@@ -50,7 +50,9 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
     if not manifest.is_file():
         return [fs.emit("ERROR", "FM1", manifest, 0, "SKILL.md is missing")]
     try:
-        text, too_big = fs.read_capped(manifest, max_file_bytes)
+        text, too_big = fs.read_capped(manifest, max_file_bytes, single_link=True)
+    except fs.UnsafeOpen as exc:  # a link raced in, or a second name (hard link): refused before a byte is read
+        return [fs.emit("ERROR", "INPUT", manifest, 0, "SKILL.md %s; not read" % ("has more than one name (hard link)" if "hard link" in str(exc) else "is a link or not a plain file"))]
     except UnicodeError:
         return [fs.emit("ERROR", "FM1", manifest, 0, "SKILL.md must be UTF-8 text")]
     if too_big:
@@ -184,6 +186,9 @@ def validate_skill(folder: Path, eval_root: Path | None = None, require_evals: b
                 findings.append(fs.emit("WARN", "ST4", p, 0, "reference Markdown is not directly linked from SKILL.md"))
             try:
                 ref_text, ref_too_big = fs.read_capped(p, max_file_bytes)
+            except fs.UnsafeOpen:  # swapped for a link after the listing: never read
+                findings.append(fs.emit("ERROR", "SEC", p, 0, "reference is a link or not a plain file; not read"))
+                continue
             except UnicodeError:
                 findings.append(fs.emit("ERROR", "ST6", p, 0, "reference must be UTF-8"))
                 continue
@@ -255,7 +260,7 @@ def resolve_check_path(arg: str) -> tuple:
     if path.suffix.casefold() != ".md":
         raise ValueError(unknown)
     try:
-        text, too_big = fs.read_capped(path, C.DOCTOR_MAX_FILE_BYTES)
+        text, too_big = fs.read_capped(path, C.DOCTOR_MAX_FILE_BYTES, single_link=True)
     except (OSError, UnicodeError) as exc:
         raise ValueError("%s cannot be read as UTF-8 text: %s" % (path, exc))
     if too_big:

@@ -179,7 +179,7 @@ def _skill_identity(skill: Path, target: str, max_bytes: int | None = None, skip
         return skill.name, "en"
     manifest = skill / "SKILL.md"
     try:
-        text, too_big = fs.read_capped(manifest, max_bytes)
+        text, too_big = fs.read_capped(manifest, max_bytes, single_link=True)
     except (OSError, UnicodeError):
         return skill.name, "en"
     if too_big:
@@ -195,7 +195,7 @@ def _budget_desc_bytes(skill: Path, max_bytes: int | None, skip_read: bool) -> i
         return 0
     manifest = skill / "SKILL.md"
     try:
-        text, too_big = fs.read_capped(manifest, max_bytes)
+        text, too_big = fs.read_capped(manifest, max_bytes, single_link=True)
     except (OSError, UnicodeError):
         return 0
     if too_big:

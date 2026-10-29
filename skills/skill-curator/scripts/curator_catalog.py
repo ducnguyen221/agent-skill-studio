@@ -75,7 +75,7 @@ def _read_skill_meta(skill: Path) -> tuple:
     if fs.is_link(manifest) or fs.path_is_cloud(manifest):
         return name, desc, keys, notes
     try:
-        text, too_big = fs.read_capped(manifest, C.DOCTOR_MAX_FILE_BYTES)
+        text, too_big = fs.read_capped(manifest, C.DOCTOR_MAX_FILE_BYTES, single_link=True)
     except (OSError, UnicodeError):
         return name, desc, keys, notes
     if too_big:

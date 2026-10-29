@@ -755,7 +755,13 @@ class DoctorHardeningTests(unittest.TestCase):
                 handle = real_open(path, *a, **k)
                 return Proxy(handle, os.fspath(path)) if isinstance(path, (str, os.PathLike)) and os.fspath(path).endswith(("BIG.md", "SKILL.md")) else handle
 
-            with mock.patch.object(builtins, "open", spy), mock.patch.object(io, "open", spy):
+            real_safe_open = _engine.fs.open_nofollow_read  # SPR-05 TK1: read_capped now opens through open_nofollow_read, so that is where the read is spied
+
+            def safe_spy(path, *a, **k):
+                handle = real_safe_open(path, *a, **k)
+                return Proxy(handle, os.fspath(path)) if os.fspath(path).endswith(("BIG.md", "SKILL.md")) else handle
+
+            with mock.patch.object(builtins, "open", spy), mock.patch.object(io, "open", spy), mock.patch.object(_engine.fs, "open_nofollow_read", safe_spy):
                 code, out, err = run("--roots", str(root), "--json")
             report = json.loads(out)
             self.assertEqual(code, 1, (out, err))  # SPR-01 TK6: an unread SKILL.md is an SZ1 ERROR

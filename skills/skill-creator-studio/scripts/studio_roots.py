@@ -74,16 +74,22 @@ def _plain_file_problem(path: Path, markers: tuple, limit: int, base: Path) -> t
     return None
 
 
-def _read_json(path: Path, limit: int, markers: tuple, base: Path):
+def _read_json(path: Path, limit: int, markers: tuple, base: Path, single_link: bool = True):
     """The JSON value of a small plain file below the trusted folder `base`; RootError (cloud, secret-zone, link, limit, unreadable) otherwise.
-    At most `limit` bytes are read."""
+    At most `limit` bytes are read. A file with a second name (hard link) is refused unless `single_link` is False (FR6.1)."""
     problem = _plain_file_problem(path, markers, limit, base)
     if problem:
         raise RootError(problem[0], "%s %s (%s)" % (path.name, problem[1], problem[0]))
     try:
-        with fs.open_nofollow_read(path, expect_stat=os.lstat(path), single_link=False) as handle:
+        with fs.open_nofollow_read(path, expect_stat=os.lstat(path), single_link=single_link) as handle:
             data = handle.read(limit + 1)
-    except OSError as exc:  # UnsafeOpen is one
+    except fs.UnsafeOpen as exc:
+        if "hard link" in str(exc):
+            raise RootError("link", "%s has more than one name (hard link); not read (link)" % path.name)
+        if "link" in str(exc) or "reparse" in str(exc):
+            raise RootError("link", "%s is a link; not read (link)" % path.name)
+        raise RootError("unreadable", "%s cannot be read (%s)" % (path.name, "not a plain file or changed while opening"))
+    except OSError as exc:
         raise RootError("unreadable", "%s cannot be read (%s)" % (path.name, exc.strerror or type(exc).__name__))
     if len(data) > limit:
         raise RootError("limit", "%s is above %d bytes; not read (limit)" % (path.name, limit))
@@ -166,7 +172,7 @@ def opcos_roots(paths_file: Path, include_system_plugins: bool = True, markers: 
     Each root is {path, kind, area, status, reasons, skipped_by_rule}; here the status is `ok` or `error` (collect_skills adds `partial`). A paths.json
     that cannot be read raises RootError."""
     paths_file = Path(os.path.abspath(os.fspath(paths_file)))
-    data = _read_json(paths_file, C.PATHS_JSON_MAX, markers, paths_file.parent)
+    data = _read_json(paths_file, C.PATHS_JSON_MAX, markers, paths_file.parent, single_link=False)
     areas = data.get("areas") if isinstance(data, dict) else None
     if not isinstance(areas, list):
         raise RootError("unreadable", "paths.json has no areas list (unreadable)")
