@@ -1473,7 +1473,14 @@ class AgentskillsExportTests(unittest.TestCase):
                     return real(src, dst)
                 with mock.patch.object(shutil, "copyfileobj", side_effect=flaky):
                     if label.startswith("evals"):
-                        with mock.patch.object(tempfile, "mkstemp", side_effect=OSError("denied")):
+                        real_new = studio_fs._create_new_fd
+
+                        def deny_evals_json(name, dir_fd):  # SPR-05 round 1: evals.json is staged beside its name like the fixtures, not made by tempfile.mkstemp
+                            if os.path.basename(name).startswith(".evals.json."):
+                                raise OSError("denied")
+                            return real_new(name, dir_fd)
+
+                        with mock.patch.object(studio_fs, "_create_new_fd", deny_evals_json):
                             code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)
                     else:
                         code, findings, stats = studio_evals.export_agentskills(folder, "demo-skill", out, force=True)

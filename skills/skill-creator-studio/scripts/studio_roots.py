@@ -512,9 +512,13 @@ def _semantic_file_sha256(path: Path, rel: str, anchor: Path | None = None) -> s
     return hashlib.sha256(data).hexdigest()
 
 
-def _tree_digest(skill: Path, markers: tuple, semantic: bool) -> str | None:
-    """The walk behind tree_sha256 and tree_digest_semantic: one line per file, hashed byte for byte or by `_semantic_file_sha256`."""
+def _tree_digest(skill: Path, markers: tuple, semantic: bool, anchor: Path | None = None) -> str | None:
+    """The walk behind tree_sha256 and tree_digest_semantic: one line per file, hashed byte for byte or by `_semantic_file_sha256`. The chain of folders from
+    `anchor` (the scan root; default the folder that holds the skill) down to each file is pinned while it is read."""
     skill = Path(os.path.abspath(os.fspath(skill)))
+    anchor = skill.parent if anchor is None else Path(os.path.abspath(os.fspath(anchor)))
+    if not fs.lexically_inside(skill, anchor):
+        return None
     if fs.zone_reason(skill, markers) or fs.is_link(skill) or fs.path_is_cloud(skill) or not fs._is_dir_quiet(skill):
         return None
     try:  # walk_files skips a folder it cannot list: for the skill folder itself that would hash the empty tree
@@ -541,7 +545,7 @@ def _tree_digest(skill: Path, markers: tuple, semantic: bool) -> str | None:
         if fs.secret_file_name(path.name):
             return None
         rel = path.relative_to(skill).as_posix()
-        digest = _semantic_file_sha256(path, rel, skill) if semantic else _file_sha256(path, skill)
+        digest = _semantic_file_sha256(path, rel, anchor) if semantic else _file_sha256(path, anchor)
         if digest is None:
             return None
         lines.append((rel, digest))
@@ -549,16 +553,16 @@ def _tree_digest(skill: Path, markers: tuple, semantic: bool) -> str | None:
     return hashlib.sha256("".join("%s\t%s\n" % item for item in lines).encode("utf-8", "surrogatepass")).hexdigest()
 
 
-def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
+def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS, anchor: Path | None = None) -> str | None:
     """SHA-256 of the lines "<posix path below the skill>\\t<sha256 of the file>\\n", sorted by path, over every regular file of the skill folder (not
     __pycache__, not .git, not *.pyc), bytes as they are. None when the tree cannot be hashed whole: the folder is a link, in a zone or a cloud placeholder; it holds a
     link, a cloud placeholder, a folder named like a zone, a secret-looking file (never opened), more than DOCTOR_MAX_FILES_PER_SKILL entries or a file above
     TREE_FILE_MAX; or a file cannot be opened without following a link."""
-    return _tree_digest(skill, markers, False)
+    return _tree_digest(skill, markers, False, anchor)
 
 
-def tree_digest_semantic(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
+def tree_digest_semantic(skill: Path, markers: tuple = C.CLOUD_MARKERS, anchor: Path | None = None) -> str | None:
     """Like tree_sha256 (same walk, same limits, same None cases) over what a file says, not its bytes (FR3.2 `compare: semantic`): SKILL.md by its parsed
     frontmatter and its body, text files with CRLF folded to LF, other files by bytes; `.gitkeep` is left out too. A copy that a harness adapter rewrote (quoted
     description, LF for CRLF) digests like its source; a changed word, a missing file or an extra file still digests differently."""
-    return _tree_digest(skill, markers, True)
+    return _tree_digest(skill, markers, True, anchor)

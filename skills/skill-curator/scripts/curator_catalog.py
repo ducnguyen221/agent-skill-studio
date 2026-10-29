@@ -75,7 +75,7 @@ def _read_skill_meta(skill: Path, anchor: Path | None = None) -> tuple:
     if fs.is_link(manifest) or fs.path_is_cloud(manifest):
         return name, desc, keys, notes
     try:
-        text, too_big = fs.read_capped(manifest, C.DOCTOR_MAX_FILE_BYTES, single_link=True, anchor=skill if anchor is None else anchor)
+        text, too_big = fs.read_capped(manifest, C.DOCTOR_MAX_FILE_BYTES, single_link=True, anchor=skill.parent if anchor is None else anchor)
     except (OSError, UnicodeError):
         return name, desc, keys, notes
     if too_big:
@@ -186,16 +186,16 @@ class TreeCache:
             stamp = None
         return os.path.normcase(folder), stamp
 
-    def sha(self, path):
+    def sha(self, path, anchor=None):
         key = self._key(path)
         if key not in self._byte:
-            self._byte[key] = roots_mod.tree_sha256(Path(path), self.markers)
+            self._byte[key] = roots_mod.tree_sha256(Path(path), self.markers, anchor)
         return self._byte[key]
 
-    def semantic(self, path):
+    def semantic(self, path, anchor=None):
         key = self._key(path)
         if key not in self._semantic:
-            self._semantic[key] = roots_mod.tree_digest_semantic(Path(path), self.markers)
+            self._semantic[key] = roots_mod.tree_digest_semantic(Path(path), self.markers, anchor)
         return self._semantic[key]
 
 
@@ -224,15 +224,28 @@ def _same_trees(a: Path, a_digest, b: Path, markers: tuple, cache: TreeCache | N
     return (True, "semantic") if left is not None and left == right else (False, None)
 
 
-def _installed_items(installed: list, markers: tuple, cache: TreeCache | None = None) -> list:
+def _scan_anchor(folder, *candidates) -> Path | None:
+    """The first of the scan roots `candidates` (as written, then resolved) that holds `folder` by spelling, else None: the chain of folders from there down to a file
+    of the skill is pinned while the file is read, so a folder swapped for a link between the root and the skill is not read through."""
+    for candidate in candidates:
+        if not candidate:
+            continue
+        for option in (Path(candidate), Path(os.path.realpath(candidate))):
+            if fs.lexically_inside(folder, option):
+                return option
+    return None
+
+
+def _installed_items(installed: list, markers: tuple, cache: TreeCache | None = None, harness_roots: dict | None = None) -> list:
     """The Installed records as items for `curator_overlap`: key "<harness>/<plugin>:<skill>", the description from the copy's SKILL.md and its tree hash."""
     cache = cache or TreeCache(markers)
     out = []
     for item in installed:
         folder = Path(item["path"])
-        name, desc, _, _ = _read_skill_meta(folder)
+        anchor = _scan_anchor(folder, (harness_roots or {}).get(item["harness"]))
+        name, desc, _, _ = _read_skill_meta(folder, anchor)
         out.append({"key": "%s/%s:%s" % (item["harness"], item["plugin"], item["skill"]), "plugin": item["plugin"], "skill": item["skill"], "name": name,
-                    "desc": desc, "path": os.fspath(folder), "harness": item["harness"], "sha": cache.sha(folder)})
+                    "desc": desc, "path": os.fspath(folder), "harness": item["harness"], "sha": cache.sha(folder, anchor)})
     return out
 
 
@@ -259,11 +272,12 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
     differ_ids: set = set()
     for skill in skills:
         folder = Path(skill["path"])
-        name, desc, keys, found = _read_skill_meta(folder)
+        anchor = _scan_anchor(folder, skill.get("root"))
+        name, desc, keys, found = _read_skill_meta(folder, anchor)
         if notes is not None:
             notes.extend(found)
         plugin = _plugin_dir(folder, skill["repo"])
-        digest = cache.sha(folder)
+        digest = cache.sha(folder, anchor)
         entry = by_path.get(os.path.normcase(doctor._posix(folder)), {})
         rel = folder.relative_to(plugin).as_posix() if plugin is not None else ""
         flag = _evals_entries(plugin, catalogs, notes).get(rel)
@@ -287,7 +301,7 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
     only = [dict(i, path=home_path(i["path"])) for i in installed if (i["harness"], i["plugin"], i["skill"]) not in used
             and (i["plugin"], i["skill"]) not in {(s["plugin"], Path(s["path"]).name) for s in skills}]
     cut: list = []
-    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers, cache), markers, cache, notes, cut) if overlap else None
+    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers, cache, {r["area"]: r["path"] for r in roots if r["kind"] == "harness"}), markers, cache, notes, cut) if overlap else None
     return {"schema": SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "studio_version": C.VERSION,
             "roots": [_display_root(r) for r in roots], "skills": rows, "installed_only": only, "pairs": pairs,
             "totals": {"skills": len(rows), "repos": len({r["repo"] for r in rows}), "roots_not_ok": sum(r["status"] != "ok" for r in roots),

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import sys
 import tempfile
 from datetime import datetime
@@ -352,21 +353,23 @@ def _body_words(text: str) -> list:
 
 
 def _write_fixed(path: Path, data: bytes, backup: bool, anchor: Path | None = None) -> str | None:
-    """Replace `path` with `data`: a copy `<name>.bak-<ISO>` first when `backup`, then a new temp file next to it (a name chosen by the system
-    and created exclusively, so a link planted at a guessable name is never followed) and an atomic replace. A read-only file is refused
-    before anything is made. Whatever this call made is removed again when it fails; the original file stays as it was. Returns the path of
-    the backup, or None when none was asked for."""
+    """Replace `path` with `data`: a copy `<name>.bak-<ISO>` first when `backup`, then a new temp file next to it (a name chosen by the system and created
+    exclusively, so a link planted at a guessable name is never followed) and an atomic replace. Every step runs under the pinned chain of folders from `anchor`
+    (default the working-folder rule) down to the file, so a folder swapped for a link since the file was read is not written through. A read-only file is refused
+    before anything is made. Whatever this call made is removed again when it fails; the original file stays as it was. Returns the path of the backup, or None
+    when none was asked for."""
     if not os.access(path, os.W_OK):
         raise PermissionError(13, "file is read-only", os.fspath(path))
     checked = os.lstat(path)  # the identity every read of `path` below must match (Windows has no O_NOFOLLOW)
-    made_backup, temp, handle, done = None, None, None, False
+    anchor = fs.anchor_for(path) if anchor is None else anchor
+    made_backup = None
     try:
         if backup:
             stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
             target, count = path.with_name("%s.bak-%s" % (path.name, stamp)), 1
             while True:
                 try:
-                    sink = fs.create_exclusive(target)  # O_EXCL: a name already there (a link included) is never written through
+                    sink = fs.create_exclusive(target, anchor=anchor)  # O_EXCL: a name already there (a link included) is never written through
                     break
                 except FileExistsError:
                     target = path.with_name("%s.bak-%s-%d" % (path.name, stamp, count))
@@ -378,31 +381,12 @@ def _write_fixed(path: Path, data: bytes, backup: bool, anchor: Path | None = No
                 shutil.copystat(path, target)
             except OSError:
                 pass
-        handle, name = tempfile.mkstemp(dir=os.fspath(path.parent), prefix=".%s." % path.name, suffix=".fmt-tmp")
-        temp = Path(name)
-        out, handle = os.fdopen(handle, "wb"), None
-        with out:
-            out.write(data)
-            out.flush()
-            os.fsync(out.fileno())
-        try:
-            shutil.copymode(path, temp)
-        except OSError:
-            pass
-        os.replace(temp, path)
-        done = True
+        fs.replace_with(path, lambda handle: handle.write(data), anchor=anchor, mode=stat.S_IMODE(checked.st_mode))
         return os.fspath(made_backup) if made_backup is not None else None
-    finally:
-        if not done:
-            if handle is not None:
-                try:
-                    os.close(handle)
-                except OSError:
-                    pass
-            if temp is not None:
-                fs._remove_quietly(temp)
-            if made_backup is not None:
-                fs._remove_quietly(made_backup)
+    except BaseException:
+        if made_backup is not None:
+            fs._remove_quietly(made_backup)
+        raise
 
 
 def cmd_fmt(args) -> int:

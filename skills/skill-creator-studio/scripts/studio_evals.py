@@ -234,7 +234,6 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     if clash and not force:
         return refuse(1, "EX5", "export file exists: %s; choose another --out or explicitly --force" % clash[0], clash[0])
     fresh = [x for x in [target] + list(copies) if not os.path.lexists(x)]  # only names this run creates are cleaned up again
-    temp_name = ""
     staged: list = []  # new files written beside their names; they replace the old ones only after every one is complete (--force keeps the old export on a failure)
 
     def copy_into(source: Path):
@@ -254,21 +253,17 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
         linked = fs.link_in_chain(evals_dir, dest)
         if linked:
             raise fs.UnsafeOpen("export destination goes through a symlink or junction: %s" % linked, "EX6")
-        handle, temp_name = tempfile.mkstemp(prefix=".evals-", suffix=".tmp", dir=str(evals_dir))  # same folder, so os.replace is atomic
-        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as out:
-            out.write(json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n")
-        for item in staged:
-            item.commit()
+        payload = (json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        staged.append(fs.stage_write(target, lambda writer: writer.write(payload), anchor=dest))
+        fs.commit_all(staged)  # every new file in place or, on a failure, every old one back
         staged = []
-        os.replace(temp_name, target)
-        temp_name = ""
     except OSError as exc:
         for item in staged:
             item.discard()
-        for leftover in fresh + ([Path(temp_name)] if temp_name else []):  # a half-written export must not look like a finished one
+        for leftover in fresh:  # a half-written export must not look like a finished one
             try:
-                leftover.unlink(missing_ok=True)
-            except OSError:
+                fs.remove_pinned(leftover, anchor=dest)
+            except (OSError, ValueError):
                 pass
         if isinstance(exc, fs.UnsafeOpen):
             return refuse(1, exc.code, "%s (files created by this run were removed)" % exc, out_root)

@@ -40,6 +40,21 @@ def is_drive_root(path: Path) -> bool:
     return path.parent == path
 
 
+def _copy_template(template: Path, target: Path, skip: tuple) -> None:
+    """Copy the template folder to the new `target`, folder by folder and file by file: every file is made exclusively under the chain of folders pinned from the
+    new skill's parent, so a folder swapped for a link after it was made receives nothing (UnsafeOpen). The names in `skip` (at the top) are left out."""
+    anchor = target.parent
+    for folder, names, files in os.walk(template):
+        here = target / Path(folder).relative_to(template)
+        here.mkdir(parents=True, exist_ok=True)
+        names.sort()
+        for name in sorted(files):
+            if folder == os.fspath(template) and name in skip:
+                continue
+            with open(Path(folder) / name, "rb") as source, fs.create_exclusive(here / name, anchor=anchor) as sink:
+                shutil.copyfileobj(source, sink)
+
+
 def write_new(path: Path, text: str, created: list | None = None, anchor: Path | None = None) -> bool:
     """Write `text` to a file that is not there yet; a file or link that is there is kept and named on stdout (FR12.1). False (after an ERROR line) when it cannot be written.
     A file this call makes is appended to `created` (when given), so the caller can take back what its own run made (FR12.4).
@@ -221,7 +236,7 @@ def cmd_new(args) -> int:
     try:
         _make_dirs(target.parent, folders)
         if args.full:
-            shutil.copytree(template, target, ignore=shutil.ignore_patterns("SKILL.vi.md", "SKILL.md"))  # SKILL.md is written below from the chosen language, never copied over a link
+            _copy_template(template, target, ("SKILL.vi.md", "SKILL.md"))  # SKILL.md is written below from the chosen language, never copied over a link
         else:
             target.mkdir()
         p = target / "SKILL.md"

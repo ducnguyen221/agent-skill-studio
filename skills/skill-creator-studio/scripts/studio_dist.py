@@ -311,7 +311,7 @@ def cmd_install(args) -> int:
             if inner is not None:
                 raise fs.UnsafeOpen("link inside the destination: %s" % inner)
             info = os.lstat(source)
-            with fs.open_nofollow_read(source, info, anchor=folder if fs.lexically_inside(source, folder) else ENGINE_DIR) as src_handle, fs.create_exclusive(destination) as dst_handle:
+            with fs.open_nofollow_read(source, info, anchor=folder if fs.lexically_inside(source, folder) else ENGINE_DIR) as src_handle, fs.create_exclusive(destination, anchor=skill_root) as dst_handle:
                 shutil.copyfileobj(src_handle, dst_handle)
             os.chmod(destination, stat.S_IMODE(info.st_mode))
     except (fs.UnsafeOpen, OSError) as exc:
