@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import re
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 PORTABLE_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 TARGETS = ("portable", "claude-code")
 # Claude Code extension keys beyond the portable set (code.claude.com/docs/en/skills, read 2026-10-22).
@@ -77,6 +77,8 @@ OPCOS_DESC_CHARS = 350  # profile opcos: BG1 above this many description charact
 OPCOS_DESC_TOTAL_BYTES = 20000  # profile opcos: the `budget` block is over above this many description bytes
 DOCTOR_MAX_DEPTH = 12  # folder levels below a root
 DOCTOR_MAX_DIRS = 100000  # folders listed per run
+REPLACE_TMP_SUFFIX = ".spr05tmp"  # the temp file write_replace makes next to its target: `.<name>.<8 hex>.spr05tmp`; one that stays is the leftover of a crash
+REPLACE_OLD_SUFFIX = ".spr05old"  # the old file a multi-file replace sets aside while the new one goes in; one that stays is the leftover of a crash
 DOCTOR_MAX_SKILLS = 3000
 DOCTOR_MAX_FILE_BYTES = 1_000_000  # a SKILL.md or reference above this is not read (SZ1)
 DOCTOR_MAX_FILES_PER_SKILL = 5000  # files and folders listed inside one skill; the rest is not listed (SZ1)

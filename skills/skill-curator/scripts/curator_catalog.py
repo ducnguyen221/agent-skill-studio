@@ -40,12 +40,13 @@ def home_path(path) -> str:
     plain = _home_tail(text, _posix(os.path.expanduser("~")).rstrip("/"))
     if plain is not None:
         return plain
-    if os.path.isabs(text):  # another spelling of home (an 8.3 name such as DUCNGU~1, a link): compare the real paths of both (RF-A12)
+    if os.path.isabs(text):  # another spelling of home (an 8.3 name such as DUCNGU~1): compare the long names of both. A link is NOT followed: where it leads is never printed (FR9.1)
         try:
-            real_text, real_home = _posix(os.path.realpath(text)), _posix(os.path.realpath(os.path.expanduser("~"))).rstrip("/")
+            long_text = _posix(fs._long_name_text(os.path.abspath(text)))
+            long_home = _posix(fs._long_name_text(os.path.abspath(os.path.expanduser("~")))).rstrip("/")
         except (OSError, ValueError, RuntimeError):
             return text
-        return _home_tail(real_text, real_home) or text
+        return _home_tail(long_text, long_home) or text
     return text
 
 
@@ -67,7 +68,7 @@ def short_description(text: str, limit: int = DESC_MAX) -> str:
     return cut.rstrip(" ,;:.") + "…"
 
 
-def _read_skill_meta(skill: Path) -> tuple:
+def _read_skill_meta(skill: Path, anchor: Path | None = None) -> tuple:
     """(name, description, opcos keys, notes) from SKILL.md. A key `metadata.opcos_<k>` becomes {k: value cut to DESC_MAX}; a value that is a list or a
     mapping is left out with a note (FR7.1). An unreadable or refused SKILL.md gives the folder name, no description and no keys."""
     manifest = skill / "SKILL.md"
@@ -75,7 +76,7 @@ def _read_skill_meta(skill: Path) -> tuple:
     if fs.is_link(manifest) or fs.path_is_cloud(manifest):
         return name, desc, keys, notes
     try:
-        text, too_big = fs.read_capped(manifest, C.DOCTOR_MAX_FILE_BYTES)
+        text, too_big = fs.read_capped(manifest, C.DOCTOR_MAX_FILE_BYTES, single_link=True, anchor=skill.parent if anchor is None else anchor)
     except (OSError, UnicodeError):
         return name, desc, keys, notes
     if too_big:
@@ -177,25 +178,25 @@ class TreeCache:
         self._semantic: dict = {}
 
     @staticmethod
-    def _key(path) -> tuple:
+    def _key(path, anchor=None) -> tuple:
         folder = os.path.abspath(os.fspath(path))
         try:
             st = os.lstat(folder)
             stamp = (st.st_mtime_ns, st.st_size)
         except OSError:
             stamp = None
-        return os.path.normcase(folder), stamp
+        return os.path.normcase(folder), stamp, os.path.normcase(os.path.abspath(os.fspath(anchor))) if anchor else None  # the answer depends on the anchor it was read under
 
-    def sha(self, path):
-        key = self._key(path)
+    def sha(self, path, anchor=None):
+        key = self._key(path, anchor)
         if key not in self._byte:
-            self._byte[key] = roots_mod.tree_sha256(Path(path), self.markers)
+            self._byte[key] = roots_mod.tree_sha256(Path(path), self.markers, anchor)
         return self._byte[key]
 
-    def semantic(self, path):
-        key = self._key(path)
+    def semantic(self, path, anchor=None):
+        key = self._key(path, anchor)
         if key not in self._semantic:
-            self._semantic[key] = roots_mod.tree_digest_semantic(Path(path), self.markers)
+            self._semantic[key] = roots_mod.tree_digest_semantic(Path(path), self.markers, anchor)
         return self._semantic[key]
 
 
@@ -209,30 +210,44 @@ def same_content(a_item: dict, b_item: dict, markers: tuple = C.CLOUD_MARKERS, c
     (a TreeCache) shares digests between calls."""
     cache = cache or TreeCache(markers)
     a, b = Path(a_item["path"]), Path(b_item["path"])
-    a_digest = a_item["sha"] if "sha" in a_item else cache.sha(a)
-    return _same_trees(a, a_digest, b, markers, cache, b_item["sha"] if "sha" in b_item else _UNSET)
+    a_digest = a_item["sha"] if "sha" in a_item else cache.sha(a, a_item.get("anchor"))
+    return _same_trees(a, a_digest, b, markers, cache, b_item["sha"] if "sha" in b_item else _UNSET, a_item.get("anchor"), b_item.get("anchor"))
 
 
-def _same_trees(a: Path, a_digest, b: Path, markers: tuple, cache: TreeCache | None = None, b_digest=_UNSET) -> tuple:
-    """`same_content` with the byte digest of `a` (and, when known, of `b`) already in hand; the semantic digests are taken only when the bytes differ."""
+def _same_trees(a: Path, a_digest, b: Path, markers: tuple, cache: TreeCache | None = None, b_digest=_UNSET, a_anchor=None, b_anchor=None) -> tuple:
+    """`same_content` with the byte digest of `a` (and, when known, of `b`) already in hand; the semantic digests are taken only when the bytes differ.
+    `a_anchor` and `b_anchor` are the scan roots the two trees are read under (the chain of folders from there down is pinned)."""
     cache = cache or TreeCache(markers)
     if b_digest is _UNSET:
-        b_digest = cache.sha(b)
+        b_digest = cache.sha(b, b_anchor)
     if a_digest is not None and a_digest == b_digest:
         return True, "byte"
-    left, right = cache.semantic(a), cache.semantic(b)
+    left, right = cache.semantic(a, a_anchor), cache.semantic(b, b_anchor)
     return (True, "semantic") if left is not None and left == right else (False, None)
 
 
-def _installed_items(installed: list, markers: tuple, cache: TreeCache | None = None) -> list:
+def _scan_anchor(folder, *candidates) -> Path | None:
+    """The first of the scan roots `candidates` (as written, then resolved) that holds `folder` by spelling, else None: the chain of folders from there down to a file
+    of the skill is pinned while the file is read, so a folder swapped for a link between the root and the skill is not read through."""
+    for candidate in candidates:
+        if not candidate:
+            continue
+        for option in (Path(candidate), Path(os.path.realpath(candidate))):
+            if fs.lexically_inside(folder, option):
+                return option
+    return None
+
+
+def _installed_items(installed: list, markers: tuple, cache: TreeCache | None = None, harness_roots: dict | None = None) -> list:
     """The Installed records as items for `curator_overlap`: key "<harness>/<plugin>:<skill>", the description from the copy's SKILL.md and its tree hash."""
     cache = cache or TreeCache(markers)
     out = []
     for item in installed:
         folder = Path(item["path"])
-        name, desc, _, _ = _read_skill_meta(folder)
+        anchor = _scan_anchor(folder, (harness_roots or {}).get(item["harness"]))
+        name, desc, _, _ = _read_skill_meta(folder, anchor)
         out.append({"key": "%s/%s:%s" % (item["harness"], item["plugin"], item["skill"]), "plugin": item["plugin"], "skill": item["skill"], "name": name,
-                    "desc": desc, "path": os.fspath(folder), "harness": item["harness"], "sha": cache.sha(folder)})
+                    "desc": desc, "path": os.fspath(folder), "harness": item["harness"], "sha": cache.sha(folder, anchor), "anchor": os.fspath(anchor) if anchor else None})
     return out
 
 
@@ -257,21 +272,24 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
     catalogs: dict = {}
     rows, used, items = [], set(), []
     differ_ids: set = set()
+    harness_roots = {r["area"]: r["path"] for r in roots if r["kind"] == "harness"}
     for skill in skills:
         folder = Path(skill["path"])
-        name, desc, keys, found = _read_skill_meta(folder)
+        anchor = _scan_anchor(folder, skill.get("root"))
+        name, desc, keys, found = _read_skill_meta(folder, anchor)
         if notes is not None:
             notes.extend(found)
         plugin = _plugin_dir(folder, skill["repo"])
-        digest = cache.sha(folder)
+        digest = cache.sha(folder, anchor)
         entry = by_path.get(os.path.normcase(doctor._posix(folder)), {})
         rel = folder.relative_to(plugin).as_posix() if plugin is not None else ""
         flag = _evals_entries(plugin, catalogs, notes).get(rel)
         state = {h: {"state": "absent", "version": None, "compare": None} for h in HARNESSES}
         for item in by_key.get((skill["plugin"], folder.name), []):  # one harness may hold several copies (two scopes): `match` wins over `differ`
             if item["harness"] in state and state[item["harness"]]["state"] != "match":
-                same, how = _same_trees(folder, digest, Path(item["path"]), markers, cache)
-                if not same and (digest is None or cache.sha(Path(item["path"])) is None):  # a tree that cannot be hashed whole: not a claimed difference (RF-A2)
+                copy_anchor = _scan_anchor(Path(item["path"]), harness_roots.get(item["harness"]))
+                same, how = _same_trees(folder, digest, Path(item["path"]), markers, cache, _UNSET, anchor, copy_anchor)
+                if not same and (digest is None or cache.sha(Path(item["path"]), copy_anchor) is None):  # a tree that cannot be hashed whole: not a claimed difference (RF-A2)
                     how = "unhashable"
                 state[item["harness"]] = {"state": "match" if same else "differ", "version": item.get("version"), "compare": how}
                 if not same and how != "unhashable":
@@ -282,12 +300,12 @@ def build(roots: list, installed: list, overlap: bool, profile: str, scanned: tu
                      "doctor": {"errors": entry.get("errors", 0), "warnings": entry.get("warnings", 0)},
                      "model_evaluated": flag, "opcos": keys})
         items.append({"key": "%s:%s" % (skill["plugin"], folder.name), "plugin": skill["plugin"], "skill": folder.name, "name": name, "desc": desc,
-                      "path": os.fspath(folder), "harness": None, "sha": digest})
+                      "path": os.fspath(folder), "harness": None, "sha": digest, "anchor": os.fspath(anchor) if anchor else None})
     rows.sort(key=lambda r: (r["repo"].casefold(), r["name"].casefold(), r["path"]))
     only = [dict(i, path=home_path(i["path"])) for i in installed if (i["harness"], i["plugin"], i["skill"]) not in used
             and (i["plugin"], i["skill"]) not in {(s["plugin"], Path(s["path"]).name) for s in skills}]
     cut: list = []
-    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers, cache), markers, cache, notes, cut) if overlap else None
+    pairs = curator_overlap.find_pairs(items, _installed_items(installed, markers, cache, harness_roots), markers, cache, notes, cut) if overlap else None
     return {"schema": SCHEMA, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "studio_version": C.VERSION,
             "roots": [_display_root(r) for r in roots], "skills": rows, "installed_only": only, "pairs": pairs,
             "totals": {"skills": len(rows), "repos": len({r["repo"] for r in rows}), "roots_not_ok": sum(r["status"] != "ok" for r in roots),
@@ -500,16 +518,17 @@ def _plain_roots(paths: list, skip_markers: tuple) -> tuple:
     return roots, skills, skipped
 
 
-def _harness_problem(out: Path, flag: str) -> str | None:
-    """Why `out` may not be written under a harness's own folder (~/.claude, ~/.codex, ~/.gemini): the files there belong to the harness."""
+def _harness_problem(out: Path, flag: str, home: Path | None = None) -> str | None:
+    """Why `out` may not be written under a harness's own folder (~/.claude, ~/.codex, ~/.gemini): the files there belong to the harness. `home` is the folder
+    given with --home: its harness folders are guarded like the real home's."""
     try:
         real = out.parent.resolve() / out.name
     except (OSError, RuntimeError):
         return None
-    home = Path(os.path.expanduser("~"))
-    for name in HARNESS_DIRS:
-        if fs.valid_resolved_under(real, home / name):
-            return "%s must not be inside a harness folder (%s): %s" % (flag, name, out)
+    for owner in (Path(os.path.expanduser("~")), home):
+        for name in HARNESS_DIRS:
+            if owner is not None and fs.valid_resolved_under(real, owner / name):
+                return "%s must not be inside a harness folder (%s): %s" % (flag, name, out)
     return None
 
 
@@ -576,7 +595,7 @@ def run(args) -> int:
     for value, kind, flag in ((args.out, "catalog-json", "--out"), (args.md, "catalog-md", "--md")):
         if value:
             target = Path(os.path.abspath(os.path.expanduser(value)))
-            problem = doctor.out_problem(target, roots, repo, [], False, skip_markers, kind=kind) or _harness_problem(target, flag)
+            problem = doctor.out_problem(target, roots, repo, [], False, skip_markers, kind=kind) or _harness_problem(target, flag, Path(os.path.abspath(os.path.expanduser(args.home))) if args.home else None)
             if problem:
                 _say("ERROR: %s" % problem, sys.stderr)
                 return 2
@@ -612,9 +631,8 @@ def run(args) -> int:
     for target, kind, flag in targets:
         text = json.dumps(report, ensure_ascii=False, indent=2) + "\n" if kind == "catalog-json" else render_md(report, _command_text(args))
         try:
-            with open(target, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(text)
-        except OSError as exc:
+            fs.write_replace(target, text.encode("utf-8"))
+        except OSError as exc:  # UnsafeOpen is one
             _say("ERROR: cannot write %s: %s" % (flag, exc), sys.stderr)
             return 2
     totals = report["totals"]

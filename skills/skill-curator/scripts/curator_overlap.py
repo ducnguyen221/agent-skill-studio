@@ -172,7 +172,8 @@ def _cat():
 def _sha(item: dict, markers: tuple, cache=None):
     if "sha" in item:
         return item["sha"]
-    return cache.sha(Path(item["path"])) if cache is not None else _cat().roots_mod.tree_sha256(Path(item["path"]), markers)
+    anchor = item.get("anchor")  # the scan root the item was found under: its folder chain is pinned while the tree is read
+    return cache.sha(Path(item["path"]), anchor) if cache is not None else _cat().roots_mod.tree_sha256(Path(item["path"]), markers, anchor)
 
 
 def _short(sha) -> str:

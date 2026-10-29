@@ -234,31 +234,36 @@ def export_agentskills(eval_dir: Path, skill_name: str, out_root: Path, force: b
     if clash and not force:
         return refuse(1, "EX5", "export file exists: %s; choose another --out or explicitly --force" % clash[0], clash[0])
     fresh = [x for x in [target] + list(copies) if not os.path.lexists(x)]  # only names this run creates are cleaned up again
-    temp_name = ""
+    staged: list = []  # new files written beside their names; they replace the old ones only after every one is complete (--force keeps the old export on a failure)
+
+    def copy_into(source: Path):
+        def fill(writer):
+            with fs.open_nofollow_read(source, checked[source], anchor=eval_dir) as reader:
+                shutil.copyfileobj(reader, writer)
+        return fill
+
     try:
         for t, source in copies.items():
             t.parent.mkdir(parents=True, exist_ok=True)
             linked = fs.link_in_chain(t.parent, dest)  # a parent swapped for a junction after the check above would redirect the write
             if linked:
                 raise fs.UnsafeOpen("export destination goes through a symlink or junction: %s" % linked, "EX6")
-            if t.exists():  # only reachable with --force: replace the file, never write through it
-                t.unlink()
-            with fs.open_nofollow_read(source, checked[source]) as reader, fs.create_exclusive(t) as writer:
-                shutil.copyfileobj(reader, writer)
+            staged.append(fs.stage_write(t, copy_into(source), anchor=dest))
         evals_dir.mkdir(parents=True, exist_ok=True)
         linked = fs.link_in_chain(evals_dir, dest)
         if linked:
             raise fs.UnsafeOpen("export destination goes through a symlink or junction: %s" % linked, "EX6")
-        handle, temp_name = tempfile.mkstemp(prefix=".evals-", suffix=".tmp", dir=str(evals_dir))  # same folder, so os.replace is atomic
-        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as out:
-            out.write(json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n")
-        os.replace(temp_name, target)
-        temp_name = ""
+        payload = (json.dumps({"skill_name": skill_name, "evals": evals}, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        staged.append(fs.stage_write(target, lambda writer: writer.write(payload), anchor=dest))
+        fs.commit_all(staged)  # every new file in place or, on a failure, every old one back
+        staged = []
     except OSError as exc:
-        for leftover in fresh + ([Path(temp_name)] if temp_name else []):  # a half-written export must not look like a finished one
+        for item in staged:
+            item.discard()
+        for leftover in fresh:  # a half-written export must not look like a finished one
             try:
-                leftover.unlink(missing_ok=True)
-            except OSError:
+                fs.remove_pinned(leftover, anchor=dest)
+            except (OSError, ValueError):
                 pass
         if isinstance(exc, fs.UnsafeOpen):
             return refuse(1, exc.code, "%s (files created by this run were removed)" % exc, out_root)
@@ -284,7 +289,7 @@ def engine_repo_root() -> Path | None:
 
 def _read_text(path) -> str:
     """UTF-8 text of a plain file, opened without following a link and read up to DOCTOR_MAX_FILE_BYTES; ValueError when larger or not UTF-8."""
-    with fs.open_nofollow_read(path, os.lstat(path), single_link=False) as handle:
+    with fs.open_nofollow_read(path, os.lstat(path), single_link=False, anchor=fs.anchor_for(path)) as handle:
         data = handle.read(C.DOCTOR_MAX_FILE_BYTES + 1)
     if len(data) > C.DOCTOR_MAX_FILE_BYTES:
         raise ValueError("%s is larger than %d bytes" % (path, C.DOCTOR_MAX_FILE_BYTES))

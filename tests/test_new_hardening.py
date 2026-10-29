@@ -203,10 +203,10 @@ class NoOrphanTests(Base):
     def test_fr12_4_an_eval_that_cannot_be_written_leaves_no_skill_md(self):
         real = E.fs.create_exclusive
 
-        def denied_for_rubric(path):
+        def denied_for_rubric(path, anchor=None):  # SPR-05 TK3: create_exclusive also takes the anchor of the pinned folder chain
             if Path(path).name == "rubric.md":
                 raise PermissionError(13, "Permission denied")
-            return real(path)
+            return real(path, anchor=anchor)
         (self.tmp / "ev" / "orphan" / "baselines").mkdir(parents=True)
         kept = self.tmp / "ev" / "orphan" / "baselines" / "BASELINE.md"
         kept.write_bytes(b"mine\n")  # there before this run: stays
@@ -222,7 +222,7 @@ class NoOrphanTests(Base):
 
     def test_fr12_4_a_failing_copy_is_reported_and_cleaned(self):
         before = listing(self.tmp)
-        with mock.patch.object(E.scaffold.shutil, "copyfile", side_effect=PermissionError(13, "Permission denied")):
+        with mock.patch.object(E.fs, "create_exclusive", side_effect=PermissionError(13, "Permission denied")):  # SPR-05 TK3: SKILL.md is made with create_exclusive now, not copied
             code, out, err = self.run_new("copy-fails", self.tmp / "o" / "skills")
         self.assertEqual(2, code, out + err)
         self.assertIn("ERROR", err)

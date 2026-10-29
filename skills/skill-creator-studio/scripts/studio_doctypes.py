@@ -172,7 +172,7 @@ def siblings_of(path: Path) -> set:
         return set()
 
 
-def read_document(path: Path, markers: tuple = C.CLOUD_MARKERS) -> tuple:
+def read_document(path: Path, markers: tuple = C.CLOUD_MARKERS, anchor: Path | None = None) -> tuple:
     """(text, None) or (None, why not). A file in a secret or cloud zone, a link, a cloud placeholder, a file over DOCTOR_MAX_FILE_BYTES or one that is not UTF-8 is not read."""
     problem = fs.input_file_problem(path, markers)
     if problem:
@@ -182,7 +182,7 @@ def read_document(path: Path, markers: tuple = C.CLOUD_MARKERS) -> tuple:
     if fs.path_is_cloud(path):
         return None, "is a cloud placeholder; it is not read"
     try:
-        text, too_big = fs.read_capped(path, C.DOCTOR_MAX_FILE_BYTES)
+        text, too_big = fs.read_capped(path, C.DOCTOR_MAX_FILE_BYTES, anchor=fs.anchor_for(path) if anchor is None else anchor)
     except (OSError, UnicodeError) as exc:
         return None, "cannot be read as UTF-8 text: %s" % (getattr(exc, "strerror", None) or type(exc).__name__)
     if too_big:

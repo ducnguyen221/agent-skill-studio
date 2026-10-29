@@ -54,6 +54,8 @@ def _plain_file_problem(path: Path, markers: tuple, limit: int, base: Path) -> t
         return reason, "its name or place is refused (%s)" % reason
     if fs.link_in_chain(path, base) is not None:
         return "link", "is a link or lies below one; not followed"
+    if fs.path_is_cloud(path):  # before resolve(): a placeholder is never followed on its way to a real path (RF-R4)
+        return "cloud", "is a cloud placeholder; not read"
     try:
         real = path.resolve()
     except (OSError, RuntimeError):
@@ -61,8 +63,6 @@ def _plain_file_problem(path: Path, markers: tuple, limit: int, base: Path) -> t
     reason = fs.zone_reason(real, markers)
     if reason:
         return reason, "its real path is in a %s place; not read" % reason
-    if fs.path_is_cloud(path):
-        return "cloud", "is a cloud placeholder; not read"
     try:
         info = os.lstat(path)
     except OSError:
@@ -74,16 +74,22 @@ def _plain_file_problem(path: Path, markers: tuple, limit: int, base: Path) -> t
     return None
 
 
-def _read_json(path: Path, limit: int, markers: tuple, base: Path):
+def _read_json(path: Path, limit: int, markers: tuple, base: Path, single_link: bool = True):
     """The JSON value of a small plain file below the trusted folder `base`; RootError (cloud, secret-zone, link, limit, unreadable) otherwise.
-    At most `limit` bytes are read."""
+    At most `limit` bytes are read. A file with a second name (hard link) is refused unless `single_link` is False (FR6.1)."""
     problem = _plain_file_problem(path, markers, limit, base)
     if problem:
         raise RootError(problem[0], "%s %s (%s)" % (path.name, problem[1], problem[0]))
     try:
-        with fs.open_nofollow_read(path, expect_stat=os.lstat(path), single_link=False) as handle:
+        with fs.open_nofollow_read(path, expect_stat=os.lstat(path), single_link=single_link, anchor=base) as handle:
             data = handle.read(limit + 1)
-    except OSError as exc:  # UnsafeOpen is one
+    except fs.UnsafeOpen as exc:
+        if "hard link" in str(exc):
+            raise RootError("link", "%s has more than one name (hard link); not read (link)" % path.name)
+        if "link" in str(exc) or "reparse" in str(exc):
+            raise RootError("link", "%s is a link; not read (link)" % path.name)
+        raise RootError("unreadable", "%s cannot be read (%s)" % (path.name, "not a plain file or changed while opening"))
+    except OSError as exc:
         raise RootError("unreadable", "%s cannot be read (%s)" % (path.name, exc.strerror or type(exc).__name__))
     if len(data) > limit:
         raise RootError("limit", "%s is above %d bytes; not read (limit)" % (path.name, limit))
@@ -166,7 +172,7 @@ def opcos_roots(paths_file: Path, include_system_plugins: bool = True, markers: 
     Each root is {path, kind, area, status, reasons, skipped_by_rule}; here the status is `ok` or `error` (collect_skills adds `partial`). A paths.json
     that cannot be read raises RootError."""
     paths_file = Path(os.path.abspath(os.fspath(paths_file)))
-    data = _read_json(paths_file, C.PATHS_JSON_MAX, markers, paths_file.parent)
+    data = _read_json(paths_file, C.PATHS_JSON_MAX, markers, paths_file.parent, single_link=False)
     areas = data.get("areas") if isinstance(data, dict) else None
     if not isinstance(areas, list):
         raise RootError("unreadable", "paths.json has no areas list (unreadable)")
@@ -235,12 +241,14 @@ def _nested_skills(skill: Path, extra: tuple, skipped: list, budget: dict, depth
     that are not material (references, scripts, assets, tests, evals, examples, fixtures..., hidden and superseded folders) are scanned one by one.
     `budget` ({left, cut}) is shared by every call of one scan: each folder listed spends one of DOCTOR_MAX_DIRS and what is left unscanned is reported once as `limit`."""
     found = []
-    if depth >= C.DOCTOR_MAX_SKILL_DEPTH:
-        return found
-    if budget["left"] <= 0:
+
+    def cut(folder: Path) -> None:  # the run was cut here: one `limit` line for the whole run, however many places are cut
         if not budget["cut"]:
             budget["cut"] = True
-            skipped.append({"path": _posix(skill), "reason": "limit"})
+            skipped.append({"path": _posix(folder), "reason": "limit"})
+
+    if depth >= C.DOCTOR_MAX_SKILL_DEPTH or budget["left"] <= 0:
+        cut(skill)
         return found
     budget["left"] -= 1
     try:
@@ -268,10 +276,9 @@ def _nested_skills(skill: Path, extra: tuple, skipped: list, budget: dict, depth
             skipped.append({"path": _posix(child), "reason": "link"})
         else:
             if budget["left"] <= 0:
-                _nested_skills(child, extra, skipped, budget, depth + 1)  # reports the limit once
+                cut(child)  # reported here, not by stepping into the folder: the depth limit would swallow it
                 continue
-            budget["left"] -= 1
-            below, skp = doctor.iter_skill_dirs([child], False, extra)
+            below, skp = doctor.iter_skill_dirs([child], False, extra, budget)  # spends the shared budget itself
             skipped.extend(_rule_names(skp, extra))
             for item in below:
                 found.append(item)
@@ -330,7 +337,7 @@ def _plugin_scan(plugin: Path, markers: tuple, budget: dict | None = None, manif
             elif os.path.lexists(target):
                 skipped.append({"path": _posix(target), "reason": "link" if fs.is_link(target) else "unreadable"})
             continue
-        found, skp = doctor.iter_skill_dirs([target], False, extra)
+        found, skp = doctor.iter_skill_dirs([target], False, extra, budget)  # the first pass spends the run's budget too
         skipped.extend(_rule_names(skp, extra))
         for folder in found:
             add(folder)
@@ -431,14 +438,14 @@ def collect_skills(roots: list, markers: tuple = C.CLOUD_MARKERS) -> tuple:
     return skills, skipped
 
 
-def _file_sha256(path: Path) -> str | None:
+def _file_sha256(path: Path, anchor: Path | None = None) -> str | None:
     """SHA-256 of the file's bytes (read in blocks through open_nofollow_read, no CRLF folding), None above TREE_FILE_MAX or when it cannot be opened safely."""
     try:
         info = os.lstat(path)
         if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_size > TREE_FILE_MAX:
             return None
         digest, total = hashlib.sha256(), 0
-        with fs.open_nofollow_read(path, expect_stat=info, single_link=False) as handle:
+        with fs.open_nofollow_read(path, expect_stat=info, single_link=False, anchor=anchor) as handle:
             while True:
                 block = handle.read(1 << 20)
                 if not block:
@@ -451,13 +458,13 @@ def _file_sha256(path: Path) -> str | None:
         return None
 
 
-def _file_bytes(path: Path) -> bytes | None:
+def _file_bytes(path: Path, anchor: Path | None = None) -> bytes | None:
     """The bytes of a regular file, read through open_nofollow_read; None above TREE_FILE_MAX or when it cannot be opened safely (the rules of _file_sha256)."""
     try:
         info = os.lstat(path)
         if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_size > TREE_FILE_MAX:
             return None
-        with fs.open_nofollow_read(path, expect_stat=info, single_link=False) as handle:
+        with fs.open_nofollow_read(path, expect_stat=info, single_link=False, anchor=anchor) as handle:
             data = handle.read(TREE_FILE_MAX + 1)
         return data if len(data) <= TREE_FILE_MAX else None
     except OSError:  # UnsafeOpen is one
@@ -484,10 +491,10 @@ def _dropped_frontmatter_lines(head: list, findings: list) -> list:
     return [head[i].rstrip() for i in sorted(wanted) if 0 < i < len(head)]
 
 
-def _semantic_file_sha256(path: Path, rel: str) -> str | None:
+def _semantic_file_sha256(path: Path, rel: str, anchor: Path | None = None) -> str | None:
     """SHA-256 of a file as the semantic tree sees it: SKILL.md = its parsed frontmatter (sorted keys) + its body, CRLF folded to LF; another text file
     (SEMANTIC_TEXT_SUFFIXES) with CRLF folded to LF; any other file as its bytes. A SKILL.md that is not UTF-8 or has no parsable frontmatter counts as text."""
-    data = _file_bytes(path)
+    data = _file_bytes(path, anchor)
     if data is None:
         return None
     if rel == "SKILL.md":
@@ -506,9 +513,20 @@ def _semantic_file_sha256(path: Path, rel: str) -> str | None:
     return hashlib.sha256(data).hexdigest()
 
 
-def _tree_digest(skill: Path, markers: tuple, semantic: bool) -> str | None:
-    """The walk behind tree_sha256 and tree_digest_semantic: one line per file, hashed byte for byte or by `_semantic_file_sha256`."""
+def _tree_digest(skill: Path, markers: tuple, semantic: bool, anchor: Path | None = None) -> str | None:
+    """`_tree_digest_walk` with the folder chains held for the whole skill: the folders from the anchor down are opened once while its files are read, and released
+    when the digest is done (fs.pin_session), instead of one chain of folders per file."""
+    with fs.pin_session():
+        return _tree_digest_walk(skill, markers, semantic, anchor)
+
+
+def _tree_digest_walk(skill: Path, markers: tuple, semantic: bool, anchor: Path | None = None) -> str | None:
+    """The walk behind tree_sha256 and tree_digest_semantic: one line per file, hashed byte for byte or by `_semantic_file_sha256`. The chain of folders from
+    `anchor` (the scan root; default the folder that holds the skill) down to each file is pinned while it is read."""
     skill = Path(os.path.abspath(os.fspath(skill)))
+    anchor = skill.parent if anchor is None else Path(os.path.abspath(os.fspath(anchor)))
+    if not fs.lexically_inside(skill, anchor):
+        return None
     if fs.zone_reason(skill, markers) or fs.is_link(skill) or fs.path_is_cloud(skill) or not fs._is_dir_quiet(skill):
         return None
     try:  # walk_files skips a folder it cannot list: for the skill folder itself that would hash the empty tree
@@ -535,7 +553,7 @@ def _tree_digest(skill: Path, markers: tuple, semantic: bool) -> str | None:
         if fs.secret_file_name(path.name):
             return None
         rel = path.relative_to(skill).as_posix()
-        digest = _semantic_file_sha256(path, rel) if semantic else _file_sha256(path)
+        digest = _semantic_file_sha256(path, rel, anchor) if semantic else _file_sha256(path, anchor)
         if digest is None:
             return None
         lines.append((rel, digest))
@@ -543,16 +561,16 @@ def _tree_digest(skill: Path, markers: tuple, semantic: bool) -> str | None:
     return hashlib.sha256("".join("%s\t%s\n" % item for item in lines).encode("utf-8", "surrogatepass")).hexdigest()
 
 
-def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
+def tree_sha256(skill: Path, markers: tuple = C.CLOUD_MARKERS, anchor: Path | None = None) -> str | None:
     """SHA-256 of the lines "<posix path below the skill>\\t<sha256 of the file>\\n", sorted by path, over every regular file of the skill folder (not
     __pycache__, not .git, not *.pyc), bytes as they are. None when the tree cannot be hashed whole: the folder is a link, in a zone or a cloud placeholder; it holds a
     link, a cloud placeholder, a folder named like a zone, a secret-looking file (never opened), more than DOCTOR_MAX_FILES_PER_SKILL entries or a file above
     TREE_FILE_MAX; or a file cannot be opened without following a link."""
-    return _tree_digest(skill, markers, False)
+    return _tree_digest(skill, markers, False, anchor)
 
 
-def tree_digest_semantic(skill: Path, markers: tuple = C.CLOUD_MARKERS) -> str | None:
+def tree_digest_semantic(skill: Path, markers: tuple = C.CLOUD_MARKERS, anchor: Path | None = None) -> str | None:
     """Like tree_sha256 (same walk, same limits, same None cases) over what a file says, not its bytes (FR3.2 `compare: semantic`): SKILL.md by its parsed
     frontmatter and its body, text files with CRLF folded to LF, other files by bytes; `.gitkeep` is left out too. A copy that a harness adapter rewrote (quoted
     description, LF for CRLF) digests like its source; a changed word, a missing file or an extra file still digests differently."""
-    return _tree_digest(skill, markers, True)
+    return _tree_digest(skill, markers, True, anchor)

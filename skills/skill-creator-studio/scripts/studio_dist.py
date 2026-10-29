@@ -26,8 +26,9 @@ ENGINE_DEP_NAME = re.compile(r"^studio_[a-z_]+\.py$")
 ENGINE_DIR = Path(__file__).resolve().parent
 
 
-def engine_extras(folder: Path) -> tuple[list[tuple[Path, Path]], list[dict]]:
-    """The shared engine files a skill that lists them in `scripts/ENGINE_DEPS` takes along (SPR-04 FR9.3): ([(source, path inside the skill)], findings).
+def engine_extras(folder: Path) -> tuple[list[tuple[Path, Path, bytes]], list[dict]]:
+    """The shared engine files a skill that lists them in `scripts/ENGINE_DEPS` takes along (SPR-04 FR9.3): ([(source, path inside the skill, bytes)], findings).
+    The bytes are the single read that was checked for secrets; callers write those bytes and never open the file again (SPR-05 FR11.2).
     One `studio_*.py` name per line ('#' comments and blank lines are skipped); each must be one of this running engine's own modules, never a link. The entry
     point `studio.py` always goes with them, because `doctor` of the packaged skill runs through it. A skill without the file takes nothing."""
     deps = folder / ENGINE_DEPS_REL
@@ -39,7 +40,7 @@ def engine_extras(folder: Path) -> tuple[list[tuple[Path, Path]], list[dict]]:
     if problem:
         return [], [fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS %s; nothing is packaged" % problem)]
     try:
-        with fs.open_nofollow_read(deps, os.lstat(deps)) as handle:
+        with fs.open_nofollow_read(deps, os.lstat(deps), anchor=folder) as handle:
             text = handle.read(65536).decode("utf-8")
     except (fs.UnsafeOpen, OSError, UnicodeError) as exc:
         return [], [fs.emit("ERROR", "PACK", deps, 0, "ENGINE_DEPS cannot be read: %s" % exc)]
@@ -61,18 +62,21 @@ def engine_extras(folder: Path) -> tuple[list[tuple[Path, Path]], list[dict]]:
             findings.append(fs.emit("ERROR", "PACK", source, 0, "file exceeds 25 MB; review before shipping"))
         else:
             try:
-                with fs.open_nofollow_read(source, os.lstat(source)) as handle:
-                    raw = handle.read().decode("utf-8")
+                with fs.open_nofollow_read(source, os.lstat(source), anchor=ENGINE_DIR) as handle:
+                    data = handle.read()
+                raw = data.decode("utf-8")
             except (fs.UnsafeOpen, OSError, UnicodeError) as exc:
                 findings.append(fs.emit("ERROR", "PACK", source, 0, "engine file cannot be read: %s" % exc))
                 continue
             if fs.secret_in_text(raw):
                 findings.append(fs.emit("ERROR", "SEC", source, 0, "possible hardcoded secret in package"))
-            extras.append((source, Path("scripts") / "_engine" / name))
+            extras.append((source, Path("scripts") / "_engine" / name, data))
     return extras, findings
 
 
-def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
+def ensure_distributable(folder: Path, extras_out: list | None = None) -> tuple[list[Path], list[dict]]:
+    """The skill's files that may ship, and the findings. With `extras_out` the engine files `ENGINE_DEPS` names are added to that list as `engine_extras` returns
+    them, so the caller writes what was checked instead of asking again."""
     manifest = folder / "SKILL.md"
     # Decided before anything reads SKILL.md (validate_skill and the draft-marker test both do): a link, a cloud placeholder or a file in a
     # cloud/secret zone is refused and not opened (SPR-02 FR7.2).
@@ -85,7 +89,11 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
     if problem:
         return [], [fs.emit("ERROR", "PACK", manifest, 0, "SKILL.md %s; nothing is packaged" % problem)]
     findings = validate.validate_skill(folder)
-    if manifest.is_file() and re.search(r"<!--\s*STUDIO-DRAFT", manifest.read_text(encoding="utf-8")):
+    try:
+        draft = manifest.is_file() and re.search(r"<!--\s*STUDIO-DRAFT", fs.read_capped(manifest, None, anchor=folder)[0])
+    except (OSError, UnicodeError) as exc:  # validate_skill read it a moment ago: a failure now is a swap
+        return [], findings + [fs.emit("ERROR", "PACK", manifest, 0, "SKILL.md cannot be read again (%s); nothing is packaged" % (str(exc) if isinstance(exc, fs.UnsafeOpen) else type(exc).__name__))]
+    if draft:
         findings.append(fs.emit("ERROR", "PACK", manifest, 0, "cannot package an unfinished template: remove draft marker after authoring"))
     files = []
     paths, links, dirs, cloud, cut = fs.walk_files(folder, skip_names=C.SKIP_DIRS)  # no rglob: links and cloud placeholders are listed, never entered or opened
@@ -119,7 +127,7 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
             continue
         if p.suffix.lower() in {".md", ".py", ".txt", ".json", ".yaml", ".yml", ".sh"}:
             try:
-                with fs.open_nofollow_read(p, info) as handle:
+                with fs.open_nofollow_read(p, info, anchor=folder) as handle:
                     raw = handle.read().decode("utf-8")
             except fs.UnsafeOpen as exc:
                 findings.append(fs.emit("ERROR", "PACK", p, 0, "not packaged: %s" % exc))
@@ -129,7 +137,10 @@ def ensure_distributable(folder: Path) -> tuple[list[Path], list[dict]]:
             if fs.secret_in_text(raw):
                 findings.append(fs.emit("ERROR", "SEC", p, 0, "possible hardcoded secret in package"))
         kept.append(p)
-    findings.extend(engine_extras(folder)[1])
+    engine_files, engine_findings = engine_extras(folder)
+    findings.extend(engine_findings)
+    if extras_out is not None:
+        extras_out.extend(engine_files)
     return kept, findings
 
 
@@ -138,7 +149,8 @@ def cmd_package(args) -> int:
     if not folder.is_dir():
         print("ERROR: skill folder not found: %s" % folder, file=sys.stderr)
         return 2
-    files, findings = ensure_distributable(folder)
+    extras: list = []
+    files, findings = ensure_distributable(folder, extras)
     if any(f["level"] == "ERROR" for f in findings):
         validate.print_findings(folder, findings)
         print("Package blocked; correct errors before trying again.", file=sys.stderr)
@@ -149,22 +161,26 @@ def cmd_package(args) -> int:
     if target.exists() and not args.force:
         print("ERROR: package exists: %s; choose another --out or explicitly --force" % target, file=sys.stderr)
         return 1
-    try:
-        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
+    def fill(sink):
+        with zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED) as zf:
             for p in files:
                 arcname = str(Path(folder.name) / p.relative_to(folder))
-                with fs.open_nofollow_read(p, os.lstat(p)) as handle:  # the file that was checked, never a link put there since
+                with fs.open_nofollow_read(p, os.lstat(p), anchor=folder) as handle:  # the file that was checked, never a link put there since
                     data = handle.read()
                 zf.writestr(zipfile.ZipInfo.from_file(p, arcname), data, compress_type=zipfile.ZIP_DEFLATED)
-            for source, inside in engine_extras(folder)[0]:
-                with fs.open_nofollow_read(source, os.lstat(source)) as handle:
-                    zf.writestr(zipfile.ZipInfo.from_file(source, str(Path(folder.name) / inside)), handle.read(), compress_type=zipfile.ZIP_DEFLATED)
+            for source, inside, data in extras:  # the bytes the secret check read: the engine files are not opened a second time
+                zf.writestr(zipfile.ZipInfo.from_file(source, str(Path(folder.name) / inside)), data, compress_type=zipfile.ZIP_DEFLATED)
+
+    try:
+        fs.replace_with(target, fill)  # written beside the target and renamed over it: a failure leaves the previous package (--force) as it was
     except fs.UnsafeOpen as exc:
-        fs._remove_quietly(target)
         print("ERROR: PACK: %s; nothing was packaged" % exc, file=sys.stderr)
         return 1
+    except OSError as exc:
+        print("ERROR: PACK: cannot write the package (%s); a previous package was kept" % (exc.strerror or exc), file=sys.stderr)
+        return 1
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
-    count = len(engine_extras(folder)[0])
+    count = len(extras)
     shared = " (+%d shared engine files)" % count if count else ""  # the line is unchanged for a skill without ENGINE_DEPS
     print("Packaged %d runtime files%s -> %s\nSHA256: %s\nExcluded: evals/, tests/ and cache folders (any letter case); a secret-named file stops the package instead. Model evaluation status is unchanged." % (len(files), shared, target, digest))
     return 0
@@ -232,7 +248,8 @@ def cmd_install(args) -> int:
             print("ERROR: parent directory not found: %s; nothing was created" % skill_root.parent, file=sys.stderr)
             return 2
         boundary = Path.home()
-    files, findings = ensure_distributable(folder)
+    extras: list = []
+    files, findings = ensure_distributable(folder, extras)
     if any(f["level"] == "ERROR" for f in findings):
         validate.print_findings(folder, findings)
         return 1
@@ -296,23 +313,36 @@ def cmd_install(args) -> int:
         print("Existing installation backed up to %s" % backup)
     dest.mkdir(parents=True, exist_ok=False)  # creates skill_root itself, never the agent's config parent
     try:
-        for source, destination in [(p, dest / p.relative_to(folder)) for p in files] + [(src, dest / inside) for src, inside in engine_extras(folder)[0]]:
+        for source, destination, data in [(p, dest / p.relative_to(folder), None) for p in files] + [(src, dest / inside, bytes_) for src, inside, bytes_ in extras]:
             destination.parent.mkdir(parents=True, exist_ok=True)
             inner = fs.link_in_chain(destination.parent, dest)
             if inner is not None:
                 raise fs.UnsafeOpen("link inside the destination: %s" % inner)
             info = os.lstat(source)
-            with fs.open_nofollow_read(source, info) as src_handle, fs.create_exclusive(destination) as dst_handle:
-                shutil.copyfileobj(src_handle, dst_handle)
+            if data is not None:  # an engine file: the bytes already checked for secrets, not opened again
+                with fs.create_exclusive(destination, anchor=skill_root) as dst_handle:
+                    dst_handle.write(data)
+            else:
+                with fs.open_nofollow_read(source, info, anchor=folder) as src_handle, fs.create_exclusive(destination, anchor=skill_root) as dst_handle:
+                    shutil.copyfileobj(src_handle, dst_handle)
             os.chmod(destination, stat.S_IMODE(info.st_mode))
     except (fs.UnsafeOpen, OSError) as exc:
-        shutil.rmtree(dest, ignore_errors=True)
+        shutil.rmtree(dest, ignore_errors=True)  # only what this run copied: the old Skill was moved aside above
+        restored = False
         if backup is not None:
             try:
-                os.rename(backup, dest)
+                os.replace(backup, dest)
+                restored = True
+                try:
+                    backup.parent.rmdir()  # the backups folder, when this run made it and nothing else is in it
+                except OSError:
+                    pass
             except OSError:
-                print("ERROR: the old Skill is kept at %s" % backup, file=sys.stderr)
-        print("ERROR: install stopped: %s; no partial Skill was left" % exc, file=sys.stderr)
+                print("ERROR: the old Skill is kept at %s; restore it from there" % backup, file=sys.stderr)
+        if restored:
+            print("ERROR: install failed (%s); the previous Skill was restored" % exc, file=sys.stderr)
+        else:
+            print("ERROR: install stopped: %s; no partial Skill was left" % exc, file=sys.stderr)
         return 1
     print("Installed %s for %s at %s. This copies files; it does not run the agent or its scripts." % (folder.name, args.agent, dest))
     return 0

@@ -256,10 +256,10 @@ class NewOutputTests(unittest.TestCase):
         err, out = io.StringIO(), io.StringIO()
         real = E.fs.create_exclusive
 
-        def denied_for_rubric(path):
+        def denied_for_rubric(path, anchor=None):  # SPR-05 TK3: create_exclusive also takes the anchor of the pinned folder chain
             if Path(path).name == "rubric.md":
                 raise PermissionError(13, "Permission denied")
-            return real(path)
+            return real(path, anchor=anchor)
         with mock.patch.object(E.fs, "create_exclusive", denied_for_rubric), contextlib.redirect_stderr(err), contextlib.redirect_stdout(out):
             code = E.scaffold.cmd_new(new_args("no-rubric", self.tmp / "skills", self.tmp / "ev"))
         self.assertEqual(2, code, out.getvalue() + err.getvalue())

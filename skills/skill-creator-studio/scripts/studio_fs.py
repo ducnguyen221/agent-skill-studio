@@ -7,11 +7,14 @@ Internal module of `studio.py`; do not run it. It reaches the constants through 
 from __future__ import annotations
 
 import ast
+import contextlib
 import errno
 import functools
 import os
 import re
 import stat
+import sys
+import threading
 from pathlib import Path
 
 import studio_const as C
@@ -351,13 +354,26 @@ def input_name_problem(source: Path, markers=C.CLOUD_MARKERS) -> str | None:
     return "is inside a %s zone; not read" % reason if reason else None
 
 
-def input_file_problem(source: Path, markers=C.CLOUD_MARKERS) -> str | None:
+def _input_is_link(source: Path) -> bool:
+    """True when the input file is a link, or lies under a link between the anchor (`anchor_for`: the working folder, else the folder that holds it) and
+    itself. One lstat per step, nothing is resolved or followed. The anchor may itself be a link (a link ABOVE the working folder is accepted, FR2.2)."""
+    absolute = Path(os.path.abspath(os.fspath(source)))
+    anchor = anchor_for(absolute)
+    hit = link_in_chain(absolute, anchor)
+    return hit is not None and os.path.normcase(hit) != os.path.normcase(anchor)  # the anchor itself may be a link; the file always lies below it
+
+
+def input_file_problem(source: Path, markers=C.CLOUD_MARKERS, refuse_links: bool = False) -> str | None:
     """Why an input file (--roots-file, --baseline) may not be read, else None. Decided before opening it: not an NTFS data stream
     (name:stream), not a secret-looking name, not a cloud placeholder, and neither the spelling given nor the real path (a link, an 8.3
-    name such as SECRET~1) in a cloud or secret zone."""
+    name such as SECRET~1) in a cloud or secret zone. `refuse_links` (the files the user names on the command line: --roots-file, --baseline; CQ1)
+    also refuses a link, or a file under a folder link below the working folder, before anything is resolved so the target is never touched; the
+    callers that read files inside a scan root keep their own link rules (a link ABOVE the scan root is accepted, FR2.2)."""
     named = input_name_problem(source, markers)
     if named:
         return named
+    if refuse_links and _input_is_link(source):
+        return "is a link (or under a folder link); not read"
     if path_is_cloud(source):
         return "is a cloud placeholder; not read"
     try:
@@ -387,13 +403,12 @@ def link_crosses_link(base: Path, link: str) -> bool:
     return False
 
 
-def read_capped(path, limit: int | None) -> tuple:
-    """(text, too_big). With a limit the file is read in binary up to limit+1 bytes and never further; newlines are folded as read_text does."""
-    if limit is None:
-        return Path(path).read_text(encoding="utf-8"), False
-    with open(path, "rb") as handle:
-        data = handle.read(limit + 1)
-    if len(data) > limit:
+def read_capped(path, limit: int | None, single_link: bool = False, anchor=None) -> tuple:
+    """(text, too_big). With a limit the file is read in binary up to limit+1 bytes and never further; newlines are folded as read_text does.
+    Every branch opens through open_nofollow_read, so a link at the last name is refused (UnsafeOpen) and, with `single_link`, so is a file with a second name."""
+    with open_nofollow_read(path, None, single_link, anchor) as handle:
+        data = handle.read() if limit is None else handle.read(limit + 1)
+    if limit is not None and len(data) > limit:
         return None, True
     return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n"), False
 
@@ -531,19 +546,271 @@ class UnsafeOpen(OSError):
         self.code = code
 
 
-def open_nofollow_read(path, expect_stat=None, single_link: bool = True):
-    """Open `path` for binary reading without following a link; return the file object. POSIX: O_NOFOLLOW. Windows (no O_NOFOLLOW): open, then compare
-    (st_dev, st_ino) of the open handle with `expect_stat` (the lstat taken when the file was checked). Both: the handle must be a regular file and,
-    with `single_link`, have exactly one name. Any mismatch raises UnsafeOpen. Windows residue: the open itself already follows a reparse point
-    before the comparison (see README, "Rủi ro còn lại")."""
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
+def _win_create_file(path: str, access: int, share: int, disposition: int, flags: int) -> int:
+    """Windows: a handle from CreateFile for `path`. On Python 3.10+ that is `_winapi.CreateFile`; on 3.9 `_winapi.CreateFile` is the ANSI function (a name with
+    non-ASCII letters would be made under a wrong name), so the wide function is called through ctypes. The private `_winapi` module must exist either way
+    (a build without it refuses to open, SC6). Errors are OSError with the `winerror` (FileNotFoundError, FileExistsError, PermissionError...)."""
+    import _winapi
+    if sys.version_info >= (3, 10):
+        return _winapi.CreateFile(path, access, share, 0, disposition, flags, 0)
     try:
-        fd = os.open(path, flags)
+        import ctypes
+        from ctypes import wintypes
+    except ImportError as exc:
+        raise UnsafeOpen("safe open unavailable on this Python (no ctypes): %s" % path) from exc
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    handle = kernel32.CreateFileW(path, access, share, None, disposition, flags, None)
+    if handle is None or handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return handle
+
+
+def _open_no_reparse(path: str, write: bool = False, create_new: bool = False) -> int:
+    """Windows only: open the last name of `path` as itself, never through a link, and return a file descriptor: for reading, or with `write` for writing, and with
+    `create_new` only when no name is there yet (CREATE_NEW). CreateFile with FILE_FLAG_OPEN_REPARSE_POINT opens a symlink, junction or cloud file as the reparse
+    point, and BACKUP_SEMANTICS lets it open a folder too, so both are looked at (`fstat`) and refused instead of being followed (open, then compare, left a window).
+    CREATE_NEW on a name that is a link or a folder is denied (winerror 5); that becomes FileExistsError only when the name really is there (lstat), so a genuine
+    permission error stays one. `_winapi` is a private module of CPython: a build without it, or one that changes it, refuses to open (fails closed) and never
+    falls back to a plain open()."""
+    try:
+        import _winapi
+        import msvcrt
+    except ImportError as exc:
+        raise UnsafeOpen("safe open unavailable on this Python (no _winapi): %s" % path) from exc
+    access = 0x40000000 if write else 0x80000000  # GENERIC_WRITE / GENERIC_READ
+    disposition = 1 if create_new else 3  # CREATE_NEW / OPEN_EXISTING
+    try:
+        handle = _win_create_file(path, access, 0x1 | 0x2 | 0x4, disposition, 0x00200000 | 0x02000000)  # share all; OPEN_REPARSE_POINT | BACKUP_SEMANTICS
+    except OSError as exc:
+        if create_new and getattr(exc, "winerror", None) == 5:
+            try:
+                os.lstat(path)
+            except OSError:
+                raise exc
+            raise FileExistsError(errno.EEXIST, "already exists (a link or a folder counts)", path) from exc
+        raise
+    try:
+        fd = msvcrt.open_osfhandle(handle, (os.O_WRONLY if write else os.O_RDONLY) | os.O_BINARY)
+    except BaseException:
+        _winapi.CloseHandle(handle)
+        raise
+    try:
+        info = os.fstat(fd)
+        if getattr(info, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT:  # a cloud file carries the flag too: the message names both
+            raise UnsafeOpen("is a link or a cloud file (reparse point): %s" % path)
+        if stat.S_ISDIR(info.st_mode):
+            raise UnsafeOpen("is a folder or a folder link: %s" % path)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def anchor_for(path, cwd=None) -> Path:
+    """The folder a chain of folders is pinned from for `path`: the working folder when `path` is below it (by spelling, or through a link spelling of it: the
+    ancestor of `path` that is the same folder, as written in `path`), else the folder that holds `path`. The same rule `resolve_check_path` uses, so a link ABOVE the anchor (macOS /tmp, a OneDrive folder that changed owner) is accepted on purpose (FR2.2)."""
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    here = Path(os.path.abspath(os.fspath(cwd) if cwd is not None else os.getcwd()))
+    if os.path.normcase(here) in {os.path.normcase(p) for p in absolute.parents}:
+        return here
+    for parent in reversed(list(absolute.parents)):  # the working folder reached through a link spelling (macOS /var -> /private/var): the SHALLOWEST ancestor that is the
+        try:  # working folder, so a link below it (even one that points back at it) stays a folder below the anchor and is checked
+            if os.path.samefile(parent, here):
+                return parent
+        except OSError:
+            continue
+    return absolute.parent
+
+
+class _Pin:
+    """What `pin_chain` yields: `dir_fd` is the pinned folder that holds the file (a POSIX descriptor; None on Windows, where the folders below the anchor stay put
+    while held, so the full path reaches the same folder; a link at or above the anchor is the exception, see pin_chain)."""
+
+    def __init__(self, dir_fd):
+        self.dir_fd = dir_fd
+
+
+def _pin_component(name: str, dir_fd, stack, follow: bool = False) -> int:
+    """POSIX: open one folder of the chain by `name` under the pinned `dir_fd` (None for the anchor, which is given as a path) without following a link.
+    `follow` is for the anchor only: the user chose it, so it may itself be a link (the descriptor then holds the real folder)."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | (0 if follow else getattr(os, "O_NOFOLLOW", 0))
+    try:
+        fd = os.open(name, flags, dir_fd=dir_fd) if dir_fd is not None else os.open(name, flags)
+    except OSError as exc:
+        if not follow and exc.errno in (errno.ELOOP, errno.ENOTDIR, getattr(errno, "EMLINK", -1)):
+            try:
+                is_symlink = stat.S_ISLNK(os.lstat(name, dir_fd=dir_fd).st_mode if dir_fd is not None else os.lstat(name).st_mode)
+            except OSError:
+                is_symlink = False
+            if is_symlink:
+                raise UnsafeOpen("a folder on the path is a link: %s" % name) from exc
+        raise
+    stack.callback(os.close, fd)
+    return fd
+
+
+def _pin_component_windows(path: str, stack, follow: bool = False) -> None:
+    """Windows: open one folder of the chain as itself (FILE_LIST_DIRECTORY, reparse point not followed, BACKUP_SEMANTICS to open a folder) with a share mode
+    that has no FILE_SHARE_DELETE, so while the handle is held nobody can rename or remove the folder or one above it (a handle with only FILE_READ_ATTRIBUTES
+    would not block that). A reparse point on the way is refused; a folder another process holds open for delete cannot be pinned (winerror 32). `follow` is for
+    the anchor only: it may itself be a junction or symlink (the handle then holds the real folder); the path above it is followed as always."""
+    try:
+        import _winapi
+        import msvcrt
+    except ImportError as exc:
+        raise UnsafeOpen("safe open unavailable on this Python (no _winapi): %s" % path) from exc
+    try:
+        handle = _win_create_file(path, 0x1, 0x1 | 0x2, 3, 0x02000000 if follow else 0x00200000 | 0x02000000)  # FILE_LIST_DIRECTORY; share read+write; OPEN_EXISTING
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 32:
+            raise UnsafeOpen("a folder on the path is in use: %s" % path) from exc
+        raise
+    try:
+        fd = msvcrt.open_osfhandle(handle, os.O_RDONLY)
+    except BaseException:
+        _winapi.CloseHandle(handle)
+        raise
+    stack.callback(os.close, fd)
+    info = os.fstat(fd)
+    if not follow and getattr(info, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT:
+        raise UnsafeOpen("a folder on the path is a link: %s" % path)
+    if not stat.S_ISDIR(info.st_mode):
+        raise UnsafeOpen("a folder on the path is not a folder: %s" % path)
+
+
+@contextlib.contextmanager
+def pin_chain(anchor, path):
+    """Hold every folder from `anchor` (included) down to the folder of `path` open, as itself and not through a link, until the with block ends (an exception
+    included): between the check and the open nobody can swap one of them for a junction or symlink. `path` must be below `anchor` by spelling (os.path.abspath,
+    never resolve: `..`, an 8.3 name or a name:stream stay what they are), else ValueError. A link BELOW the anchor is UnsafeOpen; the anchor itself may be a link
+    (the user chose where to start; the folders above it are followed as always, FR2.2). POSIX holds directory descriptors, and the caller must do every later step
+    through `.dir_fd` (a descriptor does not stop a rename); Windows holds handles without FILE_SHARE_DELETE, which do stop a rename of the folders held. What is
+    NOT held on Windows is a link ABOVE the anchor or AS the anchor: it can be pointed elsewhere while the pin lasts, and the later steps, which use the full path,
+    would follow it (the accepted limit of FR2.2). The anchor is given in the same spelling the path will be opened by (the resolved root where the scan resolved
+    it). Never asks is_link/link_in_chain: those are the early checks, and a pin that leaned on them would vanish with them."""
+    anchor_text, path_text = os.path.abspath(os.fspath(anchor)), os.path.abspath(os.fspath(path))
+    parent = os.path.dirname(path_text)
+    if not lexically_inside(parent, anchor_text):
+        raise ValueError("%s is not below the anchor %s" % (path_text, anchor_text))
+    relative = path_text[len(anchor_text):] if os.path.normcase(parent).startswith(os.path.normcase(anchor_text)) else ""
+    names = [part for part in re.split(r"[\\/]+", os.path.dirname(relative)) if part]
+    session = getattr(_session, "held", None)
+    with contextlib.ExitStack() as own:
+        # Inside a pin_session the folders go on the session's stack and are remembered, so a folder already held is not opened again; the chain is still
+        # walked folder by folder from the anchor down, and a folder opened earlier in the session was opened the same way (as itself, not through a link).
+        stack = _session.stack if session is not None else own
+        held = session if session is not None else {}
+        current = anchor_text
+        key = (os.path.normcase(current), True)
+        if os.name == "nt":
+            if key not in held:
+                _pin_component_windows(current, stack, follow=True)
+                held[key] = None
+            for name in names:
+                current = os.path.join(current, name)
+                key = (os.path.normcase(current), False)
+                if key not in held:
+                    _pin_component_windows(current, stack)
+                    held[key] = None
+            yield _Pin(None)
+        else:
+            if key not in held:
+                held[key] = _pin_component(anchor_text, None, stack, follow=True)
+            fd = held[key]
+            for name in names:
+                current = os.path.join(current, name)
+                key = (os.path.normcase(current), False)
+                if key not in held:
+                    held[key] = _pin_component(name, fd, stack)
+                fd = held[key]
+            yield _Pin(fd)
+
+
+_session = threading.local()
+
+
+@contextlib.contextmanager
+def pin_session():
+    """Keep the folders that `pin_chain` opens held until this block ends, and open each folder once: a caller that reads many files of one tree (the tree hash of a
+    skill) pays for one chain of folders, not one chain per file. The rule is the same as for a single pin: every folder below the anchor is opened as itself and a link
+    is refused; what is held is released when the block ends, an exception included (FR2.3). Only for reads: a folder held without FILE_SHARE_DELETE cannot be renamed
+    or removed by this process either. A session inside a session is the outer one."""
+    if getattr(_session, "held", None) is not None:
+        yield
+        return
+    stack = contextlib.ExitStack()
+    _session.stack, _session.held = stack, {}
+    try:
+        yield
+    finally:
+        _session.stack, _session.held = None, None
+        stack.close()
+
+
+class _PinnedFile:
+    """A binary file object that also holds the pinned folder chain until it is closed (a `with` block, or `close()`); every other attribute is the file's."""
+
+    def __init__(self, handle, stack):
+        self._handle, self._stack = handle, stack
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def __iter__(self):
+        return iter(self._handle)
+
+    def __getattr__(self, name):
+        return getattr(self._handle, name)
+
+    def close(self) -> None:
+        try:
+            self._handle.close()
+        finally:
+            self._stack.close()
+
+
+def _open_read_fd(path: str, dir_fd) -> int:
+    """The descriptor of `path` opened for reading as itself: Windows through `_open_no_reparse`, POSIX with O_NOFOLLOW (by name under `dir_fd` when pinned)."""
+    if os.name == "nt":
+        return _open_no_reparse(path)
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        return os.open(os.path.basename(path), flags, dir_fd=dir_fd) if dir_fd is not None else os.open(path, flags)
     except OSError as exc:
         if exc.errno in (errno.ELOOP, getattr(errno, "EMLINK", -1)):
             raise UnsafeOpen("source is a symlink: %s" % path) from exc
         raise
+
+
+def _pin_for(path, anchor, stack) -> tuple:
+    """(path, dir_fd) for an open under `anchor`: the chain from the anchor to the folder of `path` is pinned on `stack` and `path` is made absolute. A path that is
+    not below `anchor` as written is UnsafeOpen (a caller that names an anchor spelled another way, an 8.3 name or an alias, gets a refusal, never a weaker pin). Without an anchor nothing is pinned: (path, None)."""
+    if anchor is None:
+        return path, None
+    absolute = os.path.abspath(os.fspath(path))
+    if not lexically_inside(os.path.dirname(absolute), anchor):  # not below the anchor as written: a weaker pin from its own folder would follow a link there (RF-S1)
+        raise UnsafeOpen("%s is not below the anchor %s as written; not read" % (absolute, os.path.abspath(os.fspath(anchor))))
+    return absolute, stack.enter_context(pin_chain(anchor, absolute)).dir_fd
+
+
+def open_nofollow_read(path, expect_stat=None, single_link: bool = True, anchor=None):
+    """Open `path` for binary reading without following a link; return the file object. POSIX: O_NOFOLLOW. Windows: `_open_no_reparse` (CreateFile
+    that opens a reparse point as itself, then refuses it). Both: the handle must be a regular file, with `expect_stat` (the lstat taken when the file was
+    checked) the same (st_dev, st_ino), and with `single_link` exactly one name. Any mismatch raises UnsafeOpen. With `anchor` the folders from the anchor down
+    to the file are pinned first (pin_chain) and stay pinned until the returned file is closed; a path that is not below `anchor` is pinned from its own folder."""
+    stack = contextlib.ExitStack()
+    fd = None
     try:
+        path, dir_fd = _pin_for(path, anchor, stack)
+        fd = _open_read_fd(os.fspath(path), dir_fd)
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
             raise UnsafeOpen("source is not a regular file: %s" % path)
@@ -551,32 +818,239 @@ def open_nofollow_read(path, expect_stat=None, single_link: bool = True):
             raise UnsafeOpen("source changed between check and copy: %s" % path)
         if single_link and info.st_nlink != 1:
             raise UnsafeOpen("source has %d names (hard link): %s" % (info.st_nlink, path))
-        return os.fdopen(fd, "rb")
+        handle = os.fdopen(fd, "rb")
+        fd = None
+        return _PinnedFile(handle, stack) if anchor is not None else handle
     except BaseException:
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        stack.close()
         raise
 
 
-def create_exclusive(path):
-    """Create `path` for binary writing, failing (FileExistsError) when anything, a link included, is already there; never writes through a link."""
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    if os.path.lexists(path):  # Windows has no O_NOFOLLOW and CREATE_NEW follows a dangling symlink: a name that is there at all, a link included, is refused first
-        raise FileExistsError(errno.EEXIST, "already exists (a link counts)", os.fspath(path))
-    fd = os.open(path, flags, 0o666)
+def _create_new_fd(path: str, dir_fd) -> int:
+    """The descriptor of a file made new at `path` for writing: Windows through `_open_no_reparse` (CREATE_NEW, the reparse point not followed), POSIX with
+    O_CREAT|O_EXCL|O_NOFOLLOW (by name under `dir_fd` when pinned). A name that is there, a link included, is FileExistsError, and nothing is made at a link's target."""
+    if os.name == "nt":
+        return _open_no_reparse(path, write=True, create_new=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    return os.open(os.path.basename(path), flags, 0o666, dir_fd=dir_fd) if dir_fd is not None else os.open(path, flags, 0o666)
+
+
+def create_exclusive(path, anchor=None):
+    """Create `path` for binary writing, failing (FileExistsError) when anything, a link included, is already there; never writes through a link, and never
+    leaves an empty file at the target of a link that sits at the name (the create itself does not follow it: no check-then-create window). With `anchor` the
+    folders from the anchor down to the file are pinned first and stay pinned until the returned file is closed."""
+    stack = contextlib.ExitStack()
+    fd = None
     try:
-        opened, named = os.fstat(fd), os.lstat(path)  # the handle must be the very file the name holds now, not a link's target
+        path, dir_fd = _pin_for(path, anchor, stack)
+        fd = _create_new_fd(os.fspath(path), dir_fd)
+        opened = os.fstat(fd)
+        named = os.lstat(os.path.basename(path), dir_fd=dir_fd) if dir_fd is not None else os.lstat(path)  # the handle must be the very file the name holds now
         if stat.S_ISLNK(named.st_mode) or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino):
             raise UnsafeOpen("created file is not the named path (link raced in): %s" % path)
-        return os.fdopen(fd, "wb")
+        handle = os.fdopen(fd, "wb")
+        fd = None
+        return _PinnedFile(handle, stack) if anchor is not None else handle
     except BaseException:
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        stack.close()
         raise
+
+
+def _names_a_folder(info) -> bool:
+    """True for a folder or a folder link by its lstat: a directory, or (Windows) the directory attribute, which a junction and a directory symlink carry."""
+    return stat.S_ISDIR(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x10)
+
+
+def _refuse_folder_target(target: Path, dir_fd) -> bool:
+    """UnsafeOpen when the name `target` is a folder or a folder link now. True when a file (or a file link) is there, False when nothing is: a rename replaces the name itself."""
+    try:
+        info = os.lstat(target.name, dir_fd=dir_fd) if dir_fd is not None else os.lstat(target)
+    except FileNotFoundError:
+        return False
+    if _names_a_folder(info):
+        raise UnsafeOpen("output is a folder or a folder link: %s" % target)
+    if stat.S_ISLNK(info.st_mode):  # POSIX: a symlink to a folder (lstat sees only the link); a link to a file, or a dangling one, is replaced as a name
+        try:
+            to_folder = stat.S_ISDIR((os.stat(target.name, dir_fd=dir_fd) if dir_fd is not None else os.stat(target)).st_mode)
+        except OSError:
+            to_folder = False
+        if to_folder:
+            raise UnsafeOpen("output is a folder or a folder link: %s" % target)
+    return True
+
+
+def _lstat_in(path: Path, dir_fd):
+    return os.lstat(path.name, dir_fd=dir_fd) if dir_fd is not None else os.lstat(path)
+
+
+def _rename_in(src: Path, dst: Path, dir_fd) -> None:
+    if dir_fd is not None:
+        os.replace(src.name, dst.name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+    else:
+        os.replace(src, dst)
+
+
+def _unlink_in(path: Path, dir_fd) -> None:
+    if dir_fd is not None:
+        os.unlink(path.name, dir_fd=dir_fd)
+    else:
+        os.unlink(path)
+
+
+def _quietly(call, *args) -> None:
+    try:
+        call(*args)
+    except OSError:
+        pass
+
+
+class _Staged:
+    """A file written beside its target under a temp name, not yet in place: `commit()` renames it over the target, `discard()` removes it. It remembers the identity
+    (device, inode) of the temp file it wrote, and the rename is refused when the name holds anything else by then."""
+
+    def __init__(self, target: Path, tmp: Path, anchor: Path, ident: tuple):
+        self.target, self.tmp, self.anchor, self.ident = target, tmp, anchor, ident
+
+    def _put_in_place(self, dir_fd, keep_old: bool = False):
+        """Inside a pin: rename the temp file over the target; the path of the old file set aside (`keep_old`, when there was one) else None."""
+        try:
+            info = _lstat_in(self.tmp, dir_fd)
+        except OSError as exc:
+            raise UnsafeOpen("the temp file is gone: %s" % self.tmp) from exc
+        if (info.st_dev, info.st_ino) != self.ident:
+            raise UnsafeOpen("the temp file is not the one that was written: %s" % self.tmp)
+        exists = _refuse_folder_target(self.target, dir_fd)
+        aside = None
+        if keep_old and exists:
+            aside = self.target.with_name(".%s.%s%s" % (self.target.name, os.urandom(4).hex(), C.REPLACE_OLD_SUFFIX))
+            _rename_in(self.target, aside, dir_fd)
+        try:
+            _rename_in(self.tmp, self.target, dir_fd)
+        except BaseException:
+            if aside is not None:
+                _quietly(_rename_in, aside, self.target, dir_fd)
+            raise
+        return aside
+
+    def commit(self) -> None:
+        with pin_chain(self.anchor, self.target) as pin:
+            self._put_in_place(pin.dir_fd)
+
+    def discard(self) -> None:
+        """Remove the temp file; never raises. A folder on the way that is a link now is not entered (the temp stays: it holds only what this run wrote)."""
+        try:
+            with pin_chain(self.anchor, self.tmp) as pin:
+                _quietly(_unlink_in, self.tmp, pin.dir_fd)
+        except (OSError, ValueError):
+            pass
+
+
+def _stage_in_pin(target: Path, anchor: Path, fill, pin, mode=None) -> _Staged:
+    """Inside a pin: refuse a folder at the name, make the temp file exclusively, let `fill(handle)` write it, flush and fsync. `mode` (permission bits) is set on the
+    temp file before it is renamed over the target. An error removes the temp file."""
+    _refuse_folder_target(target, pin.dir_fd)
+    tmp = target.with_name(".%s.%s%s" % (target.name, os.urandom(4).hex(), C.REPLACE_TMP_SUFFIX))
+    fd = _create_new_fd(os.fspath(tmp), pin.dir_fd)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            info = os.fstat(handle.fileno())
+            if mode is not None:
+                try:
+                    os.fchmod(handle.fileno(), mode)
+                except AttributeError:  # Windows has no fchmod: the read-only bit only, by path (the folder is pinned)
+                    os.chmod(tmp, mode)
+            fill(handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        _quietly(_unlink_in, tmp, pin.dir_fd)
+        raise
+    return _Staged(target, tmp, anchor, (info.st_dev, info.st_ino))
+
+
+def _target_and_anchor(target, anchor) -> tuple:
+    target = Path(os.path.abspath(os.fspath(target)))
+    anchor = Path(os.path.abspath(os.fspath(anchor))) if anchor is not None else anchor_for(target)
+    if not lexically_inside(target.parent, anchor):  # a wrong anchor gets a weaker pin (the folder that holds the target), not an error
+        anchor = target.parent
+    return target, anchor
+
+
+def stage_write(target, fill, anchor=None) -> _Staged:
+    """Write a file next to `target` under a temp name (`.<name>.<8 hex>.spr05tmp`): `fill(handle)` writes its bytes, then it is flushed and fsynced. The target
+    itself is not touched until `commit()` (or `commit_all`). The chain of folders from `anchor` (default `anchor_for(target)`; an anchor that is not above the target
+    pins the target's own folder only) down to the target's folder is pinned while the temp file is made; a target that is a folder or a folder link is refused first."""
+    target, anchor = _target_and_anchor(target, anchor)
+    with pin_chain(anchor, target) as pin:
+        return _stage_in_pin(target, anchor, fill, pin)
+
+
+def replace_with(target, fill, anchor=None, mode=None) -> None:
+    """Replace `target` by what `fill(handle)` writes: staged beside it and renamed over it under ONE pin from the first byte to the rename, so the old file stays as
+    it was until the new one is complete, and a failure or a refusal removes the temp file. `mode` sets the permission bits of the new file."""
+    target, anchor = _target_and_anchor(target, anchor)
+    with pin_chain(anchor, target) as pin:
+        staged = _stage_in_pin(target, anchor, fill, pin, mode)
+        try:
+            staged._put_in_place(pin.dir_fd)
+        except BaseException:
+            _quietly(_unlink_in, staged.tmp, pin.dir_fd)
+            raise
+
+
+def write_replace(target, data: bytes, anchor=None) -> None:
+    """Replace `target` by `data` atomically: the bytes go to a temp file beside it (create_exclusive semantics, the chain from `anchor` pinned) and an os.replace puts
+    it over the name, which replaces a link at the name instead of writing through it. A folder or folder link at the name is UnsafeOpen. Any error removes the temp file and
+    leaves the old target as it was."""
+    replace_with(target, lambda handle: handle.write(data), anchor)
+
+
+def commit_all(staged: list) -> None:
+    """Put every staged file in place, or none: each old file is set aside (`.spr05old`) while its new one goes in; if any step fails, the files already in place are
+    swapped back, the unplaced temp files are removed and the error is raised again. Not atomic against a crash in the middle (the aside files then show what happened)."""
+    done: list = []
+    try:
+        for item in staged:
+            with pin_chain(item.anchor, item.target) as pin:
+                done.append((item, item._put_in_place(pin.dir_fd, keep_old=True)))
+    except BaseException:
+        for item, aside in reversed(done):
+            try:
+                with pin_chain(item.anchor, item.target) as pin:
+                    if aside is not None:
+                        _quietly(_rename_in, aside, item.target, pin.dir_fd)
+                    else:
+                        _quietly(_unlink_in, item.target, pin.dir_fd)
+            except (OSError, ValueError):
+                pass
+        for item in staged:
+            item.discard()
+        raise
+    for item, aside in done:
+        if aside is not None:
+            try:
+                with pin_chain(item.anchor, item.target) as pin:
+                    _quietly(_unlink_in, aside, pin.dir_fd)
+            except (OSError, ValueError):
+                pass
+
+
+def remove_pinned(path, anchor=None) -> None:
+    """Delete the file `path` under the pinned chain from `anchor`; a folder or folder link at the name is not deleted (UnsafeOpen); a name that is not there is fine."""
+    path, anchor = _target_and_anchor(path, anchor)
+    with pin_chain(anchor, path) as pin:
+        if _refuse_folder_target(path, pin.dir_fd):
+            _unlink_in(path, pin.dir_fd)
 
 
 def link_in_chain(path, stop):

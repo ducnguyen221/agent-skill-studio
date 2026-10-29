@@ -361,11 +361,15 @@ class DoctorTests(unittest.TestCase):
                     written.append(os.path.normcase(os.path.abspath(os.fspath(path))))
                 return real_open(path, mode, *a, **k)
 
+            replaced = []
+
             def spy_mut(name):
                 real = getattr(os, name)
 
                 def wrapper(*a, **k):
                     mutated.append(name)
+                    if name == "replace":
+                        replaced.append((os.path.basename(os.fspath(a[0])), os.path.basename(os.fspath(a[1]))))
                     return real(*a, **k)
                 return wrapper
 
@@ -376,8 +380,11 @@ class DoctorTests(unittest.TestCase):
                     stack.enter_context(p)
                 code, stdout, _ = run("--roots", str(FIX), "--json", "--out", str(out))
             self.assertEqual(code, 1)
-            self.assertEqual(written, [os.path.normcase(os.path.abspath(out))], "doctor opened something for writing besides --out")
-            self.assertEqual(mutated, [], "doctor created, removed, renamed or re-stamped something")
+            # SPR-05 TK4: --out is written under a temp name beside it (os.open / CreateFile, not builtins.open) and renamed over the name with one os.replace
+            self.assertEqual(written, [], "doctor opened something for writing with open()")
+            self.assertEqual(mutated, ["replace"], "doctor created, removed, renamed or re-stamped something besides the one rename of the temp file")
+            self.assertTrue(replaced[0][0].startswith(".report.json.") and replaced[0][0].endswith(".spr05tmp"), replaced)
+            self.assertEqual(replaced[0][1], out.name)
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["report.json"])
             self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["schema"], 1)
             self.assertNotIn('"schema"', stdout, "with --out the JSON goes to the file, stdout keeps a summary")
@@ -755,7 +762,13 @@ class DoctorHardeningTests(unittest.TestCase):
                 handle = real_open(path, *a, **k)
                 return Proxy(handle, os.fspath(path)) if isinstance(path, (str, os.PathLike)) and os.fspath(path).endswith(("BIG.md", "SKILL.md")) else handle
 
-            with mock.patch.object(builtins, "open", spy), mock.patch.object(io, "open", spy):
+            real_safe_open = _engine.fs.open_nofollow_read  # SPR-05 TK1: read_capped now opens through open_nofollow_read, so that is where the read is spied
+
+            def safe_spy(path, *a, **k):
+                handle = real_safe_open(path, *a, **k)
+                return Proxy(handle, os.fspath(path)) if os.fspath(path).endswith(("BIG.md", "SKILL.md")) else handle
+
+            with mock.patch.object(builtins, "open", spy), mock.patch.object(io, "open", spy), mock.patch.object(_engine.fs, "open_nofollow_read", safe_spy):
                 code, out, err = run("--roots", str(root), "--json")
             report = json.loads(out)
             self.assertEqual(code, 1, (out, err))  # SPR-01 TK6: an unread SKILL.md is an SZ1 ERROR

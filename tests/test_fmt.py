@@ -510,7 +510,14 @@ class FmtRound3Tests(unittest.TestCase):
     def test_fmt_temp_file_failure_removes_the_backup(self):
         path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
         before = path.read_bytes()
-        with mock.patch.object(tempfile, "mkstemp", side_effect=PermissionError(13, "denied")):
+        real_new = studio_fs._create_new_fd
+
+        def deny_temp(name, dir_fd):  # SPR-05 round 1: the temp file is made by create-new under the pin, not by tempfile.mkstemp; the backup is made the same way and must work
+            if os.path.basename(name).endswith(studio_const.REPLACE_TMP_SUFFIX):
+                raise PermissionError(13, "denied")
+            return real_new(name, dir_fd)
+
+        with mock.patch.object(studio_fs, "_create_new_fd", deny_temp):
             code, _, err = run("--fix", str(path))
         self.assertEqual(code, 2, err)
         self.assertIn("cannot write", err)
@@ -669,7 +676,7 @@ class FmtSafeWriteTests(unittest.TestCase):
         path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
         seen = []
         real = os.replace
-        with mock.patch.object(os, "replace", side_effect=lambda src, dst: (seen.append(Path(src).name), real(src, dst))[1]):
+        with mock.patch.object(os, "replace", side_effect=lambda src, dst, **kw: (seen.append(Path(src).name), real(src, dst, **kw))[1]):
             self.assertEqual(run("--fix", str(path))[0], 0)
             write(path, SKILL.replace("\n", "\r\n"))
             self.assertEqual(run("--fix", str(path))[0], 0)
@@ -703,18 +710,16 @@ class FmtSafeWriteTests(unittest.TestCase):
 
     def test_fmt_copies_the_mode_to_the_new_file(self):
         path = write(self.tmp / "SKILL.md", SKILL.replace("\n", "\r\n"))
-        real, calls = shutil.copymode, []
+        real, calls = studio_fs.replace_with, []
 
-        def spy(src, dst):
-            calls.append((Path(src), Path(dst)))
-            return real(src, dst)
+        def spy(target, fill, anchor=None, mode=None):  # SPR-05 round 1: the mode travels to the new file as `mode` (set on the temp file before the rename), not by shutil.copymode
+            calls.append((Path(target), mode))
+            return real(target, fill, anchor=anchor, mode=mode)
 
-        with mock.patch.object(shutil, "copymode", spy):
+        expected = stat.S_IMODE(os.lstat(path).st_mode)
+        with mock.patch.object(studio_fs, "replace_with", spy):
             self.assertEqual(run("--fix", str(path))[0], 0)
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][0], path)
-        self.assertEqual(calls[0][1].parent, path.parent)
-        self.assertNotEqual(calls[0][1], path)
+        self.assertEqual(calls, [(path, expected)])
 
     @unittest.skipIf(os.name == "nt", "POSIX permission bits")
     def test_fmt_keeps_the_posix_mode(self):

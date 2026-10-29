@@ -152,15 +152,14 @@ class CommandLineTests(TC.TmpCase):
         self.assertIn("--overlap --json", module._command_text(args))
 
     def test_home_path_by_real_path(self):
-        """bắt-lỗi: RF-A12 a spelling of the home folder that is not the expanduser one (8.3 name, link) still shows as ~."""
+        """bắt-lỗi: RF-A12 a spelling of the home folder that is not the expanduser one (8.3 name, link) still shows as ~ (SPR-05 FR9.1: by the long-name expansion `fs._long_name_text`, which follows no link; a link spelling stays as written)."""
         module = TC.load_catalog_module()
-        real = os.path.realpath
 
-        def fake(path, *a, **k):
-            return real(str(path).replace("SHORT~1", "LongName"))
+        def fake(text):
+            return str(text).replace("SHORT~1", "LongName")
 
         with mock.patch.object(os.path, "expanduser", lambda p: str(self.tmp / "LongName") if p == "~" else p), \
-                mock.patch.object(os.path, "realpath", fake):
+                mock.patch.object(fs, "_long_name_text", fake):
             self.assertEqual(module.home_path(str(self.tmp / "SHORT~1" / "a" / "b")), "~/a/b")
             self.assertEqual(module.home_path(str(self.tmp / "LongName" / "a")), "~/a")
             self.assertEqual(module.home_path(str(self.tmp / "Other" / "a")), (self.tmp / "Other" / "a").as_posix())

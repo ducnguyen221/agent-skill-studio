@@ -48,8 +48,8 @@ class MutatedEngineTests(unittest.TestCase):
 
     def test_strict_catches_eol_change(self):
         """bắt-lỗi (red at 53c2d76): `new` writes SKILL.md with the other line end -> the CRLF-folded hash is unchanged, only strict reports it."""
-        old = 'p.write_text(content, encoding="utf-8")'
-        new = 'p.write_bytes(content.replace("\\n", %r).encode("utf-8"))' % OTHER_EOL
+        old = 'write_new(p, content.replace("\\n", os.linesep), files'  # SPR-05 TK3: SKILL.md is made by write_new now, no longer by write_text
+        new = 'write_new(p, content.replace("\\n", %r), files' % OTHER_EOL
         results, strict = self.mutated_run("skills/skill-creator-studio/scripts/studio_scaffold.py", old, new, "R-new-en")
         self.assertEqual([], runner.compare(results, runner.load_golden()), "the old comparison folds CRLF to LF, so it must stay blind here")
         problems = runner.compare_strict(strict, runner.load_strict())

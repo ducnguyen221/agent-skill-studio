@@ -23,6 +23,19 @@ def _key(path) -> str:
     return os.path.normcase(os.path.realpath(os.fsdecode(path)))
 
 
+def _fd_folder(dir_fd: int):
+    """The path of the folder an open directory descriptor names (Linux /proc, macOS F_GETPATH), else None."""
+    try:
+        return os.readlink("/proc/self/fd/%d" % dir_fd)
+    except OSError:
+        pass
+    try:
+        import fcntl
+        return os.fsdecode(fcntl.fcntl(dir_fd, fcntl.F_GETPATH, b"\0" * 1024).split(b"\0", 1)[0])
+    except (ImportError, AttributeError, OSError):
+        return None
+
+
 def _under(path, roots: list) -> bool:
     key = _key(path)
     return any(key == root or key.startswith(root.rstrip(os.sep) + os.sep) for root in roots)
@@ -55,6 +68,12 @@ def block_writes_outside(allowed: list):
 
     def guarded_os_open(path, flags, *args, **kwargs):
         if not isinstance(path, int) and flags & _WRITE_FLAGS:
+            dir_fd = kwargs.get("dir_fd")
+            if dir_fd is not None:  # a name given relative to an open folder (SPR-05: the pinned writers): judged by that folder
+                folder = _fd_folder(dir_fd)
+                if folder is None:
+                    refuse(path)
+                path = os.path.join(folder, os.fsdecode(path))
             check(path)
         return real_os_open(path, flags, *args, **kwargs)
 

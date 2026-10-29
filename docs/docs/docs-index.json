@@ -12,7 +12,7 @@
       "src": "CHANGELOG.md",
       "out": "docs/CHANGELOG/index.html",
       "title": "Changelog",
-      "sha256": "8ae333ef764e0fd84780136e3a9975ca58cb2261d637b7440626e8df2e3bfd5b"
+      "sha256": "8465d2e5eec2a787cc04284babec6bd1644c0f0f4c835fe2bcc0769c556b1eb7"
     },
     {
       "src": "CLAUDE.md",
@@ -36,7 +36,7 @@
       "src": "README.md",
       "out": "docs/README/index.html",
       "title": "Agent Skill Studio",
-      "sha256": "7495e70f303cccedbd6599de438e3c8a957143f649e721e43c68cb874881e25f"
+      "sha256": "6723ef6a8ede5199819b1a1658b55c6c85845b9720e4716dbde163be0d70df0e"
     },
     {
       "src": "evals/RUNBOOK.md",
@@ -90,7 +90,7 @@
       "src": "skills/skill-creator-studio/SKILL.md",
       "out": "docs/skills/skill-creator-studio/SKILL/index.html",
       "title": "Skill Creator Studio",
-      "sha256": "a1129d59e7c9709c178a2796fdaee61da9d2f195997fc113f97a4eb31c361ba4"
+      "sha256": "75f8417883096c4550d6dc6e64ba557b858af1246d11ae92e758fce552dcb79a"
     },
     {
       "src": "skills/skill-creator-studio/references/AUDIT_CHECKLIST.md",
