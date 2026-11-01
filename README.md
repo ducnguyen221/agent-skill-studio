@@ -1,3 +1,9 @@
+> **Repo này đã được gộp vào OpcOS và chuyển sang chỉ đọc (archive) ngày 01/11/2026.**
+> Xưởng tạo và kiểm kê skill nay là hai skill `create-skill` (trước là `skill-creator-studio`) và `catalog-skill`
+> (trước là `skill-curator`) trong plugin `opcos-core` 0.8.0, thư mục `system/opcos-plugin/skills/` của OpcOS,
+> gộp tại commit `8217b597`, đóng sprint tại `22ece8d1` (SPR-49, ADR-002). Lịch sử commit được giữ nguyên trong OpcOS.
+> Các tag **v0.2.0, v0.3.0, v0.4.0** giữ nguyên. Repo không nhận thêm commit hay issue.
+
 # Agent Skill Studio
 
 **Bộ chuẩn và công cụ để tạo, kiểm, cải tiến, đo và phân phối Agent Skills cho Claude Code, OpenAI Codex và Google Antigravity.**
